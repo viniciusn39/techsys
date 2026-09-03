@@ -3,6 +3,7 @@ import { useAuth } from "./auth/AuthContext";
 import { AppLayout } from "./layout/AppLayout";
 import { ChatIA } from "./pages/ChatIA";
 import { Conector } from "./pages/Conector";
+import { PainelErp } from "./pages/PainelErp";
 import { Dashboard } from "./pages/Dashboard";
 import { Desvios } from "./pages/Desvios";
 import { IndicadorDetalhe } from "./pages/IndicadorDetalhe";
@@ -60,6 +61,7 @@ export default function App() {
         <Route path="/metas" element={<TenantRoute><Metas /></TenantRoute>} />
         <Route path="/indicadores" element={<TenantRoute><Indicadores /></TenantRoute>} />
         <Route path="/indicadores/:id" element={<TenantRoute><IndicadorDetalhe /></TenantRoute>} />
+        <Route path="/erp/painel" element={<TenantRoute><PainelErp /></TenantRoute>} />
         <Route path="/planos-acao" element={<TenantRoute><PlanosAcao /></TenantRoute>} />
         <Route path="/desvios" element={<TenantRoute><Desvios /></TenantRoute>} />
         <Route path="/ia/chat" element={<TenantRoute><ChatIA /></TenantRoute>} />

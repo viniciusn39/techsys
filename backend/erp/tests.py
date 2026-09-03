@@ -115,6 +115,44 @@ class ColetorIngestTests(APITestCase):
         nf = next(e for e in d["entities"] if e["entity"] == "sales_invoice")
         self.assertEqual((nf["janela"], nf["janela_alvo"], nf["marca"]), (4, 24, "2026-08-01"))
 
+    def test_painel_erp_confere_indicador_com_o_espelho(self):
+        from datetime import date
+
+        from indicators.models import Indicator, IndicatorValue
+
+        hoje = date.today().isoformat()
+        self.ingest("branch", [{"CODIGO": "1", "RAZAOSOCIAL": "Matriz"}])
+        self.ingest("sales_invoice", [
+            {"NUMTRANSVENDA": "10", "NUMNOTA": "10", "CODFILIAL": "1", "DTSAIDA": hoje, "CONDVENDA": 1, "VLTOTAL": "1000.00"},
+            {"NUMTRANSVENDA": "11", "NUMNOTA": "11", "CODFILIAL": "1", "DTSAIDA": hoje, "CONDVENDA": 1, "VLTOTAL": "500.00"},
+        ])
+        ind = Indicator.objects.create(tenant=self.tenant, code="FAT", name="Faturamento", unit="R$", erp_metric="faturamento")
+        IndicatorValue.objects.create(indicator=ind, period=date.today().replace(day=1), value="1500", source="agent")
+        colab = User.objects.create_user("c@nb.com", "x", first_name="C", tenant=self.tenant, role=User.Role.COLABORADOR)
+        gestor = User.objects.create_user("g2@nb.com", "x", first_name="G", tenant=self.tenant, role=User.Role.GESTOR)
+
+        self.client.force_authenticate(colab)
+        self.assertEqual(self.client.get("/api/erp/painel/").status_code, 403)
+
+        self.client.force_authenticate(gestor)
+        r = self.client.get("/api/erp/painel/?meses=6")
+        self.assertEqual(r.status_code, 200)
+        d = r.json()
+        self.assertEqual(len(d["serie"]), 6)
+        self.assertEqual(d["serie"][-1]["faturamento"], 1500.0)
+        self.assertEqual(d["foto"]["atual"]["qtd_notas"], 2.0)
+        self.assertEqual(d["por_filial"][0]["faturamento_mes"], 1500.0)
+        nf = next(c for c in d["cobertura"] if c["entity"] == "sales_invoice")
+        self.assertEqual((nf["total"], nf["de"]), (2, hoje))
+        fat = d["indicadores"][0]
+        self.assertEqual((fat["code"], fat["valor_gravado"], fat["valor_erp"], fat["situacao"]), ("FAT", 1500.0, 1500.0, "confere"))
+        self.assertEqual(d["resumo_conferencia"]["confere"], 1)
+
+        # Carga avançou desde o cálculo: o painel acusa a divergência.
+        self.ingest("sales_invoice", [{"NUMTRANSVENDA": "12", "NUMNOTA": "12", "CODFILIAL": "1", "DTSAIDA": hoje, "CONDVENDA": 1, "VLTOTAL": "100.00"}])
+        fat = self.client.get("/api/erp/painel/").json()["indicadores"][0]
+        self.assertEqual((fat["valor_erp"], fat["situacao"]), (1600.0, "divergente"))
+
     def test_heartbeat_atualiza_health_e_last_seen(self):
         r = self.client.post("/api/coletor/heartbeat/", {"oracle_ok": True, "agent_version": "1.0.0"},
                              format="json", **self.headers)

@@ -23,6 +23,7 @@ const TENANT_SECTIONS: { label: string; items: MenuItem[] }[] = [
       { to: "/mapa-estrategico", icon: "bi-diagram-3", label: "Mapa Estratégico", title: "Mapa Estratégico", sub: "Objetivos por perspectiva BSC", roles: ["root", "admin", "gestor", "colaborador"] },
       { to: "/metas", icon: "bi-bullseye", label: "Metas", title: "Desdobramento de Metas", sub: "Empresa → Área → Time → Pessoa", roles: ["root", "admin", "gestor", "colaborador"] },
       { to: "/indicadores", icon: "bi-graph-up-arrow", label: "Indicadores", title: "Indicadores", sub: "KPIs, metas e farol", roles: ["root", "admin", "gestor", "colaborador"] },
+      { to: "/erp/painel", icon: "bi-bar-chart-line", label: "Painel do ERP", title: "Painel do ERP", sub: "Dados do ERP e conferência dos indicadores", roles: ["root", "admin", "gestor"] },
     ],
   },
   {

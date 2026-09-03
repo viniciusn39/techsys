@@ -19,7 +19,7 @@ from rest_framework.permissions import AllowAny
 from rest_framework.response import Response
 from rest_framework.views import APIView
 
-from accounts.permissions import IsGestorOrAbove, IsRoot, IsTenantAdminStrict
+from accounts.permissions import IsGestorOrAbove, IsGestorStrict, IsRoot, IsTenantAdminStrict
 from accounts.tenancy import TenantScopedViewSet
 
 from .coletor import (
@@ -503,6 +503,27 @@ class ConnectorViewSet(TenantScopedViewSet):
 class MetricCatalogView(APIView):
     def get(self, request):
         return Response(catalog_payload())
+
+
+class PainelErpView(APIView):
+    """Mini BI do espelho do ERP + conferência dos indicadores ligados a ele."""
+
+    permission_classes = [IsGestorStrict]
+
+    def get(self, request):
+        from accounts.tenancy import get_request_tenant
+
+        from .bi import painel
+
+        tenant = get_request_tenant(request)
+        if tenant is None:
+            raise PermissionDenied("Nenhuma empresa selecionada.")
+        try:
+            meses = max(3, min(int(request.query_params.get("meses", 12)), 36))
+        except ValueError:
+            raise ValidationError({"meses": "Inteiro entre 3 e 36."})
+        branch = request.query_params.get("branch") or None
+        return Response(painel(tenant, meses=meses, branch=branch))
 
 
 class MetricPreviewView(APIView):
