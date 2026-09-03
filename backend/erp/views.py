@@ -459,12 +459,23 @@ class ConnectorViewSet(TenantScopedViewSet):
             lidos = int(passe.get("lidos") or 0)
             # 0–100 % do passe atual/último: quanto do que o ERP tem para esta
             # entidade já chegou. Sem contagem: 100 % se o passe terminou bem.
+            janela = ag.get("janela")
             if esperado:
                 pct = min(100.0, lidos * 100.0 / esperado)
             elif passe and not passe.get("em_andamento") and passe.get("ok"):
                 pct = 100.0
+            elif passe:
+                pct = 0.0
+            elif s and s.total_imported > 0:
+                # Sincronizada por um agente que ainda não informa o passe: o que
+                # está no espelho é o passe concluído. Com carga gradual, o
+                # avanço é a janela; sem a janela informada, não se sabe.
+                if alvo:
+                    pct = min(100.0, janela * 100.0 / alvo) if janela else None
+                else:
+                    pct = 100.0
             else:
-                pct = 0.0 if passe else None
+                pct = None
             rows.append({
                 "esperado": esperado,
                 "lidos": lidos,

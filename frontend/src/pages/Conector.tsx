@@ -365,8 +365,10 @@ export function Conector() {
                           : e.em_andamento
                             ? `${fmtInt(e.lidos)} lidos · chegando`
                             : e.pct === null
-                              ? "ainda não coletado"
-                              : `${fmtInt(e.lidos)} no último passe`}
+                              ? (e.total_imported > 0 ? "histórico em carga" : "ainda não coletado")
+                              : e.lidos
+                                ? `${fmtInt(e.lidos)} no último passe`
+                                : "sincronizado"}
                         {" · "}{fmtInt(e.total_imported)} no espelho
                       </div>
                     </td>
