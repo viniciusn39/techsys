@@ -36,7 +36,7 @@ class Migration(migrations.Migration):
             name='AIIntegration',
             fields=[
                 ('id', models.BigAutoField(auto_created=True, primary_key=True, serialize=False, verbose_name='ID')),
-                ('provider', models.CharField(choices=[('deepseek', 'DeepSeek'), ('openai', 'OpenAI'), ('anthropic', 'Anthropic')], default='deepseek', max_length=20)),
+                ('provider', models.CharField(choices=[('deepseek', 'DeepSeek'), ('openai', 'OpenAI')], default='deepseek', max_length=20)),
                 ('base_url', models.URLField(default='https://api.deepseek.com/v1')),
                 ('api_key_encrypted', models.TextField(blank=True)),
                 ('model', models.CharField(default='deepseek-chat', max_length=100)),

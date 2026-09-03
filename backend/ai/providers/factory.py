@@ -2,7 +2,8 @@ from ..models import AIIntegration
 from .base import AIProviderError
 from .openai_compat import OpenAICompatProvider
 
-# Anthropic entra aqui quando for adicionado (payload próprio, não OpenAI-compatible).
+# Provedores com API no formato OpenAI. Um provedor com payload próprio entra
+# aqui com a sua própria classe.
 PROVIDERS = {
     AIIntegration.Provider.DEEPSEEK: OpenAICompatProvider,
     AIIntegration.Provider.OPENAI: OpenAICompatProvider,

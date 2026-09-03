@@ -11,4 +11,3 @@ frontend/dist/
 agente/config.json
 agente/state.json
 agente/*.log
-.claude/

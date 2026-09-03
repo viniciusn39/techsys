@@ -20,7 +20,6 @@ interface Integration {
 const PROVIDERS = [
   { id: "deepseek", label: "DeepSeek", base_url: "https://api.deepseek.com/v1", model: "deepseek-chat", ready: true },
   { id: "openai", label: "OpenAI", base_url: "https://api.openai.com/v1", model: "gpt-4o-mini", ready: true },
-  { id: "anthropic", label: "Anthropic", base_url: "https://api.anthropic.com/v1", model: "claude-sonnet-5", ready: false },
 ];
 
 const FONTES = [

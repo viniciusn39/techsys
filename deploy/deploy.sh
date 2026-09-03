@@ -23,7 +23,7 @@ echo "→ sincronizando código para $USER_@$HOST:$DIR"
 rsync -az --delete \
   --exclude '.git' --exclude 'node_modules' --exclude 'dist' --exclude '__pycache__' \
   --exclude '*.pyc' --exclude '.env' --exclude 'staticfiles' --exclude 'media' \
-  --exclude '.claude' --exclude '.DS_Store' \
+  --exclude '/.*/' --exclude '.DS_Store' \
   -e "ssh -p $PORT" "$HERE/" "$USER_@$HOST:$DIR/"
 
 echo "→ preparando .env (só na primeira vez) e subindo a stack"

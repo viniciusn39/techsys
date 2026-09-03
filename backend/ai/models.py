@@ -17,7 +17,6 @@ class AIIntegration(models.Model):
     class Provider(models.TextChoices):
         DEEPSEEK = "deepseek", "DeepSeek"
         OPENAI = "openai", "OpenAI"
-        ANTHROPIC = "anthropic", "Anthropic"
 
     provider = models.CharField(max_length=20, choices=Provider.choices, default=Provider.DEEPSEEK)
     base_url = models.URLField(default="https://api.deepseek.com/v1")

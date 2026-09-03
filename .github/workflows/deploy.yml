@@ -26,8 +26,10 @@ jobs:
           ssh-keyscan -p "${{ secrets.DEPLOY_PORT }}" -H "${{ secrets.DEPLOY_HOST }}" >> ~/.ssh/known_hosts 2>/dev/null
 
       - name: Atualizar servidor
+        # Primeiro traz o commit (o script de atualização pode ter mudado neste
+        # push); só então roda o script que já veio no próprio commit.
         run: |
           ssh -i ~/.ssh/deploy -p "${{ secrets.DEPLOY_PORT }}" \
               -o StrictHostKeyChecking=yes -o ServerAliveInterval=30 \
               "${{ secrets.DEPLOY_USER }}@${{ secrets.DEPLOY_HOST }}" \
-              'bash /opt/techsys-gestao/deploy/server-update.sh ${{ github.sha }}'
+              'set -e; cd /opt/techsys-gestao && git fetch --prune origin && git reset --hard ${{ github.sha }} && bash deploy/server-update.sh ${{ github.sha }}'
