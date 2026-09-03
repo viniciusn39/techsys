@@ -518,12 +518,21 @@ class PainelErpView(APIView):
         tenant = get_request_tenant(request)
         if tenant is None:
             raise PermissionDenied("Nenhuma empresa selecionada.")
+        from datetime import date
+
         try:
-            meses = max(3, min(int(request.query_params.get("meses", 12)), 36))
+            meses = max(1, min(int(request.query_params.get("meses", 12)), 36))
         except ValueError:
-            raise ValidationError({"meses": "Inteiro entre 3 e 36."})
+            raise ValidationError({"meses": "Inteiro entre 1 e 36."})
         branch = request.query_params.get("branch") or None
-        return Response(painel(tenant, meses=meses, branch=branch))
+        ate = None
+        raw = request.query_params.get("ate")
+        if raw:
+            try:
+                ate = date.fromisoformat(raw if len(raw) > 7 else f"{raw}-01").replace(day=1)
+            except ValueError:
+                raise ValidationError({"ate": "Use AAAA-MM."})
+        return Response(painel(tenant, meses=meses, branch=branch, ate=ate))
 
 
 class MetricPreviewView(APIView):

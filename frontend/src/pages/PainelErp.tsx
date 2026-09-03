@@ -49,6 +49,7 @@ interface Painel {
   filiais: { code: string; name: string }[];
   cobertura: { entity: string; label: string; total: number; de: string | null; ate: string | null; incremental: boolean }[];
   serie: Serie[];
+  serie_dia: { dia: string; faturamento: number | null; qtd_notas: number }[];
   foto: { periodo: string; atual: Record<string, number | null>; mes_anterior: Record<string, number | null> };
   por_filial: { code: string; name: string; faturamento_mes: number | null; notas_mes: number; faturamento_ano: number | null }[];
   rankings: {
@@ -109,6 +110,8 @@ export function PainelErp() {
   const [data, setData] = useState<Painel | null>(null);
   const [meses, setMeses] = useState(12);
   const [branch, setBranch] = useState("");
+  // Mês de referência "AAAA-MM"; vazio = o servidor escolhe o último mês com faturamento.
+  const [ate, setAte] = useState("");
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
   const [notice, setNotice] = useState("");
@@ -120,6 +123,7 @@ export function PainelErp() {
     try {
       const params = new URLSearchParams({ meses: String(meses) });
       if (branch) params.set("branch", branch);
+      if (ate) params.set("ate", ate);
       setData(await api.get<Painel>(`/api/erp/painel/?${params}`));
       setError("");
     } catch (e: any) {
@@ -127,7 +131,14 @@ export function PainelErp() {
     } finally {
       setLoading(false);
     }
-  }, [meses, branch]);
+  }, [meses, branch, ate]);
+
+  const mudarMes = (delta: number) => {
+    const base = ate || (data?.foto.periodo ?? "").slice(0, 7);
+    if (!base) return;
+    const d = new Date(Number(base.slice(0, 4)), Number(base.slice(5, 7)) - 1 + delta, 1);
+    setAte(`${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}`);
+  };
 
   useEffect(() => {
     load();
@@ -209,6 +220,26 @@ export function PainelErp() {
     ],
   }), [serie, meseslabels, t]);
 
+  // Modo "Mês": faturamento e notas dia a dia do mês de referência.
+  const dias = data?.serie_dia ?? [];
+  const diaLabels = dias.map((d) => d.dia.slice(8, 10));
+  const diaFatOption = useMemo(() => ({
+    grid: { left: 8, right: 12, top: 12, bottom: 4, containLabel: true },
+    tooltip: { trigger: "axis" as const, axisPointer: { type: "shadow" as const }, formatter: (ps: any[]) => `<strong>${money(ps[0].value)}</strong><br/><span style="color:${t.inkSecondary}">dia ${ps[0].axisValue} · ${fmtNumber(dias[ps[0].dataIndex]?.qtd_notas ?? 0, 0)} notas</span>` },
+    xAxis: { type: "category" as const, data: diaLabels },
+    yAxis: { type: "value" as const, axisLabel: { formatter: axisMoney } },
+    series: [{ name: "Faturamento", type: "bar" as const, barMaxWidth: BAR_MAX_WIDTH, itemStyle: { color: t.series[0], borderRadius: BAR_RADIUS_V }, data: dias.map((d) => d.faturamento ?? 0) }],
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }), [dias, t]);
+  const diaNotasOption = useMemo(() => ({
+    grid: { left: 8, right: 12, top: 12, bottom: 4, containLabel: true },
+    tooltip: { trigger: "axis" as const, axisPointer: { type: "shadow" as const }, valueFormatter: (v: any) => fmtNumber(Number(v), 0) },
+    xAxis: { type: "category" as const, data: diaLabels },
+    yAxis: { type: "value" as const, minInterval: 1 },
+    series: [{ name: "Notas", type: "bar" as const, barMaxWidth: BAR_MAX_WIDTH, itemStyle: { color: t.series[4], borderRadius: BAR_RADIUS_V }, data: dias.map((d) => d.qtd_notas) }],
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }), [dias, t]);
+
   const hbar = (rows: { name: string; valor: number | null }[], color: string, extra?: (i: number) => string) => ({
     grid: { left: 4, right: 70, top: 4, bottom: 4, containLabel: true },
     tooltip: {
@@ -286,16 +317,32 @@ export function PainelErp() {
           <option value="">Todas as filiais</option>
           {data.filiais.map((f) => <option key={f.code} value={f.code}>{f.code} · {f.name}</option>)}
         </Form.Select>
-        <Form.Select size="sm" style={{ width: 150 }} value={meses} onChange={(e) => setMeses(Number(e.target.value))}>
-          <option value={6}>6 meses</option>
-          <option value={12}>12 meses</option>
-          <option value={24}>24 meses</option>
-        </Form.Select>
+        <div className="btn-group btn-group-sm" role="group" aria-label="Janela">
+          {([1, 6, 12] as const).map((n) => (
+            <button key={n} type="button" className={`btn ${meses === n ? "btn-primary" : "btn-outline-secondary"}`} onClick={() => setMeses(n)}>
+              {n === 1 ? "Mês" : `${n} meses`}
+            </button>
+          ))}
+        </div>
+        <div className="input-group input-group-sm" style={{ width: 230 }}>
+          <button className="btn btn-outline-secondary" title="Mês anterior" onClick={() => mudarMes(-1)}><i className="bi bi-chevron-left" /></button>
+          <input
+            type="month"
+            className="form-control"
+            value={ate || data.foto.periodo.slice(0, 7)}
+            max={new Date().toISOString().slice(0, 7)}
+            onChange={(e) => setAte(e.target.value)}
+          />
+          <button className="btn btn-outline-secondary" title="Mês seguinte" onClick={() => mudarMes(1)} disabled={(ate || data.foto.periodo.slice(0, 7)) >= new Date().toISOString().slice(0, 7)}><i className="bi bi-chevron-right" /></button>
+        </div>
+        {ate && (
+          <Button size="sm" variant="link" className="p-0" onClick={() => setAte("")}>último mês com dados</Button>
+        )}
         <Button size="sm" variant="outline-secondary" onClick={load} disabled={loading}>
           <i className={`bi bi-arrow-clockwise me-1 ${loading ? "spin" : ""}`} />Atualizar
         </Button>
         <span className="text-muted-2 small ms-auto">
-          Mês de referência: <strong>{mesRef}</strong> · gerado {new Date(data.gerado_em).toLocaleTimeString("pt-BR")}
+          {meses === 1 ? <>Mês: <strong>{mesRef}</strong></> : <>{meses} meses até <strong>{mesRef}</strong></>} · gerado {new Date(data.gerado_em).toLocaleTimeString("pt-BR")}
         </span>
       </div>
 
@@ -316,7 +363,21 @@ export function PainelErp() {
         <div className="col-6 col-lg-2"><StatCard label="Estoque a custo" icon="bi-box-seam" value={moneyCompact(a.estoque_valor)} foot={`ruptura ${pct(a.ruptura_pct)} · ${fmtNumber(a.cobertura_estoque_dias, 0)} dias · ${fmtNumber(a.headcount, 0)} func.`} /></div>
       </div>
 
-      {/* Séries mensais */}
+      {/* Modo "Mês": dia a dia. Demais: séries mensais. */}
+      {meses === 1 ? (
+        <div className="row g-3">
+          <div className="col-lg-7">
+            <Panel title={`Faturamento por dia · ${mesRef}`} subtitle="Notas de saída faturadas em cada dia do mês">
+              {dias.some((d) => d.faturamento) ? <EChart option={diaFatOption} height={280} /> : <EmptyState icon="bi-calendar-x" title="Sem faturamento neste mês" hint="As notas deste mês ainda não chegaram do ERP." />}
+            </Panel>
+          </div>
+          <div className="col-lg-5">
+            <Panel title={`Notas por dia · ${mesRef}`} subtitle="Quantidade de notas emitidas por dia">
+              {dias.some((d) => d.qtd_notas) ? <EChart option={diaNotasOption} height={280} /> : <EmptyState icon="bi-calendar-x" title="Sem notas neste mês" />}
+            </Panel>
+          </div>
+        </div>
+      ) : (
       <div className="row g-3">
         <div className="col-lg-6">
           <Panel title="Faturamento × CMV" subtitle="Notas de saída faturadas e custo dos itens, por mês">
@@ -342,6 +403,7 @@ export function PainelErp() {
           </Panel>
         </div>
       </div>
+      )}
 
       {/* Filiais e rankings do mês */}
       <div className="row g-3">

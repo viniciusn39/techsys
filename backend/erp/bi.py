@@ -123,10 +123,25 @@ def cobertura(tenant):
     return linhas
 
 
-def serie_mensal(tenant, meses, filters):
-    hoje = date.today()
+def serie_diaria(tenant, ref, filters):
+    """Faturamento e notas por dia do mês de referência (modo "Mês")."""
+    ini, fim = m.month_bounds(ref)
+    fim = min(fim, date.today())
+    por_dia = {
+        r["issued_at"]: r
+        for r in m.notas_do_periodo(tenant, ini, fim, filters).values("issued_at").annotate(v=Sum("total"), n=Count("id"))
+    }
+    out, d = [], ini
+    while d <= fim:
+        r = por_dia.get(d)
+        out.append({"dia": d, "faturamento": _num(r["v"]) if r else None, "qtd_notas": r["n"] if r else 0})
+        d += timedelta(days=1)
+    return out
+
+
+def serie_mensal(tenant, meses, filters, ate=None):
     out = []
-    for periodo in _meses(meses, hoje):
+    for periodo in _meses(meses, ate or date.today()):
         linha = {"periodo": periodo}
         for key in SERIE_MENSAL:
             linha[key] = _num(m.compute_metric(key, tenant, periodo, filters))
@@ -263,7 +278,8 @@ def conferencia(tenant, carregadas=None):
     return out
 
 
-def painel(tenant, meses=12, branch=None):
+def painel(tenant, meses=12, branch=None, ate=None):
+    """`ate` = mês de referência escolhido (date); None = último mês com faturamento."""
     filters = {"branch": branch} if branch else {}
     cob = cobertura(tenant)
     carregadas = {linha["entity"] for linha in cob if linha["total"] > 0}
@@ -275,14 +291,15 @@ def painel(tenant, meses=12, branch=None):
         "aguardando": sum(1 for c in confer if c["situacao"] == "aguardando"),
         "sem_dados": sum(1 for c in confer if c["situacao"] in ("sem_dados", "sem_valor", "metrica_invalida")),
     }
-    ref = mes_de_referencia(tenant)
+    ref = min(ate, date.today()) if ate else mes_de_referencia(tenant)
     return {
         "gerado_em": timezone.now(),
         "meses": meses,
         "filial": branch,
         "filiais": [{"code": b.code, "name": b.trade_name or b.name} for b in Branch.objects.filter(tenant=tenant).order_by("code")],
         "cobertura": cob,
-        "serie": serie_mensal(tenant, meses, filters),
+        "serie": serie_mensal(tenant, meses, filters, ref),
+        "serie_dia": serie_diaria(tenant, ref, filters) if meses == 1 else [],
         "foto": foto_mes(tenant, filters, ref),
         "por_filial": por_filial(tenant, ref),
         "rankings": rankings(tenant, filters, ref),

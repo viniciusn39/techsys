@@ -148,6 +148,13 @@ class ColetorIngestTests(APITestCase):
         self.assertEqual((fat["code"], fat["valor_gravado"], fat["valor_erp"], fat["situacao"]), ("FAT", 1500.0, 1500.0, "confere"))
         self.assertEqual(d["resumo_conferencia"]["confere"], 1)
 
+        # Modo "Mês": série por dia do mês de referência escolhido.
+        d = self.client.get(f"/api/erp/painel/?meses=1&ate={hoje[:7]}").json()
+        self.assertEqual(len(d["serie"]), 1)
+        self.assertEqual(d["foto"]["periodo"], f"{hoje[:7]}-01")
+        dia = next(x for x in d["serie_dia"] if x["dia"] == hoje)
+        self.assertEqual((dia["faturamento"], dia["qtd_notas"]), (1500.0, 2))
+
         # Carga avançou desde o cálculo: o painel acusa a divergência.
         self.ingest("sales_invoice", [{"NUMTRANSVENDA": "12", "NUMNOTA": "12", "CODFILIAL": "1", "DTSAIDA": hoje, "CONDVENDA": 1, "VLTOTAL": "100.00"}])
         fat = self.client.get("/api/erp/painel/").json()["indicadores"][0]
