@@ -87,7 +87,6 @@ function moneyCompact(v: number | null | undefined) {
 
 const pct = (v: number | null | undefined, d = 1) => (v === null || v === undefined ? "—" : `${fmtNumber(v, d)}%`);
 const mesCurto = (iso: string) => `${MONTHS_SHORT[Number(iso.slice(5, 7)) - 1]}/${iso.slice(2, 4)}`;
-const fmtData = (iso: string | null) => (iso ? new Date(iso + "T00:00:00").toLocaleDateString("pt-BR") : "—");
 
 function valorFmt(v: number | null, unit: string, decimals: number) {
   if (v === null || v === undefined) return "—";
@@ -511,24 +510,6 @@ export function PainelErp() {
         </div>
       </Panel>
 
-      {/* Cobertura */}
-      <Panel title="O que já veio do ERP" subtitle="Registros no espelho e período coberto por entidade">
-        <div className="table-responsive">
-          <table className="table table-sm mb-0 small">
-            <thead><tr><th>Entidade</th><th className="text-end">Registros</th><th>Período coberto</th><th>Tipo</th></tr></thead>
-            <tbody>
-              {data.cobertura.map((c) => (
-                <tr key={c.entity} className={c.total === 0 ? "text-muted-2" : ""}>
-                  <td>{c.label}</td>
-                  <td className="text-end">{fmtNumber(c.total, 0)}</td>
-                  <td>{c.de ? `${fmtData(c.de)} → ${fmtData(c.ate)}` : "—"}</td>
-                  <td>{c.incremental ? "movimento (incremental)" : "cadastro (carga completa)"}</td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
-      </Panel>
     </div>
   );
 }
