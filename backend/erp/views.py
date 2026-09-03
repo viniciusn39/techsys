@@ -454,7 +454,24 @@ class ConnectorViewSet(TenantScopedViewSet):
             s = states.get(entity)
             ag = por_entidade_agente.get(entity) or {}
             alvo = int(plano.get(entity, {}).get("backfill_meses") or 0)
+            passe = ag.get("passe") or {}
+            esperado = passe.get("esperado")
+            lidos = int(passe.get("lidos") or 0)
+            # 0–100 % do passe atual/último: quanto do que o ERP tem para esta
+            # entidade já chegou. Sem contagem: 100 % se o passe terminou bem.
+            if esperado:
+                pct = min(100.0, lidos * 100.0 / esperado)
+            elif passe and not passe.get("em_andamento") and passe.get("ok"):
+                pct = 100.0
+            else:
+                pct = 0.0 if passe else None
             rows.append({
+                "esperado": esperado,
+                "lidos": lidos,
+                "importados_passe": int(passe.get("importados") or 0),
+                "em_andamento": bool(passe.get("em_andamento")),
+                "passe_ok": passe.get("ok"),
+                "pct": pct,
                 "entity": entity,
                 "last_ingest_at": s.last_ingest_at if s else None,
                 "rows_received": s.rows_received if s else 0,

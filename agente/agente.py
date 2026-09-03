@@ -39,7 +39,7 @@ import time
 import traceback
 import urllib.request
 
-VERSION = "1.0.2"  # BUMP ao publicar: os agentes instalados se auto-atualizam
+VERSION = "1.0.3"  # BUMP ao publicar: os agentes instalados se auto-atualizam
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 BASE_DIR = os.path.dirname(os.path.abspath(sys.executable)) if getattr(sys, "frozen", False) else HERE
@@ -340,11 +340,46 @@ class Oracle:
         return self._conn
 
     def query(self, sql, params=None):
+        """Consulta pequena (diagnóstico). Para coleta use `query_iter`."""
         cur = self._ensure().cursor()
         try:
             cur.execute(sql, params or {})
             cols = [d[0] for d in (cur.description or [])]
             return [dict(zip(cols, row)) for row in cur.fetchall()]
+        finally:
+            cur.close()
+
+    def query_iter(self, sql, params=None, batch=1000):
+        """Lê em fluxo, `batch` linhas por vez — memória constante.
+
+        A PCPREST de uma distribuidora tem dezenas de milhões de linhas; um
+        fetchall derruba a máquina do cliente. Aqui cada lote vai para a
+        plataforma antes de o próximo ser lido.
+        """
+        cur = self._ensure().cursor()
+        try:
+            cur.arraysize = max(100, min(int(batch), 5000))
+            try:
+                cur.prefetchrows = cur.arraysize + 1
+            except Exception:  # noqa: BLE001 — cx_Oracle antigo não tem
+                pass
+            cur.execute(sql, params or {})
+            cols = [d[0] for d in (cur.description or [])]
+            while True:
+                linhas = cur.fetchmany(int(batch))
+                if not linhas:
+                    break
+                yield [dict(zip(cols, row)) for row in linhas]
+        finally:
+            cur.close()
+
+    def count(self, sql, params=None):
+        """Quantas linhas a consulta vai devolver — o "esperado" da barra de progresso."""
+        cur = self._ensure().cursor()
+        try:
+            cur.execute("SELECT COUNT(*) FROM (%s)" % sql.strip().rstrip(";"), params or {})
+            linha = cur.fetchone()
+            return int(linha[0]) if linha else None
         finally:
             cur.close()
 
@@ -451,14 +486,43 @@ def _na_janela(horas, hora_atual=None):
     return h >= inicio or h <= fim
 
 
-def _progresso_da_carga():
-    """Resumo do state.json para a tela: marca d'água e carga gradual por entidade.
+def _progresso_inicio(state, entity, esperado):
+    passes = state.setdefault("_passe", {})
+    passes[entity] = {"esperado": esperado, "lidos": 0, "importados": 0, "inicio": time.time(),
+                      "em_andamento": True, "ok": None}
+    save_state(state)
 
-    É o que responde "até onde a carga inicial já foi": `janela` de 4/24 meses
-    em notas fiscais diz que ainda falta histórico, mesmo com o agente online.
+
+def _progresso_avanco(state, entity, lidos, importados):
+    p = (state.get("_passe") or {}).get(entity)
+    if p is None:
+        return
+    p["lidos"], p["importados"] = lidos, importados
+    # Grava a cada lote: é barato e é o que a tela lê pelo heartbeat.
+    save_state(state)
+
+
+def _progresso_fim(state, entity, lidos, importados, ok):
+    p = (state.get("_passe") or {}).get(entity)
+    if p is None:
+        return
+    p.update({"lidos": lidos, "importados": importados, "em_andamento": False, "ok": bool(ok),
+              "fim": time.time()})
+    if ok and p.get("esperado") is None:
+        p["esperado"] = lidos
+    save_state(state)
+
+
+def _progresso_da_carga():
+    """Resumo do state.json para a tela: marca d'água, carga gradual e o passe atual.
+
+    `passe` responde "quanto desta entidade já chegou": esperado (COUNT da
+    consulta) × lidos/importados, e se o passe ainda está em andamento.
+    `janela` de 4/24 meses diz que ainda falta histórico, mesmo com o agente online.
     """
     state = load_state()
     janelas = state.get("_janela") or {}
+    passes = state.get("_passe") or {}
     out = {}
     for entity, marca in state.items():
         if entity.startswith("_"):
@@ -466,7 +530,10 @@ def _progresso_da_carga():
         out[entity] = {"marca": marca}
     for entity, janela in janelas.items():
         out.setdefault(entity, {})["janela"] = janela
-    return {"entidades": out, "coletando": BUSY.is_set()}
+    for entity, p in passes.items():
+        out.setdefault(entity, {})["passe"] = p
+    atual = next((e for e, p in passes.items() if p.get("em_andamento")), None)
+    return {"entidades": out, "coletando": BUSY.is_set(), "atual": atual}
 
 
 def collect_health(oracle):
@@ -605,12 +672,65 @@ def run_sync(platform_api, oracle, plan, state, machine=""):
                 if anterior < alvo and ":since" in sql:
                     # Enquanto a janela cresce, lê a janela INTEIRA (upsert deduplica).
                     params["since"] = None
+            batch = int(q.get("batch") or 500)
+            since_col = q.get("since_column")
+            incremental = bool(q.get("incremental")) and bool(since_col)
+
+            # Quanto vem: o "esperado" da barra de progresso. Falhar aqui não impede a coleta.
+            esperado = None
+            try:
+                esperado = oracle.count(sql, params or None)
+            except Exception as exc:  # noqa: BLE001
+                coluna = _coluna_invalida(exc)
+                if not coluna:
+                    _log("[sync] %s: contagem indisponível (%s)" % (entity, str(exc)[:100]))
+            _progresso_inicio(state, entity, esperado)
+
+            # Leitura em FLUXO: cada lote sai do Oracle e vai para a plataforma antes
+            # do próximo — memória constante mesmo com dezenas de milhões de linhas.
             removidas = []
+            lidos = imported = 0
+            interrompido = None
+            maior_marca = None
+            alguma_marca = False
             for _ in range(6):
                 try:
-                    rows = _to_jsonable(oracle.query(sql, params or None))
+                    for lote in oracle.query_iter(sql, params or None, batch):
+                        lote = _to_jsonable(lote)
+                        lidos += len(lote)
+                        res = None
+                        for tentativa in range(4):
+                            try:
+                                res = platform_api.ingest(entity, lote)
+                                break
+                            except Exception as exc:  # noqa: BLE001
+                                if tentativa < 3 and _erro_transitorio(exc):
+                                    espera_s = (2, 5, 15)[tentativa]
+                                    _log("[sync] %s: plataforma indisponível (%s) — nova tentativa em %ss"
+                                         % (entity, str(exc)[:80], espera_s))
+                                    time.sleep(espera_s)
+                                    continue
+                                interrompido = exc
+                                break
+                        if res is None:
+                            break
+                        imported += int(res.get("imported") or 0)
+                        _progresso_avanco(state, entity, lidos, imported)
+                        if res.get("error"):
+                            _log("[sync] %s: erro do servidor: %s" % (entity, res["error"]))
+                            interrompido = RuntimeError(str(res["error"])[:300])
+                            break
+                        if incremental:
+                            marcas_lote = [r.get(since_col) for r in lote
+                                           if r.get(since_col) is not None and not _marca_futura(r.get(since_col))]
+                            if marcas_lote:
+                                alguma_marca = True
+                                m = max(marcas_lote)
+                                maior_marca = m if maior_marca is None or m > maior_marca else maior_marca
                     break
                 except Exception as exc:  # noqa: BLE001
+                    if lidos:
+                        raise
                     coluna = _coluna_invalida(exc)
                     novo_sql = remover_coluna(sql, coluna) if coluna else None
                     if not novo_sql:
@@ -622,53 +742,23 @@ def run_sync(platform_api, oracle, plan, state, machine=""):
             if removidas:
                 platform_api.report_error("schema:%s" % entity,
                                           "colunas ausentes neste WinThor, ignoradas: %s" % ", ".join(removidas))
-            batch = int(q.get("batch") or 500)
-            since_col = q.get("since_column")
-            incremental = bool(q.get("incremental")) and bool(since_col)
-            if incremental:
-                rows = sorted(rows, key=lambda r: (r.get(since_col) is None, r.get(since_col)))
-            imported = 0
-            interrompido = None
-            for i in range(0, len(rows), batch):
-                lote = rows[i:i + batch]
-                res = None
-                for tentativa in range(4):
-                    try:
-                        res = platform_api.ingest(entity, lote)
-                        break
-                    except Exception as exc:  # noqa: BLE001
-                        if tentativa < 3 and _erro_transitorio(exc):
-                            espera_s = (2, 5, 15)[tentativa]
-                            _log("[sync] %s: plataforma indisponível (%s) — nova tentativa em %ss"
-                                 % (entity, str(exc)[:80], espera_s))
-                            time.sleep(espera_s)
-                            continue
-                        interrompido = exc
-                        break
-                if res is None:
-                    break
-                imported += int(res.get("imported") or 0)
-                if res.get("error"):
-                    _log("[sync] %s: erro do servidor: %s" % (entity, res["error"]))
-                    interrompido = RuntimeError(str(res["error"])[:300])
-                    break
-                if incremental:
-                    marcas_lote = [r.get(since_col) for r in lote
-                                   if r.get(since_col) is not None and not _marca_futura(r.get(since_col))]
-                    if marcas_lote:
-                        state[entity] = max(marcas_lote)
-                        save_state(state)
-            if incremental and rows and entity not in avisados_sem_marca:
-                if not any(r.get(since_col) is not None for r in rows):
-                    avisados_sem_marca.add(entity)
-                    platform_api.report_error(
-                        "marca:%s" % entity,
-                        "coluna %s veio vazia em %d linha(s): a coleta de %s está sempre em carga cheia"
-                        % (since_col, len(rows), entity))
+            # A marca d'água só avança quando a entidade inteira passou: o fluxo não
+            # vem ordenado, e avançar no meio pularia linhas de um lote posterior.
+            if incremental and interrompido is None and maior_marca is not None:
+                state[entity] = maior_marca
+                save_state(state)
+            if incremental and lidos and not alguma_marca and entity not in avisados_sem_marca:
+                avisados_sem_marca.add(entity)
+                platform_api.report_error(
+                    "marca:%s" % entity,
+                    "coluna %s veio vazia em %d linha(s): a coleta de %s está sempre em carga cheia"
+                    % (since_col, lidos, entity))
             _log("[sync] %s: %d lidos, %d importados%s"
-                 % (entity, len(rows), imported, " (INTERROMPIDO: %s)" % interrompido if interrompido else ""))
+                 % (entity, lidos, imported, " (INTERROMPIDO: %s)" % interrompido if interrompido else ""))
+            _progresso_fim(state, entity, lidos, imported, interrompido is None)
             if interrompido is not None:
                 raise interrompido
+            rows = range(lidos)  # só para a auditoria abaixo
             ultimas[entity] = time.time()
             save_state(state)
             if ":janela" in sql:

@@ -102,7 +102,11 @@ class ColetorIngestTests(APITestCase):
         self.ingest("branch", [{"CODIGO": "1", "RAZAOSOCIAL": "Matriz"}, {"CODIGO": "2", "RAZAOSOCIAL": "Loja"}])
         self.client.post("/api/coletor/heartbeat/",
                          {"oracle_ok": True, "agent_version": "1.0.2",
-                          "progresso": {"coletando": True, "entidades": {"sales_invoice": {"janela": 4, "marca": "2026-08-01"}}}},
+                          "progresso": {"coletando": True, "entidades": {
+                              "sales_invoice": {"janela": 4, "marca": "2026-08-01",
+                                                "passe": {"esperado": 2000, "lidos": 500, "importados": 500, "em_andamento": True}},
+                              "branch": {"passe": {"esperado": None, "lidos": 2, "importados": 2, "em_andamento": False, "ok": True}},
+                          }}},
                          format="json", **self.headers)
         admin = User.objects.create_user("adm2@nb.com", "x", first_name="A", tenant=self.tenant, role=User.Role.ADMIN)
         self.client.force_authenticate(admin)
@@ -114,6 +118,11 @@ class ColetorIngestTests(APITestCase):
         self.assertEqual(sum(p.get("branch", 0) for p in d["serie"]), 2)
         nf = next(e for e in d["entities"] if e["entity"] == "sales_invoice")
         self.assertEqual((nf["janela"], nf["janela_alvo"], nf["marca"]), (4, 24, "2026-08-01"))
+        self.assertEqual((nf["pct"], nf["esperado"], nf["lidos"], nf["em_andamento"]), (25.0, 2000, 500, True))
+        br = next(e for e in d["entities"] if e["entity"] == "branch")
+        self.assertEqual(br["pct"], 100.0)   # sem contagem, passe concluído = 100 %
+        cr = next(e for e in d["entities"] if e["entity"] == "title_receivable")
+        self.assertIsNone(cr["pct"])         # nunca coletado
 
     def test_painel_erp_confere_indicador_com_o_espelho(self):
         from datetime import date

@@ -172,7 +172,12 @@ WHERE M.DTCANCEL IS NULL
         "every_minutes": 30,
         "incremental": True,
         "since_column": "DTULTALTER",
-        "batch": 1000,
+        "batch": 2000,
+        # PCPREST guarda a vida inteira da empresa (33 milhões de linhas numa
+        # distribuidora). Carga gradual: títulos emitidos na janela + tudo que
+        # está em aberto (a inadimplência precisa dos antigos ainda não pagos).
+        "backfill_meses": 24,
+        "backfill_passo": 3,
         "sql": """
 SELECT P.NUMTRANSVENDA || '-' || P.PREST AS EXTERNAL_ID,
        P.DUPLIC, P.PREST, P.CODCLI, P.CODFILIAL, P.NUMPED, P.VALOR, P.CODCOB,
@@ -185,7 +190,9 @@ SELECT P.NUMTRANSVENDA || '-' || P.PREST AS EXTERNAL_ID,
             ELSE 'open' END AS STATUS,
        TO_CHAR(P.DTULTALTER,'YYYY-MM-DD HH24:MI:SS') AS DTULTALTER
 FROM PCPREST P
-WHERE (:since IS NULL OR P.DTULTALTER > TO_DATE(:since,'YYYY-MM-DD HH24:MI:SS'))
+WHERE (P.DTEMISSAO >= ADD_MONTHS(TRUNC(SYSDATE,'MM'), -:janela)
+       OR (P.DTPAG IS NULL AND P.DTCANCEL IS NULL))
+  AND (:since IS NULL OR P.DTULTALTER > TO_DATE(:since,'YYYY-MM-DD HH24:MI:SS'))
 """,
     },
     {  # PCLANC (PCPAGAR não existe) + PCCONTA — contas a pagar / despesas
@@ -193,7 +200,9 @@ WHERE (:since IS NULL OR P.DTULTALTER > TO_DATE(:since,'YYYY-MM-DD HH24:MI:SS'))
         "every_minutes": 30,
         "incremental": True,
         "since_column": "DTULTALTER",
-        "batch": 1000,
+        "batch": 2000,
+        "backfill_meses": 24,
+        "backfill_passo": 3,
         "sql": """
 SELECT L.RECNUM, L.CODFORNEC, L.NUMNOTA, L.HISTORICO, CT.CONTA, L.TIPOSERVICO,
        L.FORMAPGTO, L.CODFILIAL, L.VALOR,
@@ -208,7 +217,9 @@ SELECT L.RECNUM, L.CODFORNEC, L.NUMNOTA, L.HISTORICO, CT.CONTA, L.TIPOSERVICO,
        TO_CHAR(L.DTULTALTER,'YYYY-MM-DD HH24:MI:SS') AS DTULTALTER
 FROM PCLANC L
 LEFT JOIN PCCONTA CT ON CT.CODCONTA = L.CODCONTA
-WHERE (:since IS NULL OR L.DTULTALTER > TO_DATE(:since,'YYYY-MM-DD HH24:MI:SS'))
+WHERE (L.DTEMISSAO >= ADD_MONTHS(TRUNC(SYSDATE,'MM'), -:janela)
+       OR (L.DTPAGTO IS NULL AND L.DTCANCEL IS NULL AND NVL(L.LANCEXCLUIDO,'N') = 'N'))
+  AND (:since IS NULL OR L.DTULTALTER > TO_DATE(:since,'YYYY-MM-DD HH24:MI:SS'))
 """,
     },
     {  # PCFINANC — fotografia diária: caixa, bancos, CR, CP, estoque, CMV. Janela 120 dias.

@@ -33,6 +33,12 @@ interface EntityRow {
   janela_alvo: number | null;
   incremental: boolean;
   cadencia_min: number | null;
+  esperado: number | null;
+  lidos: number;
+  importados_passe: number;
+  em_andamento: boolean;
+  passe_ok: boolean | null;
+  pct: number | null;
 }
 
 interface Progress {
@@ -218,7 +224,6 @@ export function Conector() {
   const comCarga = rows.filter((e) => e.last_ingest_at).length;
   const comErro = rows.filter((e) => e.last_error).length;
   const taxa = progress ? Math.round(progress.total_periodo / Math.max(1, progress.minutos)) : 0;
-  const maxTotal = Math.max(1, ...rows.map((r) => r.total_imported));
 
   return (
     <div>
@@ -325,7 +330,7 @@ export function Conector() {
             <thead>
               <tr>
                 <th>Entidade</th>
-                <th style={{ width: 220 }}>Registros no espelho</th>
+                <th style={{ width: 240 }}>Já chegou (0–100 %)</th>
                 <th>Histórico</th>
                 <th>Última carga</th>
                 <th className="num">Último lote</th>
@@ -345,9 +350,24 @@ export function Conector() {
                       </div>
                     </td>
                     <td>
+                      {/* 0–100 %: quanto do que o ERP tem para esta entidade já chegou (passe atual/último). */}
                       <div className="d-flex align-items-center gap-2">
-                        <div className="flex-grow-1"><Meter pct={(e.total_imported / maxTotal) * 100} /></div>
-                        <span className="num small fw-semibold" style={{ minWidth: 64 }}>{fmtInt(e.total_imported)}</span>
+                        <div className="flex-grow-1">
+                          <Meter pct={e.pct ?? 0} status={e.pct === null ? undefined : e.pct >= 100 ? "verde" : e.em_andamento ? "amarelo" : e.passe_ok === false ? "vermelho" : "amarelo"} />
+                        </div>
+                        <span className="num small fw-semibold" style={{ minWidth: 44, textAlign: "right" }}>
+                          {e.pct === null ? "—" : `${Math.floor(e.pct)}%`}
+                        </span>
+                      </div>
+                      <div className="text-muted-2" style={{ fontSize: "0.72rem" }}>
+                        {e.esperado
+                          ? `${fmtInt(e.lidos)} de ${fmtInt(e.esperado)}${e.em_andamento ? " · chegando" : ""}`
+                          : e.em_andamento
+                            ? `${fmtInt(e.lidos)} lidos · chegando`
+                            : e.pct === null
+                              ? "ainda não coletado"
+                              : `${fmtInt(e.lidos)} no último passe`}
+                        {" · "}{fmtInt(e.total_imported)} no espelho
                       </div>
                     </td>
                     <td className="small">
