@@ -1,0 +1,33 @@
+# Auto-deploy: todo push na main entra no servidor por SSH e roda o
+# deploy/server-update.sh (git pull + docker compose up --build).
+# Segredos (Settings → Secrets → Actions): DEPLOY_HOST, DEPLOY_PORT, DEPLOY_USER,
+# DEPLOY_SSH_KEY (chave privada ed25519 cujo .pub está no authorized_keys do servidor).
+name: Deploy
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+concurrency:
+  group: deploy-production
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - name: Preparar chave SSH
+        run: |
+          mkdir -p ~/.ssh
+          printf '%s\n' "${{ secrets.DEPLOY_SSH_KEY }}" > ~/.ssh/deploy
+          chmod 600 ~/.ssh/deploy
+          ssh-keyscan -p "${{ secrets.DEPLOY_PORT }}" -H "${{ secrets.DEPLOY_HOST }}" >> ~/.ssh/known_hosts 2>/dev/null
+
+      - name: Atualizar servidor
+        run: |
+          ssh -i ~/.ssh/deploy -p "${{ secrets.DEPLOY_PORT }}" \
+              -o StrictHostKeyChecking=yes -o ServerAliveInterval=30 \
+              "${{ secrets.DEPLOY_USER }}@${{ secrets.DEPLOY_HOST }}" \
+              'bash /opt/techsys-gestao/deploy/server-update.sh ${{ github.sha }}'
