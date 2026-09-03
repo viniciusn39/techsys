@@ -26,6 +26,7 @@ urlpatterns = [
     path("instalador/", views.InstaladorView.as_view()),
     path("painel/", views.PainelErpView.as_view()),
     path("metrics/", views.MetricCatalogView.as_view()),
+    path("targets/", views.TargetCatalogView.as_view()),
     path("metrics/preview/", views.MetricPreviewView.as_view()),
     path("", include(router.urls)),
 ]

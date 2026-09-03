@@ -80,6 +80,61 @@ def calcular_indicadores_erp(tenant_id=None, indicator_id=None, meses=None):
 
 
 @shared_task
+def sincronizar_metas_erp(tenant_id=None, indicator_id=None, meses=12):
+    """Grava a meta mensal dos indicadores com `erp_target` a partir do espelho.
+
+    Só toca meses em que o ERP tem meta; depois recalcula o farol dos valores
+    já lançados. Roda por beat (a cada 6 h), após a carga de metas e sob demanda.
+    """
+    from indicators.models import Indicator, IndicatorTarget
+    from indicators.services import recompute_indicator
+
+    from .sync import ENTITY_MODELS
+    from .targets import get_target_source, meta_do_erp
+
+    qs = Indicator.objects.filter(is_active=True).exclude(erp_target="")
+    if tenant_id:
+        qs = qs.filter(tenant_id=tenant_id)
+    if indicator_id:
+        qs = qs.filter(id=indicator_id)
+
+    hoje = date.today()
+    periodos = []
+    y, m = hoje.year, hoje.month
+    for _ in range(int(meses)):
+        periodos.append(date(y, m, 1))
+        m -= 1
+        if m == 0:
+            y, m = y - 1, 12
+
+    gravadas = 0
+    for indicator in qs.select_related("tenant"):
+        src = get_target_source(indicator.erp_target)
+        if src is None:
+            continue
+        if not all(ENTITY_MODELS[e].objects.filter(tenant_id=indicator.tenant_id).exists() for e in src.entities if e in ENTITY_MODELS):
+            continue
+        mudou = False
+        for periodo in periodos:
+            try:
+                meta = meta_do_erp(indicator.erp_target, indicator.tenant, periodo, indicator.erp_filters)
+            except Exception as exc:  # noqa: BLE001
+                logger.warning("meta %s do indicador %s falhou: %s", indicator.erp_target, indicator.code, exc)
+                continue
+            if meta is None:
+                continue
+            _, created = IndicatorTarget.objects.update_or_create(
+                indicator=indicator, period=periodo, defaults={"target_value": meta}
+            )
+            mudou = True
+            gravadas += 1
+        if mudou:
+            recompute_indicator(indicator)
+    logger.info("sincronizar_metas_erp: %s metas gravadas", gravadas)
+    return gravadas
+
+
+@shared_task
 def purgar_logs_antigos(dias=30):
     from datetime import timedelta
 

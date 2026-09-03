@@ -142,6 +142,11 @@ CELERY_BEAT_SCHEDULE = {
         "task": "erp.tasks.calcular_indicadores_erp",
         "schedule": 60 * 30,
     },
+    # Metas puxadas do ERP (PCMETA / cadastro do RCA): a cada 6 h.
+    "sincronizar-metas-erp": {
+        "task": "erp.tasks.sincronizar_metas_erp",
+        "schedule": 60 * 60 * 6,
+    },
     "purgar-logs-coletor": {
         "task": "erp.tasks.purgar_logs_antigos",
         "schedule": 60 * 60 * 24,

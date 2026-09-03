@@ -495,14 +495,27 @@ class ConnectorViewSet(TenantScopedViewSet):
     def recalcular(self, request, pk=None):
         from .tasks import calcular_indicadores_erp
 
+        from .tasks import sincronizar_metas_erp
+
         connector = self.get_object()
-        calcular_indicadores_erp.delay(tenant_id=connector.tenant_id, meses=int(request.data.get("meses") or 12))
+        meses = int(request.data.get("meses") or 12)
+        sincronizar_metas_erp.delay(tenant_id=connector.tenant_id, meses=meses)
+        calcular_indicadores_erp.delay(tenant_id=connector.tenant_id, meses=meses)
         return Response({"queued": True})
 
 
 class MetricCatalogView(APIView):
     def get(self, request):
         return Response(catalog_payload())
+
+
+class TargetCatalogView(APIView):
+    """Fontes de meta do ERP (PCMETA, cadastro do RCA) que um indicador pode usar."""
+
+    def get(self, request):
+        from .targets import catalogo_payload
+
+        return Response(catalogo_payload())
 
 
 class PainelErpView(APIView):

@@ -22,6 +22,7 @@ from .services import compute_ytd, recompute_indicator
 from .sources.registry import get_source
 
 ERP_BLOQUEADO = "Este indicador é calculado do ERP pelo agente; o lançamento manual está bloqueado."
+META_ERP_BLOQUEADA = "A meta deste indicador vem do ERP; a edição manual das metas está bloqueada."
 
 
 def parse_period(raw):
@@ -110,6 +111,8 @@ class IndicatorViewSet(TenantScopedViewSet):
     @action(detail=True, methods=["post"], url_path="targets/bulk")
     def targets_bulk(self, request, pk=None):
         indicator = self.get_object()
+        if indicator.erp_target:
+            raise ValidationError(META_ERP_BLOQUEADA)
         items = request.data.get("targets", [])
         for item in items:
             period = parse_period(item.get("period"))
@@ -135,7 +138,10 @@ class IndicatorViewSet(TenantScopedViewSet):
         if gran not in GRANULARIDADES:
             raise ValidationError({"gran": f"Use uma de: {', '.join(GRANULARIDADES)}."})
         raw = request.query_params.get("ate")
-        ate = parse_period(raw) if raw else None
+        try:
+            ate = date.fromisoformat(raw) if raw else None  # dia exato, não o mês
+        except ValueError:
+            raise ValidationError({"ate": "Use AAAA-MM-DD."})
         try:
             n = int(request.query_params.get("n")) if request.query_params.get("n") else None
         except ValueError:

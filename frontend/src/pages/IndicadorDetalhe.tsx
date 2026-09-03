@@ -388,6 +388,18 @@ export function IndicadorDetalhe() {
           </Tab>
 
           <Tab eventKey="metas" title="Metas do ano">
+            {ind.erp_target ? (
+              <Panel subtitle={<><i className="bi bi-lock-fill me-1" />Metas puxadas do ERP ({ind.erp_target_label}), sincronizadas a cada 6 h — edição manual bloqueada.</>}>
+                <div className="row g-2">
+                  {data.series.map((p, i) => (
+                    <div className="col-6 col-md-3 col-xl-2" key={p.period}>
+                      <div className="text-muted-2 small">{MONTHS_SHORT[i]}</div>
+                      <div className="num fw-semibold">{p.target === null || p.target === undefined ? "—" : `${fmtNumber(p.target, dec)} ${ind.unit}`}</div>
+                    </div>
+                  ))}
+                </div>
+              </Panel>
+            ) : (
             <Panel subtitle="Defina as 12 metas de uma vez; o farol é recalculado ao salvar.">
               <div className="row g-2">
                 {data.series.map((p, i) => (
@@ -420,6 +432,7 @@ export function IndicadorDetalhe() {
                 </Button>
               </div>
             </Panel>
+            )}
           </Tab>
 
           <Tab eventKey="desvios" title={`Desvios (${deviations.length})`}>

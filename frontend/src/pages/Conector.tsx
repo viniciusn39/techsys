@@ -59,6 +59,7 @@ const ENTITY_LABEL: Record<string, string> = {
   title_payable: "Contas a pagar", financial_snapshot: "Fotografia financeira diária",
   bank_account: "Contas bancárias", cash_movement: "Extrato bancário", stock: "Estoque por filial",
   order: "Pedidos de venda", purchase: "Notas de entrada (compras)", load: "Carregamentos",
+  target: "Metas do ERP (PCMETA)", target_daily: "Metas diárias do ERP (PCMETARCA)",
 };
 
 const KIND_ICON: Record<string, string> = {

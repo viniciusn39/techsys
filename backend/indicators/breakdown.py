@@ -100,6 +100,13 @@ def meta_do_bucket(indicator, metas, gran, ini, fim):
     """`metas`: {periodo_mensal: Decimal}."""
     if gran in ("mes", "semestre", "ano"):
         return _agrega(indicator, [metas.get(m) for m in _meses_no_intervalo(ini, fim)])
+    # dia / semana com meta diária no ERP (PCMETARCA): exato, sem rateio.
+    if indicator.erp_target:
+        from erp.targets import meta_do_erp_intervalo
+
+        exata = meta_do_erp_intervalo(indicator.erp_target, indicator.tenant, ini, fim, indicator.erp_filters)
+        if exata is not None:
+            return exata
     # dia / semana: deriva da meta do mês
     if indicator.aggregation == Indicator.Aggregation.SOMA:
         total, achou = Decimal("0"), False

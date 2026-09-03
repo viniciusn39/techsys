@@ -58,6 +58,7 @@ export function Indicadores() {
   const [notice, setNotice] = useState("");
   const [error, setError] = useState("");
   const [metrics, setMetrics] = useState<ErpMetric[]>([]);
+  const [targetSources, setTargetSources] = useState<{ key: string; label: string; description: string }[]>([]);
   const [preview, setPreview] = useState<{ value: string | null; loading: boolean } | null>(null);
 
   const load = useCallback(() => {
@@ -76,6 +77,7 @@ export function Indicadores() {
     api.get("/api/users/").then((d) => setUsers(d.results ?? d)).catch(() => {});
     api.get("/api/objectives/").then(setObjectives).catch(() => {});
     api.get<ErpMetric[]>("/api/erp/metrics/").then(setMetrics).catch(() => {});
+    api.get<{ key: string; label: string; description: string }[]>("/api/erp/targets/").then(setTargetSources).catch(() => {});
   }, [load]);
 
   /** Vincular métrica do ERP: adota unidade, polaridade e agregação dela. */
@@ -434,6 +436,21 @@ export function Indicadores() {
                       precisa de: {metrics.find((m) => m.key === editing.erp_metric)?.entities.join(", ")}
                     </span>
                   </div>
+                </div>
+              )}
+            </div>
+
+            {/* --- Origem da meta: manual ou puxada do ERP --- */}
+            <div className="col-12">
+              <hr className="my-2" style={{ borderColor: "var(--border)" }} />
+              <div className="stat-label mb-2"><i className="bi bi-bullseye" />Origem da meta</div>
+              <Form.Select value={editing?.erp_target || ""} onChange={(e) => setEditing({ ...editing!, erp_target: e.target.value })}>
+                <option value="">Meta definida à mão (aba Metas do ano)</option>
+                {targetSources.map((s) => <option key={s.key} value={s.key}>{s.label}</option>)}
+              </Form.Select>
+              {editing?.erp_target && (
+                <div className="small text-secondary-2 mt-1">
+                  {targetSources.find((s) => s.key === editing.erp_target)?.description} Usa o mesmo filtro de filial acima. Sincroniza a cada 6 h; edição manual das metas fica bloqueada.
                 </div>
               )}
             </div>

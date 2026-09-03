@@ -42,8 +42,27 @@ class IndicatorSerializer(serializers.ModelSerializer):
             "polarity", "aggregation", "org_unit", "org_unit_name", "owner",
             "owner_name", "objective", "objective_name", "data_source",
             "erp_metric", "erp_metric_label", "erp_filters",
+            "erp_target", "erp_target_label",
             "yellow_threshold_pct", "is_active", "last_value", "spark",
         ]
+
+    erp_target_label = serializers.SerializerMethodField()
+
+    def get_erp_target_label(self, obj):
+        if not obj.erp_target:
+            return None
+        from erp.targets import get_target_source
+
+        t = get_target_source(obj.erp_target)
+        return t.label if t else obj.erp_target
+
+    def validate_erp_target(self, value):
+        if value:
+            from erp.targets import get_target_source
+
+            if get_target_source(value) is None:
+                raise serializers.ValidationError("Fonte de meta do ERP desconhecida.")
+        return value or ""
 
     def get_erp_metric_label(self, obj):
         if not obj.erp_metric:

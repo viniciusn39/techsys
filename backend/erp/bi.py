@@ -11,7 +11,7 @@ Tudo aqui é leitura. Nada grava.
 from datetime import date, timedelta
 from decimal import Decimal
 
-from django.db.models import Count, DecimalField, ExpressionWrapper, F, Max, Min, Sum
+from django.db.models import Count, DecimalField, ExpressionWrapper, F, Max, Min, Q, Sum
 from django.utils import timezone
 
 from indicators.models import Indicator
@@ -32,6 +32,7 @@ from .models import (
     SalesInvoice,
     SalesInvoiceItem,
     SalesRep,
+    SalesTarget,
     StockBalance,
     Supplier,
 )
@@ -59,6 +60,8 @@ COBERTURA = [
     ("order", Order, {}, "order_date"),
     ("purchase", PurchaseInvoice, {}, "entry_date"),
     ("load", DeliveryLoad, {}, "departure_date"),
+    ("target", SalesTarget, ~Q(kind=SalesTarget.KIND_DAILY), "period"),
+    ("target_daily", SalesTarget, Q(kind=SalesTarget.KIND_DAILY), "period"),
 ]
 
 # O que vai na série mensal (chave do catálogo de métricas).
@@ -105,7 +108,8 @@ def _num(v):
 def cobertura(tenant):
     linhas = []
     for entity, model, extra, campo in COBERTURA:
-        qs = model.objects.filter(tenant=tenant, **extra)
+        qs = model.objects.filter(tenant=tenant)
+        qs = qs.filter(extra) if isinstance(extra, Q) else qs.filter(**extra)
         agg = {"total": Count("id")}
         if campo:
             agg["de"] = Min(campo)

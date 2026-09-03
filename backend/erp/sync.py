@@ -32,6 +32,7 @@ from .models import (
     SalesInvoice,
     SalesInvoiceItem,
     SalesRep,
+    SalesTarget,
     StockBalance,
     Supplier,
 )
@@ -56,9 +57,12 @@ ENTITY_MODELS = {
     "financial_snapshot": FinancialSnapshot,
     "purchase": PurchaseInvoice,
     "load": DeliveryLoad,
+    "target": SalesTarget,
+    "target_daily": SalesTarget,
 }
 
 ENTITY_DEFAULTS = {
+    "target_daily": {"kind": SalesTarget.KIND_DAILY},
     "title_receivable": {"kind": FinancialTitle.Kind.RECEIVABLE},
     "title_payable": {"kind": FinancialTitle.Kind.PAYABLE},
 }
@@ -81,6 +85,8 @@ ENTITY_FKS = {
     "financial_snapshot": {"branch": Branch},
     "purchase": {"supplier": Supplier, "branch": Branch},
     "load": {"branch": Branch},
+    "target": {"branch": Branch, "sales_rep": SalesRep},
+    "target_daily": {"branch": Branch, "sales_rep": SalesRep},
 }
 
 REQUIRED_FKS = {

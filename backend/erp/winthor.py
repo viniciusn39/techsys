@@ -24,7 +24,7 @@ ORDEM_DE_VALOR = [
     "branch", "salesrep", "supplier", "employee", "customer", "product",
     "sales_invoice", "sales_invoice_item", "title_receivable", "title_payable",
     "financial_snapshot", "bank_account", "cash_movement", "stock", "order",
-    "purchase", "load",
+    "purchase", "load", "target", "target_daily",
 ]
 
 WINTHOR_QUERIES = [
@@ -335,6 +335,46 @@ WHERE C.DTSAIDA >= ADD_MONTHS(TRUNC(SYSDATE), -12)
   AND (:since IS NULL OR C.DTULTALTER > TO_DATE(:since,'YYYY-MM-DD HH24:MI:SS'))
 """,
     },
+    {  # PCMETA — metas cadastradas no ERP por filial × RCA × mês. Alimenta a
+       # meta dos indicadores marcados com erp_target. Recoleta 3 meses (ajustes).
+        "entity": "target",
+        "label": "Metas do ERP (PCMETA)",
+        "every_minutes": 720,
+        "incremental": True,
+        "since_column": "DATA",
+        "sql": """
+SELECT M.CODFILIAL || '-' || M.CODUSUR || '-' || M.TIPOMETA || '-' || TO_CHAR(M.DATA,'YYYYMM')
+         || '-' || NVL(M.CODIGO, 0) AS EXTERNAL_ID,
+       M.CODFILIAL, M.CODUSUR, M.TIPOMETA,
+       TO_CHAR(TRUNC(M.DATA,'MM'),'YYYY-MM-DD') AS DATA,
+       M.VLVENDAPREV, M.QTVENDAPREV, M.MIXPREV, M.CLIPOSPREV, M.PERCLIPOSPREV,
+       M.MARGEMPREV, M.PEDIDOSPREV, M.VLMEDIOPEDIDO, M.QTDCLIENTESATIVO
+FROM PCMETA M
+WHERE M.DATA >= ADD_MONTHS(TRUNC(SYSDATE,'MM'), -24)
+  AND (NVL(M.VLVENDAPREV,0) > 0 OR NVL(M.CLIPOSPREV,0) > 0 OR NVL(M.MIXPREV,0) > 0
+       OR NVL(M.MARGEMPREV,0) > 0 OR NVL(M.PEDIDOSPREV,0) > 0)
+  AND (:since IS NULL OR M.DATA >= ADD_MONTHS(TRUNC(SYSDATE,'MM'), -3))
+""",
+    },
+    {  # PCMETARCA — meta DIÁRIA por filial × RCA (é onde a rotina de metas do
+       # WinThor de fato grava). Soma do mês = meta mensal; dia/semana exatos.
+        "entity": "target_daily",
+        "label": "Metas diárias do ERP (PCMETARCA)",
+        "every_minutes": 360,
+        "incremental": True,
+        "since_column": "DTMXSALTER",
+        "sql": """
+SELECT R.CODFILIAL || '-' || R.CODUSUR || '-' || TO_CHAR(R.DATA,'YYYYMMDD') AS EXTERNAL_ID,
+       R.CODFILIAL, R.CODUSUR,
+       TO_CHAR(R.DATA,'YYYY-MM-DD') AS DATA,
+       R.VLVENDAPREV, R.NUMCLIPOS, R.QTPEDPREV, R.QTITENSPEDPREV, R.PERVENDAPREV,
+       TO_CHAR(NVL(R.DTMXSALTER, R.DATA),'YYYY-MM-DD HH24:MI:SS') AS DTMXSALTER
+FROM PCMETARCA R
+WHERE R.DATA >= ADD_MONTHS(TRUNC(SYSDATE,'MM'), -13)
+  AND (NVL(R.VLVENDAPREV,0) > 0 OR NVL(R.NUMCLIPOS,0) > 0 OR NVL(R.QTPEDPREV,0) > 0)
+  AND (:since IS NULL OR NVL(R.DTMXSALTER, R.DATA) > TO_DATE(:since,'YYYY-MM-DD HH24:MI:SS'))
+""",
+    },
 ]
 
 # Mapa campo_nosso -> ALIAS do SQL. Campo-FK recebe o CÓDIGO do ERP e o ingest
@@ -456,6 +496,19 @@ DEFAULT_SYNC = {
         "destination": "DESTINO", "departure_date": "DTSAIDA", "return_date": "DTRETORNO",
         "num_invoices": "NUMNOTAS", "total_weight": "TOTPESO", "total_value": "VLTOTAL",
         "freight": "VLFRETE", "status": "STATUS",
+    }},
+    "target": {"fields": {
+        "external_id": "EXTERNAL_ID", "branch": "CODFILIAL", "sales_rep": "CODUSUR",
+        "kind": "TIPOMETA", "period": "DATA", "sales_value": "VLVENDAPREV",
+        "sales_qty": "QTVENDAPREV", "mix": "MIXPREV", "positivation": "CLIPOSPREV",
+        "positivation_pct": "PERCLIPOSPREV", "margin_pct": "MARGEMPREV",
+        "orders": "PEDIDOSPREV", "avg_order_value": "VLMEDIOPEDIDO",
+        "active_customers": "QTDCLIENTESATIVO",
+    }},
+    "target_daily": {"fields": {
+        "external_id": "EXTERNAL_ID", "branch": "CODFILIAL", "sales_rep": "CODUSUR",
+        "period": "DATA", "sales_value": "VLVENDAPREV", "positivation": "NUMCLIPOS",
+        "orders": "QTPEDPREV", "sales_qty": "QTITENSPEDPREV", "positivation_pct": "PERVENDAPREV",
     }},
 }
 

@@ -135,6 +135,9 @@ export interface Indicator {
   erp_metric?: string;
   erp_metric_label?: string | null;
   erp_filters?: { branch?: string | string[] };
+  /** Fonte da meta no ERP (vazio = meta definida à mão). */
+  erp_target?: string;
+  erp_target_label?: string | null;
   yellow_threshold_pct: string;
   is_active: boolean;
   last_value?: {

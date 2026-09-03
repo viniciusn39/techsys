@@ -637,6 +637,35 @@ class DeliveryLoad(ErpModel):
 
 
 
+class SalesTarget(ErpModel):
+    """Meta cadastrada no ERP (WinThor PCMETA): por filial × RCA × mês.
+
+    O WinThor guarda metas de venda, positivação, mix, margem e pedidos por
+    vendedor. A plataforma soma/pondera por filial para alimentar a meta dos
+    indicadores marcados com `erp_target`.
+    """
+
+    KIND_DAILY = "DIA"  # linha da PCMETARCA: `period` é o DIA, não o mês
+
+    branch = models.ForeignKey(Branch, on_delete=models.SET_NULL, null=True, blank=True, related_name="sales_targets")
+    sales_rep = models.ForeignKey(SalesRep, on_delete=models.SET_NULL, null=True, blank=True, related_name="sales_targets")
+    period = models.DateField()                       # dia 1 do mês (PCMETA) ou o dia (PCMETARCA)
+    kind = models.CharField(max_length=4, blank=True)  # TIPOMETA da PCMETA, ou "DIA"
+    sales_value = models.DecimalField(max_digits=14, decimal_places=2, null=True, blank=True)   # VLVENDAPREV
+    sales_qty = models.DecimalField(max_digits=16, decimal_places=3, null=True, blank=True)     # QTVENDAPREV
+    mix = models.IntegerField(null=True, blank=True)                                            # MIXPREV
+    positivation = models.IntegerField(null=True, blank=True)                                   # CLIPOSPREV
+    positivation_pct = models.DecimalField(max_digits=8, decimal_places=2, null=True, blank=True)  # PERCLIPOSPREV
+    margin_pct = models.DecimalField(max_digits=8, decimal_places=2, null=True, blank=True)     # MARGEMPREV
+    orders = models.IntegerField(null=True, blank=True)                                         # PEDIDOSPREV
+    avg_order_value = models.DecimalField(max_digits=14, decimal_places=2, null=True, blank=True)  # VLMEDIOPEDIDO
+    active_customers = models.IntegerField(null=True, blank=True)                               # QTDCLIENTESATIVO
+
+    class Meta:
+        constraints = [models.UniqueConstraint(fields=["tenant", "external_id"], name="uniq_sales_target_ext")]
+        indexes = [models.Index(fields=["tenant", "period"])]
+
+
 class ErpRecord(ErpModel):
     """Qualquer tabela do ERP sem modelo dedicado: a linha crua em JSON."""
 

@@ -222,6 +222,56 @@ class ColetorIngestTests(APITestCase):
         self.assertEqual((sm["periodos"][0]["value"], sm["periodos"][0]["target"], sm["periodos"][0]["status"]), (80.0, 70.0, "verde"))
         self.assertFalse(self.client.get(f"/api/indicators/{nps.id}/breakdown/?gran=dia").json()["disponivel"])
 
+    def test_metas_do_erp_alimentam_indicador_e_bloqueiam_edicao(self):
+        from datetime import date
+
+        from erp.tasks import sincronizar_metas_erp
+        from indicators.models import Indicator, IndicatorTarget, IndicatorValue
+
+        mes = date.today().replace(day=1).isoformat()
+        self.ingest("branch", [{"CODIGO": "10", "RAZAOSOCIAL": "CD"}, {"CODIGO": "11", "RAZAOSOCIAL": "Loja"}])
+        self.ingest("salesrep", [
+            {"CODUSUR": "1", "NOME": "Ana", "VLVENDAPREV": "1000", "IS_ACTIVE": 1},
+            {"CODUSUR": "2", "NOME": "Bia", "VLVENDAPREV": "500", "IS_ACTIVE": 1},
+            {"CODUSUR": "3", "NOME": "Ex", "VLVENDAPREV": "9999", "IS_ACTIVE": 0},
+        ])
+        self.ingest("target", [
+            {"EXTERNAL_ID": "10-1-M-x", "CODFILIAL": "10", "CODUSUR": "1", "TIPOMETA": "M", "DATA": mes, "VLVENDAPREV": "800", "CLIPOSPREV": 30, "MARGEMPREV": "20"},
+            {"EXTERNAL_ID": "11-2-M-x", "CODFILIAL": "11", "CODUSUR": "2", "TIPOMETA": "M", "DATA": mes, "VLVENDAPREV": "200", "CLIPOSPREV": 10, "MARGEMPREV": "30"},
+        ])
+        fat = Indicator.objects.create(tenant=self.tenant, code="FAT", name="Fat", erp_metric="faturamento", erp_target="vlvendaprev")
+        fat_cd = Indicator.objects.create(tenant=self.tenant, code="FAT_CD", name="Fat CD", erp_metric="faturamento", erp_target="vlvendaprev", erp_filters={"branch": "10"})
+        rca = Indicator.objects.create(tenant=self.tenant, code="FAT_RCA", name="Fat", erp_target="rca_vlvendaprev")
+        margem = Indicator.objects.create(tenant=self.tenant, code="MARGEM", name="Margem", erp_target="margemprev")
+        IndicatorValue.objects.create(indicator=fat, period=mes, value="900", source="agent")
+
+        self.assertEqual(sincronizar_metas_erp(tenant_id=self.tenant.id, meses=1), 4)
+        meta = lambda ind: IndicatorTarget.objects.get(indicator=ind, period=mes).target_value  # noqa: E731
+        self.assertEqual(meta(fat), 1000)
+        self.assertEqual(meta(fat_cd), 800)
+        self.assertEqual(meta(rca), 1500)      # só ativos
+        self.assertEqual(meta(margem), 22)     # (20×800 + 30×200) / 1000
+        v = IndicatorValue.objects.get(indicator=fat)
+        self.assertEqual((v.achievement_pct, v.status), (90, "amarelo"))  # farol recalculado com a meta nova
+
+        # Meta diária (PCMETARCA) prevalece sobre a PCMETA e dá dia/semana exatos.
+        d1, d2 = date.today().replace(day=1), date.today().replace(day=2)
+        self.ingest("target_daily", [
+            {"EXTERNAL_ID": "10-1-d1", "CODFILIAL": "10", "CODUSUR": "1", "DATA": d1.isoformat(), "VLVENDAPREV": "70", "NUMCLIPOS": 3},
+            {"EXTERNAL_ID": "10-1-d2", "CODFILIAL": "10", "CODUSUR": "1", "DATA": d2.isoformat(), "VLVENDAPREV": "50", "NUMCLIPOS": 2},
+            {"EXTERNAL_ID": "11-2-d1", "CODFILIAL": "11", "CODUSUR": "2", "DATA": d1.isoformat(), "VLVENDAPREV": "30", "NUMCLIPOS": 1},
+        ])
+        sincronizar_metas_erp(tenant_id=self.tenant.id, meses=1)
+        self.assertEqual((meta(fat), meta(fat_cd)), (150, 120))
+        q = self.client.get(f"/api/indicators/{fat_cd.id}/breakdown/?gran=dia&n=2&ate={d2.isoformat()}").json()
+        self.assertEqual([p["target"] for p in q["periodos"]], [70.0, 50.0])
+
+        gestor = User.objects.create_user("g5@nb.com", "x", first_name="G", tenant=self.tenant, role=User.Role.GESTOR)
+        self.client.force_authenticate(gestor)
+        r = self.client.post(f"/api/indicators/{fat.id}/targets/bulk/", {"targets": [{"period": mes, "target_value": "1"}]}, format="json")
+        self.assertEqual(r.status_code, 400)
+        self.assertEqual(self.client.get("/api/erp/targets/").json()[0]["key"], "vlvendaprev")
+
     def test_heartbeat_atualiza_health_e_last_seen(self):
         r = self.client.post("/api/coletor/heartbeat/", {"oracle_ok": True, "agent_version": "1.0.0"},
                              format="json", **self.headers)

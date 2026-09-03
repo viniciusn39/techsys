@@ -65,6 +65,9 @@ class Indicator(TenantOwnedModel):
     erp_metric = models.CharField("métrica do ERP", max_length=60, blank=True, db_index=True)
     # Filtros da métrica, ex.: {"branch": "1"} (código da filial no ERP).
     erp_filters = models.JSONField(default=dict, blank=True)
+    # Meta puxada do ERP (chave de erp.targets.CATALOGO, ex.: "vlvendaprev").
+    # Preenchido = a meta mensal vem da PCMETA do WinThor; edição manual bloqueada.
+    erp_target = models.CharField("meta do ERP", max_length=40, blank=True)
     yellow_threshold_pct = models.DecimalField(max_digits=5, decimal_places=2, default=90)
     is_active = models.BooleanField(default=True)
 
