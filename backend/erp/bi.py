@@ -141,8 +141,12 @@ def mes_de_referencia(tenant):
     ficaria todo em "—" — melhor mostrar o último mês que o ERP já entregou.
     """
     hoje = date.today()
-    ultima = SalesInvoice.objects.filter(tenant=tenant, issued_at__lte=hoje).aggregate(d=Max("issued_at"))["d"]
-    return ultima if ultima else hoje
+    p = hoje.replace(day=1)
+    for _ in range(MESES_PROCURA):
+        if m.compute_metric("faturamento", tenant, p, {}) is not None:
+            return p
+        p = _mes_anterior(p)
+    return hoje
 
 
 def foto_mes(tenant, filters, ref):
