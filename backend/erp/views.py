@@ -41,7 +41,7 @@ from .serializers import (
     EntitySyncStateSerializer,
 )
 from .sync import map_and_upsert
-from .winthor import DEFAULT_SYNC, WINTHOR_QUERIES, oracle_user_script, queries_do_plano
+from .winthor import DEFAULT_SYNC, WINTHOR_QUERIES, oracle_user_script, queries_do_plano, ritmo_do_conector
 
 AGENT_FILE = "agente.py"
 
@@ -87,6 +87,7 @@ def coletor_plan(request):
     return Response({
         "interval": int(cfg.get("interval") or 600),
         "queries": queries_do_plano(connector),
+        "ritmo": ritmo_do_conector(connector),
         "latest": version,
         "sha256": sha256,
     })
@@ -500,6 +501,9 @@ class ConnectorViewSet(TenantScopedViewSet):
         return Response({
             "connector": ConnectorSerializer(connector).data,
             "coletando": bool(progresso_agente.get("coletando")),
+            "pausa": progresso_agente.get("pausa"),
+            "load": progresso_agente.get("load"),
+            "ritmo": ritmo_do_conector(connector),
             "minutos": minutos,
             "serie": serie,
             "entidades_serie": entidades,

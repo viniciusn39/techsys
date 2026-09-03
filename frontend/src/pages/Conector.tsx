@@ -50,6 +50,17 @@ interface Progress {
   entities: EntityRow[];
   total_geral: number;
   total_periodo: number;
+  pausa: { motivo: string; load: number; desde: number; entity: string } | null;
+  load: number | null;
+  ritmo: Ritmo;
+}
+
+interface Ritmo {
+  pausa_ms: number;
+  batch_max: number;
+  load_max: number;
+  load_retomar: number;
+  horas_carga_inicial: string;
 }
 
 interface Status {
@@ -100,6 +111,20 @@ export function Conector() {
   const [showLogs, setShowLogs] = useState(false);
   const [busy, setBusy] = useState("");
   const [notice, setNotice] = useState("");
+  const [ritmo, setRitmo] = useState<Ritmo | null>(null);
+
+  const salvarRitmo = async () => {
+    if (!current || !ritmo) return;
+    setBusy("ritmo");
+    try {
+      const config = { ...(current.config || {}), ritmo };
+      const c = await api.patch<Connector>(`/api/erp/connectors/${current.id}/`, { config });
+      setCurrent(c);
+      setNotice("Ritmo salvo. O agente aplica no próximo ciclo (até 10 min), sem reiniciar.");
+    } finally {
+      setBusy("");
+    }
+  };
   const [minutos, setMinutos] = useState(120);
   const [tick, setTick] = useState(0);
 
@@ -109,6 +134,7 @@ export function Conector() {
       api.get<Status>(`/api/erp/connectors/${id}/status/`),
     ]);
     setProgress(p);
+    setRitmo((atual) => atual ?? p.ritmo);
     setStatus(s);
     setTick((x) => x + 1);
   }, [minutos]);
@@ -305,6 +331,52 @@ export function Conector() {
           </Button>
         </div>
       </div>
+
+      {/* --- pausa por load --- */}
+      {progress?.pausa && (
+        <div className="alert alert-warning py-2 small mb-3 d-flex align-items-center gap-2">
+          <i className="bi bi-pause-circle-fill" />
+          <span>
+            <strong>Coleta pausada pelo próprio agente:</strong> o servidor está ocupado (load {progress.pausa.load} por CPU) desde {new Date(progress.pausa.desde * 1000).toLocaleTimeString("pt-BR")}, em {ENTITY_LABEL[progress.pausa.entity] ?? progress.pausa.entity}. Retoma sozinho quando o load baixar de {progress.ritmo.load_retomar}.
+          </span>
+        </div>
+      )}
+
+      {/* --- ritmo da carga --- */}
+      <Panel
+        className="mb-3"
+        title="Ritmo da carga"
+        subtitle={`O agente mede o load do servidor a cada lote e pausa sozinho quando passa do teto; retoma quando baixa. Load agora: ${progress?.load != null ? progress.load.toFixed(2) : "—"} por CPU.`}
+        actions={<Button size="sm" onClick={salvarRitmo} disabled={busy === "ritmo" || !ritmo}><i className="bi bi-check-lg me-1" />Salvar ritmo</Button>}
+      >
+        {ritmo && (
+          <div className="row g-2 align-items-end">
+            <div className="col-6 col-lg-2">
+              <Form.Label className="small mb-0">Pausa entre lotes (ms)</Form.Label>
+              <Form.Control size="sm" type="number" min={0} step={250} value={ritmo.pausa_ms} onChange={(e) => setRitmo({ ...ritmo, pausa_ms: Number(e.target.value) })} />
+            </div>
+            <div className="col-6 col-lg-2">
+              <Form.Label className="small mb-0">Linhas por lote</Form.Label>
+              <Form.Control size="sm" type="number" min={100} max={5000} step={100} value={ritmo.batch_max} onChange={(e) => setRitmo({ ...ritmo, batch_max: Number(e.target.value) })} />
+            </div>
+            <div className="col-6 col-lg-2">
+              <Form.Label className="small mb-0">Pausar se load por CPU &gt;</Form.Label>
+              <Form.Control size="sm" type="number" min={0} max={4} step={0.1} value={ritmo.load_max} onChange={(e) => setRitmo({ ...ritmo, load_max: Number(e.target.value) })} />
+            </div>
+            <div className="col-6 col-lg-2">
+              <Form.Label className="small mb-0">Retomar se load &lt;</Form.Label>
+              <Form.Control size="sm" type="number" min={0} max={4} step={0.1} value={ritmo.load_retomar} onChange={(e) => setRitmo({ ...ritmo, load_retomar: Number(e.target.value) })} />
+            </div>
+            <div className="col-12 col-lg-3">
+              <Form.Label className="small mb-0">Histórico só entre (ex.: 19-07; vazio = qualquer hora)</Form.Label>
+              <Form.Control size="sm" placeholder="19-07" value={ritmo.horas_carga_inicial} onChange={(e) => setRitmo({ ...ritmo, horas_carga_inicial: e.target.value.trim() })} />
+            </div>
+            <div className="col-12 text-muted-2" style={{ fontSize: "0.74rem" }}>
+              Load por CPU: 1,0 = todas as CPUs ocupadas. Com pausa de {ritmo.pausa_ms} ms e lotes de {ritmo.batch_max}, o teto é ~{fmtInt(Math.round(ritmo.batch_max / Math.max(0.5, ritmo.pausa_ms / 1000 + 0.5)))} linhas/s. A coleta incremental do dia a dia não depende do horário; só o histórico.
+            </div>
+          </div>
+        )}
+      </Panel>
 
       {/* --- progressão --- */}
       <Panel

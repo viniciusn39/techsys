@@ -37,6 +37,11 @@ class ColetorIngestTests(APITestCase):
         self.assertEqual(resp.status_code, 200)
         entidades = [q["entity"] for q in resp.json()["queries"]]
         self.assertEqual(entidades[0], "branch")
+        self.assertEqual(resp.json()["ritmo"]["batch_max"], 500)
+        self.connector.config = {"ritmo": {"pausa_ms": 3000, "load_max": 0.5, "horas_carga_inicial": "19-07"}}
+        self.connector.save()
+        r = self.client.get("/api/coletor/plan/", **self.headers).json()["ritmo"]
+        self.assertEqual((r["pausa_ms"], r["load_max"], r["horas_carga_inicial"], r["batch_max"]), (3000, 0.5, "19-07", 500))
         self.assertIn("sales_invoice", entidades)
         # Toda consulta do plano tem mapa de campos correspondente.
         for q in WINTHOR_QUERIES:

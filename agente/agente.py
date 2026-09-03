@@ -39,7 +39,7 @@ import time
 import traceback
 import urllib.request
 
-VERSION = "1.0.5"  # BUMP ao publicar: os agentes instalados se auto-atualizam
+VERSION = "1.0.6"  # BUMP ao publicar: os agentes instalados se auto-atualizam
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 BASE_DIR = os.path.dirname(os.path.abspath(sys.executable)) if getattr(sys, "frozen", False) else HERE
@@ -511,6 +511,80 @@ def _checar_memoria(cfg, entity):
                            % (rss, teto, entity))
 
 
+# --------------------------------------------------------------------------- ritmo / load
+RITMO_PADRAO = {"pausa_ms": 1000, "batch_max": 500, "load_max": 0.6, "load_retomar": 0.4,
+                "horas_carga_inicial": ""}
+
+
+def _ritmo(plan):
+    r = dict(RITMO_PADRAO)
+    r.update({k: v for k, v in ((plan or {}).get("ritmo") or {}).items() if v not in (None, "")})
+    return r
+
+
+def _load_local():
+    """Load average de 1 min dividido pelo nº de CPUs (1.0 = todas ocupadas)."""
+    try:
+        cpus = os.cpu_count() or 1
+        return os.getloadavg()[0] / cpus
+    except (AttributeError, OSError):
+        return None
+
+
+_OSSTAT_OK = [True]
+
+
+def _load_oracle(oracle):
+    """Load do SERVIDOR do Oracle (V$OSSTAT), para quando o agente roda noutra máquina."""
+    if not _OSSTAT_OK[0] or oracle is None:
+        return None
+    try:
+        rows = oracle.query("SELECT STAT_NAME, VALUE FROM V$OSSTAT WHERE STAT_NAME IN ('LOAD','NUM_CPUS')")
+        v = {r["STAT_NAME"]: float(r["VALUE"]) for r in rows}
+        if "LOAD" in v:
+            return v["LOAD"] / max(1.0, v.get("NUM_CPUS") or 1.0)
+    except Exception:  # noqa: BLE001 — sem GRANT em V$OSSTAT: desiste de vez
+        _OSSTAT_OK[0] = False
+    return None
+
+
+def _load_atual(oracle):
+    cargas = [x for x in (_load_local(), _load_oracle(oracle)) if x is not None]
+    return max(cargas) if cargas else None
+
+
+def _esperar_servidor_livre(ritmo, oracle, state, entity):
+    """Load acima do teto: pausa a coleta até baixar. Nunca derruba o ERP."""
+    teto, retomar = float(ritmo.get("load_max") or 0), float(ritmo.get("load_retomar") or 0)
+    if teto <= 0:
+        return
+    carga = _load_atual(oracle)
+    if carga is None or carga <= teto:
+        return
+    _log("[ritmo] %s: servidor ocupado (load %.2f por CPU > %.2f) — pausando" % (entity, carga, teto))
+    inicio = time.time()
+    while not STOP.is_set():
+        state["_pausa"] = {"motivo": "load", "load": round(carga, 2), "desde": inicio, "entity": entity}
+        save_state(state)
+        _bater_progresso()  # pausa deliberada não é travamento
+        STOP.wait(20)
+        carga = _load_atual(oracle)
+        if carga is None or carga <= (retomar or teto):
+            break
+    state.pop("_pausa", None)
+    save_state(state)
+    _log("[ritmo] %s: retomando após %d s (load %.2f)" % (entity, time.time() - inicio, carga or 0))
+
+
+def _horas(texto):
+    """'19-07' -> (19, 7); vazio -> None (qualquer hora)."""
+    try:
+        a, b = str(texto).replace("h", "").split("-")
+        return int(a), int(b)
+    except (ValueError, AttributeError):
+        return None
+
+
 ULTIMO_PROGRESSO = [time.time()]  # cão de guarda: último avanço da coleta
 
 
@@ -577,7 +651,8 @@ def _progresso_da_carga():
     for entity, p in passes.items():
         out.setdefault(entity, {})["passe"] = p
     atual = next((e for e, p in passes.items() if p.get("em_andamento")), None)
-    return {"entidades": out, "coletando": BUSY.is_set(), "atual": atual}
+    return {"entidades": out, "coletando": BUSY.is_set(), "atual": atual,
+            "pausa": state.get("_pausa"), "load": _load_local()}
 
 
 def collect_health(oracle):
@@ -683,6 +758,9 @@ def run_sync(platform_api, oracle, plan, state, machine=""):
     avisados_sem_marca = set()
     agora = time.time()
     ultimas = state.setdefault("_ultima_execucao", {})
+    ritmo = _ritmo(plan)
+    pausa_s = max(0.0, float(ritmo.get("pausa_ms") or 0) / 1000.0)
+    horas_hist = _horas(ritmo.get("horas_carga_inicial"))
     for q in plan.get("queries") or []:
         entity, sql = q.get("entity"), q.get("sql") or ""
         if not (entity and sql):
@@ -710,6 +788,12 @@ def run_sync(platform_api, oracle, plan, state, machine=""):
                 passo = int(q.get("backfill_passo") or 1)
                 janelas = state.setdefault("_janela", {})
                 anterior = int(janelas.get(entity) or 0)
+                if anterior < alvo and horas_hist and not _na_janela(horas_hist):
+                    # Histórico (carga inicial) só no horário permitido; o incremental do
+                    # dia a dia segue livre porque é pequeno.
+                    _log("[sync] %s: carga inicial fora do horário %s-%s — adiada"
+                         % (entity, horas_hist[0], horas_hist[1]))
+                    continue
                 atual = min(alvo, (anterior + passo) if anterior else passo)
                 janelas[entity] = atual
                 params["janela"] = atual
@@ -717,9 +801,13 @@ def run_sync(platform_api, oracle, plan, state, machine=""):
                     # Enquanto a janela cresce, lê a janela INTEIRA (upsert deduplica).
                     params["since"] = None
             batch = int(q.get("batch") or 500)
+            if int(ritmo.get("batch_max") or 0) > 0:
+                batch = min(batch, int(ritmo["batch_max"]))
             since_col = q.get("since_column")
             incremental = bool(q.get("incremental")) and bool(since_col)
 
+            # Servidor ocupado? Espera baixar antes até de contar.
+            _esperar_servidor_livre(ritmo, oracle, state, entity)
             # Quanto vem: o "esperado" da barra de progresso. Falhar aqui não impede a coleta.
             _bater_progresso()
             esperado = None
@@ -744,6 +832,10 @@ def run_sync(platform_api, oracle, plan, state, machine=""):
                         lote = _to_jsonable(lote)
                         lidos += len(lote)
                         _checar_memoria(load_config(), entity)
+                        # Ritmo: load alto pausa; entre lotes, respira.
+                        _esperar_servidor_livre(ritmo, oracle, state, entity)
+                        if pausa_s and lidos > len(lote):
+                            STOP.wait(pausa_s)
                         res = None
                         for tentativa in range(4):
                             try:

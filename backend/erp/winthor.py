@@ -550,6 +550,25 @@ def queries_do_plano(connector=None):
     return sorted(queries, key=lambda q: posicao.get(q["entity"], len(posicao)))
 
 
+# Ritmo da carga: o agente respeita isto para nunca pesar no servidor do ERP.
+#   pausa_ms      — descanso entre lotes
+#   batch_max     — teto de linhas por lote
+#   load_max      — load por CPU acima do qual o agente PAUSA (0 = desligado)
+#   load_retomar  — load por CPU abaixo do qual ele volta
+#   horas_carga_inicial — janela "19-07" só para o histórico; incremental segue livre
+RITMO_PADRAO = {"pausa_ms": 1000, "batch_max": 500, "load_max": 0.6, "load_retomar": 0.4,
+                "horas_carga_inicial": ""}
+
+
+def ritmo_do_conector(connector=None):
+    cfg = (connector.config or {}) if connector is not None else {}
+    ritmo = dict(RITMO_PADRAO)
+    for k, v in (cfg.get("ritmo") or {}).items():
+        if k in ritmo and v not in (None, ""):
+            ritmo[k] = v
+    return ritmo
+
+
 def winthor_tables():
     """Tabelas que o plano toca — base do script de GRANTs para o DBA."""
     import re
