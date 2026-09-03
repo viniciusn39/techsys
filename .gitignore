@@ -1,0 +1,14 @@
+__pycache__/
+*.pyc
+.env
+backend/staticfiles/
+backend/media/
+frontend/node_modules/
+frontend/dist/
+.DS_Store
+
+# agente (segredos e estado locais)
+agente/config.json
+agente/state.json
+agente/*.log
+.claude/

@@ -1,0 +1,105 @@
+# Produção: Caddy (HTTPS automático) na frente do frontend buildado + API gunicorn.
+#   docker compose -f docker-compose.prod.yml up -d --build
+# Segredos e domínio vêm do .env (gerado pelo deploy/deploy.sh na primeira vez).
+name: techsys-gestao
+
+x-backend-env: &backend_env
+  DEBUG: "0"
+  SECRET_KEY: "${SECRET_KEY:?defina SECRET_KEY no .env}"
+  ALLOWED_HOSTS: "${DOMAIN:?defina DOMAIN no .env},backend,localhost"
+  POSTGRES_DB: "${POSTGRES_DB:-techsys_gestao}"
+  POSTGRES_USER: "${POSTGRES_USER:-techsys}"
+  POSTGRES_PASSWORD: "${POSTGRES_PASSWORD:?defina POSTGRES_PASSWORD no .env}"
+  POSTGRES_HOST: db
+  POSTGRES_PORT: "5432"
+  REDIS_URL: redis://redis:6379/0
+  CORS_ALLOWED_ORIGINS: "https://${DOMAIN}"
+  PUBLIC_URL: "https://${DOMAIN}"
+
+services:
+  db:
+    image: postgres:16-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: "${POSTGRES_DB:-techsys_gestao}"
+      POSTGRES_USER: "${POSTGRES_USER:-techsys}"
+      POSTGRES_PASSWORD: "${POSTGRES_PASSWORD}"
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U $${POSTGRES_USER} -d $${POSTGRES_DB}"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+  redis:
+    image: redis:7-alpine
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+  backend:
+    build: ./backend
+    restart: unless-stopped
+    environment: *backend_env
+    volumes:
+      - ./agente:/agente:ro
+      - media:/app/media
+    expose:
+      - "8000"
+    depends_on:
+      db:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    command: ["/app/entrypoint.sh"]
+
+  worker:
+    build: ./backend
+    restart: unless-stopped
+    environment: *backend_env
+    volumes:
+      - media:/app/media
+    depends_on:
+      db:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    command: ["celery", "-A", "core", "worker", "-l", "info", "--concurrency", "2"]
+
+  beat:
+    build: ./backend
+    restart: unless-stopped
+    environment: *backend_env
+    depends_on:
+      db:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    command: ["celery", "-A", "core", "beat", "-l", "info"]
+
+  caddy:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile.prod
+    restart: unless-stopped
+    environment:
+      DOMAIN: "${DOMAIN}"
+    ports:
+      - "80:80"
+      - "443:443"
+      - "443:443/udp"
+    volumes:
+      - caddy_data:/data
+      - caddy_config:/config
+    depends_on:
+      - backend
+
+volumes:
+  pgdata:
+  media:
+  caddy_data:
+  caddy_config:

@@ -1,0 +1,702 @@
+// ---------------------------------------------------------------------------
+// TechSys Gestão — design system
+// Tokens primeiro, componentes depois. Tema claro apenas: `color-scheme: light`
+// no :root garante controles nativos claros mesmo com o SO em modo escuro.
+// ---------------------------------------------------------------------------
+
+@use "bootstrap/scss/bootstrap" with (
+  $primary: #1f66bd,
+  // Sem isto o Bootstrap escolhe tinta PRETA sobre o azul (regra de 4.5:1)
+  // e o botão primário fica azul com texto preto.
+  $min-contrast-ratio: 3,
+  $border-radius: 0.5rem,
+  $border-radius-sm: 0.375rem,
+  $border-radius-lg: 0.75rem,
+  $font-family-sans-serif: (system-ui, -apple-system, "Segoe UI", Roboto, sans-serif),
+  $font-size-base: 0.9rem,
+  $enable-shadows: false
+);
+@use "bootstrap-icons/font/bootstrap-icons.css";
+
+:root {
+  color-scheme: light;
+
+  /* Superfícies */
+  --surface: #ffffff;
+  --surface-raised: #ffffff;
+  --surface-sunken: #f4f5f7;
+  --page: #f4f5f7;
+  --sidebar: #10233b;
+  --sidebar-hover: rgba(255, 255, 255, 0.08);
+  --sidebar-active: rgba(90, 160, 240, 0.22);
+
+  /* Tinta */
+  --ink: #101318;
+  --ink-secondary: #52565e;
+  --ink-muted: #858a93;
+  --ink-on-sidebar: rgba(255, 255, 255, 0.82);
+
+  /* Traços */
+  --border: #e3e5ea;
+  --border-strong: #cfd3da;
+  --grid: #ecedf1;
+
+  /* Marca (mesmo azul dos botões) e séries de dados (paleta validada) */
+  --brand: #1f66bd;
+  --brand-soft: #eaf2fd;
+  --series-1: #2a78d6;
+  --series-2: #eb6834;
+  --series-3: #1baf7a;
+  --series-4: #eda100;
+
+  /* Status do farol (paleta fixa — sempre acompanhada de ícone + rótulo) */
+  --st-verde: #0ca30c;
+  --st-amarelo: #fab219;
+  --st-vermelho: #d03b3b;
+  --st-neutro: #a8adb6;
+  --st-verde-soft: #e6f5e6;
+  --st-amarelo-soft: #fdf3df;
+  --st-vermelho-soft: #fbe9e9;
+  --st-neutro-soft: #eef0f3;
+
+  --shadow-sm: 0 1px 2px rgba(16, 19, 24, 0.06);
+  --shadow-md: 0 4px 16px rgba(16, 19, 24, 0.09);
+  --radius: 0.625rem;
+}
+
+// --- base ------------------------------------------------------------------
+
+body {
+  background-color: var(--page);
+  color: var(--ink);
+  font-size: 0.9rem;
+  -webkit-font-smoothing: antialiased;
+}
+
+a { color: var(--brand); }
+
+code {
+  color: var(--ink-secondary);
+  background: var(--surface-sunken);
+  padding: 0.1rem 0.35rem;
+  border-radius: 0.3rem;
+  font-size: 0.82em;
+}
+
+::-webkit-scrollbar { width: 10px; height: 10px; }
+::-webkit-scrollbar-thumb {
+  background: var(--border-strong);
+  border-radius: 10px;
+  border: 3px solid transparent;
+  background-clip: content-box;
+}
+
+// Bootstrap usa suas próprias variáveis; religamos as principais aos tokens.
+.card,
+.modal-content,
+.dropdown-menu {
+  --bs-body-bg: var(--surface);
+  background-color: var(--surface);
+  color: var(--ink);
+  border-color: var(--border);
+}
+
+.form-control,
+.form-select {
+  background-color: var(--surface);
+  border-color: var(--border-strong);
+  color: var(--ink);
+  font-size: 0.875rem;
+
+  &:focus {
+    background-color: var(--surface);
+    color: var(--ink);
+    border-color: var(--brand);
+    box-shadow: 0 0 0 3px color-mix(in srgb, var(--brand) 18%, transparent);
+  }
+  &::placeholder { color: var(--ink-muted); }
+  &:disabled { background-color: var(--surface-sunken); }
+}
+
+.form-label {
+  font-size: 0.78rem;
+  font-weight: 600;
+  color: var(--ink-secondary);
+  margin-bottom: 0.25rem;
+}
+
+.modal-header, .modal-footer { border-color: var(--border); }
+
+.btn { font-size: 0.875rem; font-weight: 500; }
+
+// Trava a tinta branca no botão primário — não depende do cálculo do Bootstrap.
+.btn-primary {
+  --bs-btn-color: #fff;
+  --bs-btn-hover-color: #fff;
+  --bs-btn-active-color: #fff;
+  --bs-btn-disabled-color: #fff;
+}
+
+.btn-outline-secondary {
+  --bs-btn-color: var(--ink-secondary);
+  --bs-btn-border-color: var(--border-strong);
+  --bs-btn-hover-bg: var(--surface-sunken);
+  --bs-btn-hover-color: var(--ink);
+  --bs-btn-hover-border-color: var(--border-strong);
+}
+
+// --- shell -----------------------------------------------------------------
+
+.app-shell { display: flex; min-height: 100vh; }
+
+.sidebar {
+  width: 236px;
+  min-width: 236px;
+  background: var(--sidebar);
+  color: var(--ink-on-sidebar);
+  display: flex;
+  flex-direction: column;
+  position: sticky;
+  top: 0;
+  height: 100vh;
+}
+
+.sidebar-brand {
+  display: flex;
+  align-items: center;
+  gap: 0.55rem;
+  padding: 1.1rem 1.15rem 0.9rem;
+  color: #fff;
+  font-weight: 600;
+  letter-spacing: -0.01em;
+
+  .brand-mark {
+    width: 30px;
+    height: 30px;
+    border-radius: 9px;
+    background: linear-gradient(135deg, var(--series-1), #1baf7a);
+    display: grid;
+    place-items: center;
+    font-size: 0.95rem;
+    color: #fff;
+    flex: none;
+  }
+}
+
+.sidebar-tenant {
+  margin: 0 0.75rem 0.75rem;
+  padding: 0.5rem 0.6rem;
+  border-radius: 0.5rem;
+  background: rgba(255, 255, 255, 0.06);
+  font-size: 0.75rem;
+  line-height: 1.3;
+
+  .label { color: rgba(255, 255, 255, 0.5); font-size: 0.68rem; text-transform: uppercase; letter-spacing: 0.05em; }
+  .value { color: #fff; font-weight: 600; }
+}
+
+.sidebar-section {
+  padding: 0.85rem 1.15rem 0.3rem;
+  font-size: 0.66rem;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: rgba(255, 255, 255, 0.38);
+}
+
+.sidebar-nav { flex: 1; overflow-y: auto; padding-bottom: 0.5rem; }
+
+.sidebar-link {
+  display: flex;
+  align-items: center;
+  gap: 0.65rem;
+  color: var(--ink-on-sidebar);
+  text-decoration: none;
+  padding: 0.5rem 1.15rem;
+  font-size: 0.875rem;
+  border-left: 2px solid transparent;
+  transition: background 0.12s;
+
+  i { font-size: 1rem; width: 1.1rem; opacity: 0.85; }
+
+  &:hover { background: var(--sidebar-hover); color: #fff; }
+  &.active {
+    background: var(--sidebar-active);
+    color: #fff;
+    border-left-color: #6aa9f0;
+    font-weight: 500;
+    i { opacity: 1; }
+  }
+}
+
+.sidebar-footer {
+  padding: 0.85rem 1.15rem;
+  border-top: 1px solid rgba(255, 255, 255, 0.1);
+  font-size: 0.78rem;
+}
+
+.app-main {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+}
+
+.topbar {
+  display: flex;
+  align-items: center;
+  gap: 1rem;
+  padding: 0.7rem 1.75rem;
+  background: var(--surface);
+  border-bottom: 1px solid var(--border);
+  position: sticky;
+  top: 0;
+  z-index: 20;
+}
+
+.topbar-title {
+  font-size: 1.02rem;
+  font-weight: 600;
+  letter-spacing: -0.01em;
+  margin: 0;
+}
+.topbar-sub { font-size: 0.78rem; color: var(--ink-muted); }
+
+.icon-btn {
+  width: 34px;
+  height: 34px;
+  border-radius: 0.5rem;
+  border: 1px solid var(--border);
+  background: var(--surface);
+  color: var(--ink-secondary);
+  display: grid;
+  place-items: center;
+
+  &:hover { background: var(--surface-sunken); color: var(--ink); }
+}
+
+.app-content { padding: 1.5rem 1.75rem 3rem; flex: 1; }
+
+// Faixa de contexto quando o root abre os dados de uma empresa.
+.impersonation-bar {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.5rem 1.75rem;
+  background: var(--st-amarelo-soft);
+  border-bottom: 1px solid #f0dcae;
+  color: #7a5600;
+  font-size: 0.8rem;
+
+  .btn-link { color: #7a5600; font-size: 0.8rem; font-weight: 600; }
+}
+
+// --- cartões e superfícies -------------------------------------------------
+
+.card {
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  box-shadow: var(--shadow-sm);
+}
+
+.panel {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  box-shadow: var(--shadow-sm);
+}
+
+.panel-head {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 1rem;
+  padding: 0.9rem 1.1rem 0.35rem;
+
+  h6 { margin: 0; font-size: 0.9rem; font-weight: 600; letter-spacing: -0.005em; }
+  .sub { font-size: 0.75rem; color: var(--ink-muted); }
+}
+
+.panel-body { padding: 0.4rem 1.1rem 1rem; }
+
+// --- stat tile -------------------------------------------------------------
+
+// Rótulo de bloco — usado em stat tiles e também em cartões avulsos.
+.stat-label {
+  font-size: 0.76rem;
+  color: var(--ink-secondary);
+  display: flex;
+  align-items: center;
+  gap: 0.35rem;
+  font-weight: 500;
+}
+
+.stat {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 0.9rem 1rem;
+  box-shadow: var(--shadow-sm);
+  height: 100%;
+  display: flex;
+  flex-direction: column;
+  gap: 0.15rem;
+
+  .stat-value {
+    font-size: 1.7rem;
+    font-weight: 600;
+    line-height: 1.15;
+    letter-spacing: -0.02em;
+  }
+  .stat-foot { font-size: 0.74rem; color: var(--ink-muted); margin-top: auto; }
+  .stat-spark { margin-top: 0.3rem; }
+}
+
+.hero-figure {
+  font-size: 3rem;
+  font-weight: 600;
+  line-height: 1;
+  letter-spacing: -0.03em;
+}
+
+// --- status (farol): sempre cor + ícone + rótulo ---------------------------
+
+.status-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.3rem;
+  padding: 0.1rem 0.45rem;
+  border-radius: 999px;
+  font-size: 0.72rem;
+  font-weight: 600;
+  white-space: nowrap;
+  line-height: 1.5;
+
+  i { font-size: 0.7rem; }
+
+  &.st-verde { background: var(--st-verde-soft); color: #06760b; }
+  &.st-amarelo { background: var(--st-amarelo-soft); color: #8a6100; }
+  &.st-vermelho { background: var(--st-vermelho-soft); color: #a82a2a; }
+  &.st-neutro { background: var(--st-neutro-soft); color: var(--ink-secondary); }
+}
+
+.status-dot {
+  width: 9px;
+  height: 9px;
+  border-radius: 50%;
+  display: inline-block;
+  flex: none;
+
+  &.st-verde { background: var(--st-verde); }
+  &.st-amarelo { background: var(--st-amarelo); }
+  &.st-vermelho { background: var(--st-vermelho); }
+  &.st-neutro { background: var(--st-neutro); }
+}
+
+// --- meter (razão contra um limite) ---------------------------------------
+
+.meter {
+  height: 6px;
+  border-radius: 999px;
+  background: var(--surface-sunken);
+  overflow: hidden;
+
+  span { display: block; height: 100%; border-radius: 999px; }
+}
+
+// --- tabelas ---------------------------------------------------------------
+
+.table {
+  --bs-table-bg: transparent;
+  --bs-table-color: var(--ink);
+  --bs-table-border-color: var(--border);
+  --bs-table-hover-bg: var(--surface-sunken);
+  --bs-table-hover-color: var(--ink);
+  margin-bottom: 0;
+
+  thead th {
+    font-size: 0.72rem;
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+    color: var(--ink-muted);
+    font-weight: 600;
+    border-bottom-color: var(--border);
+    padding: 0.6rem 0.75rem;
+    white-space: nowrap;
+  }
+  tbody td { padding: 0.6rem 0.75rem; vertical-align: middle; border-color: var(--grid); }
+  tbody tr:last-child td { border-bottom-width: 0; }
+}
+
+.num { font-variant-numeric: tabular-nums; text-align: right; }
+
+// --- mapa estratégico ------------------------------------------------------
+
+.perspective {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-left: 4px solid var(--persp-color, var(--brand));
+  border-radius: var(--radius);
+  box-shadow: var(--shadow-sm);
+  padding: 0.85rem 1rem;
+}
+
+.perspective-name {
+  font-size: 0.72rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--persp-color, var(--brand));
+}
+
+.no-caret::after { display: none !important; }
+
+// --- mapa estratégico: diagrama --------------------------------------------
+
+.mapa-canvas { user-select: none; }
+
+.mapa-node {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-top: 3px solid var(--brand);
+  border-radius: 0.5rem;
+  padding: 0.45rem 0.6rem;
+  box-shadow: var(--shadow-sm);
+  display: flex;
+  flex-direction: column;
+  gap: 0.2rem;
+  transition: box-shadow 0.12s, border-color 0.12s;
+
+  &:hover { box-shadow: var(--shadow-md); }
+  &:active { cursor: grabbing !important; }
+
+  &.is-linking:hover { border-color: var(--brand); }
+  &.is-source {
+    outline: 2px solid var(--brand);
+    outline-offset: 2px;
+  }
+}
+
+.mapa-node-title {
+  font-size: 0.79rem;
+  font-weight: 600;
+  line-height: 1.25;
+  color: var(--ink);
+}
+
+.mapa-node-meta {
+  font-size: 0.68rem;
+  color: var(--ink-muted);
+  margin-top: auto;
+}
+
+.mapa-node-dot {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  display: inline-block;
+}
+
+.suggestion-row {
+  display: flex;
+  align-items: flex-start;
+  gap: 0.6rem;
+  padding: 0.5rem 0.6rem;
+  border: 1px solid var(--border);
+  border-radius: 0.5rem;
+  background: var(--surface);
+  margin-bottom: 0.4rem;
+}
+
+.objective-card {
+  border: 1px solid var(--border);
+  border-radius: 0.5rem;
+  background: var(--surface-sunken);
+  padding: 0.6rem 0.7rem;
+  cursor: pointer;
+  height: 100%;
+  transition: border-color 0.12s, transform 0.12s;
+
+  &:hover { border-color: var(--brand); transform: translateY(-1px); }
+  .title { font-size: 0.84rem; font-weight: 600; line-height: 1.3; }
+  .meta { font-size: 0.72rem; color: var(--ink-muted); }
+}
+
+// --- kanban ----------------------------------------------------------------
+
+.kanban-col {
+  background: var(--surface-sunken);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  min-height: 320px;
+  padding: 0.6rem;
+
+  &.is-over { border-color: var(--brand); background: var(--brand-soft); }
+}
+
+.kanban-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  font-size: 0.76rem;
+  font-weight: 600;
+  color: var(--ink-secondary);
+  padding: 0.15rem 0.3rem 0.55rem;
+}
+
+.kanban-card {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 0.5rem;
+  padding: 0.55rem 0.65rem;
+  margin-bottom: 0.5rem;
+  cursor: grab;
+  box-shadow: var(--shadow-sm);
+
+  &:hover { border-color: var(--border-strong); }
+  &:active { cursor: grabbing; }
+  .title { font-size: 0.82rem; font-weight: 600; line-height: 1.3; }
+  .meta { font-size: 0.71rem; color: var(--ink-muted); }
+}
+
+// --- árvores (metas / organograma) ----------------------------------------
+
+.tree-row {
+  display: flex;
+  align-items: center;
+  gap: 0.6rem;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 0.5rem;
+  padding: 0.5rem 0.7rem;
+  box-shadow: var(--shadow-sm);
+}
+
+.tree-children {
+  margin-left: 1rem;
+  padding-left: 1rem;
+  border-left: 1px solid var(--border-strong);
+  margin-top: 0.35rem;
+}
+
+// --- chat ------------------------------------------------------------------
+
+.chat-list { background: var(--surface-sunken); }
+
+.chat-bubble-user {
+  background: var(--brand);
+  color: #fff;
+  border-radius: 0.9rem 0.9rem 0.2rem 0.9rem;
+  max-width: 72%;
+  margin-left: auto;
+  padding: 0.7rem 0.9rem;
+}
+
+.chat-bubble-assistant {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 0.9rem 0.9rem 0.9rem 0.2rem;
+  max-width: 88%;
+  padding: 0.7rem 0.9rem;
+}
+
+.chat-session {
+  padding: 0.5rem 0.65rem;
+  border-radius: 0.5rem;
+  font-size: 0.82rem;
+  cursor: pointer;
+  border: 1px solid transparent;
+  color: var(--ink-secondary);
+
+  &:hover { background: var(--surface-sunken); }
+  &.active { background: var(--brand-soft); color: var(--brand); border-color: var(--brand); font-weight: 500; }
+}
+
+// --- PDCA ------------------------------------------------------------------
+
+.pdca-step {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+  padding: 0.2rem 0.6rem;
+  border-radius: 999px;
+  font-size: 0.72rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  background: var(--surface-sunken);
+  color: var(--ink-muted);
+  border: 1px solid var(--border);
+
+  &.done { background: var(--st-verde-soft); color: #06760b; border-color: transparent; }
+  &.current { background: var(--brand); color: #fff; border-color: transparent; }
+}
+
+// --- utilitários -----------------------------------------------------------
+
+.markdown-body {
+  white-space: pre-wrap;
+  font-size: 0.88rem;
+  line-height: 1.6;
+  color: var(--ink);
+}
+
+.text-muted-2 { color: var(--ink-muted) !important; }
+.text-secondary-2 { color: var(--ink-secondary) !important; }
+
+.empty-state {
+  text-align: center;
+  padding: 2.5rem 1rem;
+  color: var(--ink-muted);
+
+  i { font-size: 1.8rem; opacity: 0.55; }
+  .title { font-weight: 600; color: var(--ink-secondary); margin-top: 0.5rem; }
+}
+
+.skeleton {
+  background: linear-gradient(90deg, var(--surface-sunken) 25%, var(--border) 37%, var(--surface-sunken) 63%);
+  background-size: 400% 100%;
+  animation: shimmer 1.4s ease infinite;
+  border-radius: 0.4rem;
+}
+
+@keyframes shimmer {
+  0% { background-position: 100% 50%; }
+  100% { background-position: 0 50%; }
+}
+
+.filter-bar {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  flex-wrap: wrap;
+  margin-bottom: 1rem;
+}
+
+.chart-legend {
+  display: flex;
+  gap: 0.9rem;
+  flex-wrap: wrap;
+  font-size: 0.75rem;
+  color: var(--ink-secondary);
+
+  .item { display: inline-flex; align-items: center; gap: 0.35rem; }
+  .key { width: 10px; height: 10px; border-radius: 3px; flex: none; }
+  .key.line { height: 2px; width: 14px; border-radius: 2px; }
+}
+
+.nav-tabs {
+  border-bottom-color: var(--border);
+  .nav-link {
+    color: var(--ink-secondary);
+    border: none;
+    border-bottom: 2px solid transparent;
+    font-size: 0.86rem;
+    &:hover { color: var(--ink); border-bottom-color: var(--border-strong); }
+    &.active {
+      color: var(--brand);
+      background: transparent;
+      border-bottom-color: var(--brand);
+      font-weight: 600;
+    }
+  }
+}

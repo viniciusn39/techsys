@@ -1,0 +1,32 @@
+# Caddy cuida do certificado (Let's Encrypt) e do redirect http->https sozinho.
+{$DOMAIN} {
+	encode zstd gzip
+
+	# Cabeçalhos de segurança básicos.
+	header {
+		Strict-Transport-Security "max-age=31536000; includeSubDomains"
+		X-Content-Type-Options "nosniff"
+		X-Frame-Options "SAMEORIGIN"
+		Referrer-Policy "strict-origin-when-cross-origin"
+		-Server
+	}
+
+	# API, admin do Django, estáticos do admin e mídia -> gunicorn.
+	@backend path /api/* /django-admin/* /static/* /media/*
+	handle @backend {
+		reverse_proxy backend:8000 {
+			# Lotes grandes do agente podem levar minutos para o servidor gravar.
+			transport http {
+				read_timeout 600s
+				write_timeout 600s
+			}
+		}
+	}
+
+	# SPA: qualquer outra rota cai no index.html do React Router.
+	handle {
+		root * /srv
+		try_files {path} /index.html
+		file_server
+	}
+}
