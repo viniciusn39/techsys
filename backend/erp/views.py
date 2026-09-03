@@ -513,7 +513,7 @@ class ConnectorViewSet(TenantScopedViewSet):
         """Enfileira um comando para o agente (só os de leitura/diagnóstico)."""
         connector = self.get_object()
         command = request.data.get("command")
-        if command not in ("ping", "validar_schema", "coletar", "reset_state", "descobrir_oracle"):
+        if command not in ("ping", "validar_schema", "coletar", "reset_state", "descobrir_oracle", "reiniciar"):
             raise ValidationError({"command": "Comando não permitido."})
         cmd = enqueue_command(connector, command, request.data.get("payload") or {})
         log_comm(connector, ConnectorLog.Kind.COMMAND, f"enfileirado: {command}", {"id": cmd.id})

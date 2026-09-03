@@ -288,6 +288,9 @@ export function Conector() {
           <i className="bi bi-arrow-repeat me-1" />ao vivo · atualizado {tick > 0 ? "agora" : "—"}
         </span>
         <div className="ms-auto d-flex gap-2 flex-wrap">
+          <Button size="sm" variant="outline-secondary" onClick={() => command("reiniciar")} disabled={!!busy || !c.online} title="Encerra o processo do agente; o serviço sobe de novo em segundos e aplica a versão mais nova">
+            <i className="bi bi-bootstrap-reboot me-1" />Reiniciar agente
+          </Button>
           <Button size="sm" variant="outline-secondary" onClick={() => command("validar_schema")} disabled={!!busy || !c.online}>
             <i className="bi bi-clipboard-check me-1" />Validar schema
           </Button>

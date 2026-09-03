@@ -39,7 +39,7 @@ import time
 import traceback
 import urllib.request
 
-VERSION = "1.0.3"  # BUMP ao publicar: os agentes instalados se auto-atualizam
+VERSION = "1.0.4"  # BUMP ao publicar: os agentes instalados se auto-atualizam
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 BASE_DIR = os.path.dirname(os.path.abspath(sys.executable)) if getattr(sys, "frozen", False) else HERE
@@ -957,6 +957,21 @@ class Handlers:
         self.oracle.cfg = cfg.get("oracle") or {}
         self.oracle.close()
         return {"alterado": changed, "oracle_ok": self.oracle.ping()}
+
+    def do_reiniciar(self, payload):
+        """Encerra o processo; o serviço (systemd Restart=always / NSSM) sobe de novo.
+
+        Serve para destravar uma coleta presa e para forçar o auto-update sem
+        ninguém entrar na máquina do cliente. O resultado é enviado antes de sair.
+        """
+        def _sair():
+            time.sleep(2)
+            _log("reinício pedido pela plataforma — encerrando para o serviço subir de novo")
+            STOP.set()
+            os._exit(0)
+
+        threading.Thread(target=_sair, daemon=True).start()
+        return {"reiniciando": True, "version": VERSION}
 
     def do_run_query(self, payload):
         sql = payload.get("sql") or ""
