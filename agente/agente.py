@@ -39,7 +39,7 @@ import time
 import traceback
 import urllib.request
 
-VERSION = "1.0.0"  # BUMP ao publicar: os agentes instalados se auto-atualizam
+VERSION = "1.0.1"  # BUMP ao publicar: os agentes instalados se auto-atualizam
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 BASE_DIR = os.path.dirname(os.path.abspath(sys.executable)) if getattr(sys, "frozen", False) else HERE
@@ -199,18 +199,22 @@ def descobrir_dsn(cfg, log=_log):
                 continue
             log("[descoberta] listener respondeu em %s:%s" % (host, porta))
             for servico in servicos:
-                dsn = "%s:%s/%s" % (host, porta, servico)
-                tentativas += 1
-                if tentativas > 40:
-                    return None
-                for drv in drivers:
-                    try:
-                        conn = drv.connect(user=ora["user"], password=ora.get("password", ""), dsn=dsn)
-                        conn.close()
-                        log("[descoberta] CONECTOU em %s" % dsn)
-                        return dsn
-                    except Exception:
-                        continue
+                # O nome pode ser SERVICE NAME (host:porta/nome) ou SID
+                # (host:porta:nome) — WinThor antigo quase sempre é SID.
+                for dsn in ("%s:%s/%s" % (host, porta, servico),
+                            "%s:%s:%s" % (host, porta, servico)):
+                    tentativas += 1
+                    if tentativas > 60:
+                        return None
+                    for drv in drivers:
+                        try:
+                            conn = drv.connect(user=ora["user"], password=ora.get("password", ""),
+                                               dsn=_dsn_para_driver(dsn))
+                            conn.close()
+                            log("[descoberta] CONECTOU em %s" % dsn)
+                            return dsn
+                        except Exception:
+                            continue
     return None
 
 
@@ -228,6 +232,26 @@ def aplicar_descoberta(cfg, platform_api=None):
 
 
 # --------------------------------------------------------------------------- Oracle
+_DSN_SID = re.compile(r"^([^:/\s]+):(\d+):([A-Za-z0-9_$#.]+)$")
+
+
+def _dsn_para_driver(dsn):
+    """Traduz `host:porta:SID` num descritor TNS.
+
+    A sintaxe curta `host:porta/nome` é só para SERVICE NAME. WinThor antigo
+    costuma expor SID (ex.: WINT), e nem oracledb nem cx_Oracle aceitam SID no
+    formato curto — o connect falha com ORA-12514/12505 sem explicar. Aqui o
+    formato `host:porta:SID` vira um descritor completo com (SID=...).
+    `host:porta/servico` e descritores prontos passam intocados.
+    """
+    m = _DSN_SID.match((dsn or "").strip())
+    if not m:
+        return dsn
+    host, porta, sid = m.groups()
+    return ("(DESCRIPTION=(ADDRESS=(PROTOCOL=TCP)(HOST=%s)(PORT=%s))"
+            "(CONNECT_DATA=(SID=%s)))" % (host, porta, sid))
+
+
 def _drivers():
     """oracledb (thin) não conecta em Oracle <12.1 (DPY-3010): cai para cx_Oracle (thick)."""
     out = []
@@ -264,7 +288,7 @@ class Oracle:
             try:
                 self._conn = ora.connect(user=self.cfg["user"],
                                          password=self.cfg.get("password", ""),
-                                         dsn=self.cfg["dsn"])
+                                         dsn=_dsn_para_driver(self.cfg["dsn"]))
                 self._apontar_schema()
                 return self._conn
             except Exception as exc:  # noqa: BLE001 — tenta o próximo driver

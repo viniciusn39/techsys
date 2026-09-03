@@ -24,8 +24,13 @@ iwr https://SEU-SERVIDOR/api/coletor/install.ps1 -OutFile install.ps1
 .\install.ps1 -Server https://SEU-SERVIDOR -Key CHAVE -User TECHSYS -Password 'SENHA'
 ```
 
-`--dsn host:1521/SERVICO` é opcional: sem ele o agente descobre o Oracle na
-máquina (oratab, tnsnames.ora, listener.ora, IPs locais) e valida conectando.
+`--dsn` é opcional: sem ele o agente descobre o Oracle na máquina (oratab,
+tnsnames.ora, listener.ora, IPs locais) e valida conectando. Dois formatos:
+
+- `host:1521/SERVICO` — service name;
+- `host:1521:SID` — SID (WinThor antigo, ex.: `localhost:1521:WINT`). O agente
+  converte para o descritor TNS com `(SID=...)`, que é o único jeito que os
+  drivers aceitam SID.
 `--schema DONO` força o schema dono das tabelas (normalmente descoberto pela PCPEDC).
 
 ## Antes: usuário Oracle somente leitura
