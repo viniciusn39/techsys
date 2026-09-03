@@ -72,12 +72,10 @@ export function AppLayout() {
 
   if (!me) return null;
 
-  // Root sem empresa selecionada administra o sistema — nada de metas/planos.
-  const sections = activeTenant
-    ? [...TENANT_SECTIONS, ...(isRoot ? [ROOT_SECTION] : [])]
-    : isRoot
-      ? [ROOT_SECTION]
-      : TENANT_SECTIONS;
+  // Dois contextos que não se misturam: root SEM empresa aberta administra o
+  // sistema (Empresas, Instalador, Integrações); com uma empresa aberta, vê só
+  // o que a empresa vê — o bloco do sistema some até ele "sair da empresa".
+  const sections = activeTenant ? TENANT_SECTIONS : isRoot ? [ROOT_SECTION] : TENANT_SECTIONS;
 
   const current =
     ALL_ITEMS.find((i) => i.to !== "/" && location.pathname.startsWith(i.to)) ||

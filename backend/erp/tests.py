@@ -89,6 +89,32 @@ class ColetorIngestTests(APITestCase):
         self.assertEqual(Branch.objects.filter(tenant=self.other).count(), 0)
         self.assertEqual(Branch.objects.filter(tenant=self.tenant).count(), 1)
 
+    def test_conector_so_para_admin_do_tenant(self):
+        gestor = User.objects.create_user("g@nb.com", "x", first_name="G", tenant=self.tenant, role=User.Role.GESTOR)
+        admin = User.objects.create_user("adm@nb.com", "x", first_name="A", tenant=self.tenant, role=User.Role.ADMIN)
+        self.client.force_authenticate(gestor)
+        self.assertEqual(self.client.get("/api/erp/connectors/").status_code, 403)
+        self.assertEqual(self.client.get(f"/api/erp/connectors/{self.connector.id}/progress/").status_code, 403)
+        self.client.force_authenticate(admin)
+        self.assertEqual(self.client.get("/api/erp/connectors/").status_code, 200)
+
+    def test_progress_devolve_serie_por_minuto_e_estado_do_agente(self):
+        self.ingest("branch", [{"CODIGO": "1", "RAZAOSOCIAL": "Matriz"}, {"CODIGO": "2", "RAZAOSOCIAL": "Loja"}])
+        self.client.post("/api/coletor/heartbeat/",
+                         {"oracle_ok": True, "agent_version": "1.0.2",
+                          "progresso": {"coletando": True, "entidades": {"sales_invoice": {"janela": 4, "marca": "2026-08-01"}}}},
+                         format="json", **self.headers)
+        admin = User.objects.create_user("adm2@nb.com", "x", first_name="A", tenant=self.tenant, role=User.Role.ADMIN)
+        self.client.force_authenticate(admin)
+        r = self.client.get(f"/api/erp/connectors/{self.connector.id}/progress/?minutos=30")
+        self.assertEqual(r.status_code, 200)
+        d = r.json()
+        self.assertTrue(d["coletando"])
+        self.assertEqual(d["total_geral"], 2)
+        self.assertEqual(sum(p.get("branch", 0) for p in d["serie"]), 2)
+        nf = next(e for e in d["entities"] if e["entity"] == "sales_invoice")
+        self.assertEqual((nf["janela"], nf["janela_alvo"], nf["marca"]), (4, 24, "2026-08-01"))
+
     def test_heartbeat_atualiza_health_e_last_seen(self):
         r = self.client.post("/api/coletor/heartbeat/", {"oracle_ok": True, "agent_version": "1.0.0"},
                              format="json", **self.headers)

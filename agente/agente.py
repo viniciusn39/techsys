@@ -39,7 +39,7 @@ import time
 import traceback
 import urllib.request
 
-VERSION = "1.0.1"  # BUMP ao publicar: os agentes instalados se auto-atualizam
+VERSION = "1.0.2"  # BUMP ao publicar: os agentes instalados se auto-atualizam
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 BASE_DIR = os.path.dirname(os.path.abspath(sys.executable)) if getattr(sys, "frozen", False) else HERE
@@ -451,12 +451,31 @@ def _na_janela(horas, hora_atual=None):
     return h >= inicio or h <= fim
 
 
+def _progresso_da_carga():
+    """Resumo do state.json para a tela: marca d'água e carga gradual por entidade.
+
+    É o que responde "até onde a carga inicial já foi": `janela` de 4/24 meses
+    em notas fiscais diz que ainda falta histórico, mesmo com o agente online.
+    """
+    state = load_state()
+    janelas = state.get("_janela") or {}
+    out = {}
+    for entity, marca in state.items():
+        if entity.startswith("_"):
+            continue
+        out[entity] = {"marca": marca}
+    for entity, janela in janelas.items():
+        out.setdefault(entity, {})["janela"] = janela
+    return {"entidades": out, "coletando": BUSY.is_set()}
+
+
 def collect_health(oracle):
     ok = oracle.ping()
     health = {"oracle_ok": ok, "agent_version": VERSION,
               "oracle_erro": "" if ok else getattr(oracle, "last_error", ""),
               "schema": getattr(oracle, "schema", "") or "",
-              "host": platform.node(), "python": platform.python_version()}
+              "host": platform.node(), "python": platform.python_version(),
+              "progresso": _progresso_da_carga()}
     try:
         import psutil
         health["cpu_percent"] = psutil.cpu_percent(interval=0.5)

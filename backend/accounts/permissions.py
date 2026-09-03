@@ -30,6 +30,14 @@ class IsTenantAdmin(BasePermission):
         return role_at_least(request.user, User.Role.ADMIN)
 
 
+class IsTenantAdminStrict(BasePermission):
+    """Leitura E escrita só para admin do tenant (ou root). Usado onde até ver é
+    sensível — ex.: conector do ERP (chave, comandos, dados brutos da carga)."""
+
+    def has_permission(self, request, view):
+        return request.user.is_authenticated and role_at_least(request.user, User.Role.ADMIN)
+
+
 class IsGestorOrAbove(BasePermission):
     """Escrita: gestor, admin ou root. Leitura: qualquer autenticado."""
 

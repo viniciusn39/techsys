@@ -19,7 +19,7 @@ from rest_framework.permissions import AllowAny
 from rest_framework.response import Response
 from rest_framework.views import APIView
 
-from accounts.permissions import IsGestorOrAbove, IsRoot, IsTenantAdmin
+from accounts.permissions import IsGestorOrAbove, IsRoot, IsTenantAdminStrict
 from accounts.tenancy import TenantScopedViewSet
 
 from .coletor import (
@@ -41,7 +41,7 @@ from .serializers import (
     EntitySyncStateSerializer,
 )
 from .sync import map_and_upsert
-from .winthor import DEFAULT_SYNC, oracle_user_script, queries_do_plano
+from .winthor import DEFAULT_SYNC, WINTHOR_QUERIES, oracle_user_script, queries_do_plano
 
 AGENT_FILE = "agente.py"
 
@@ -346,7 +346,8 @@ class InstaladorView(APIView):
 class ConnectorViewSet(TenantScopedViewSet):
     queryset = Connector.objects.all()
     serializer_class = ConnectorSerializer
-    permission_classes = [IsTenantAdmin]
+    # Só admin do tenant vê o conector: aqui estão a chave e os dados brutos da carga.
+    permission_classes = [IsTenantAdminStrict]
     pagination_class = None
 
     def perform_create(self, serializer):
@@ -406,6 +407,77 @@ class ConnectorViewSet(TenantScopedViewSet):
             "entities": rows,
             "logs": ConnectorLogSerializer(logs, many=True).data,
             "commands": AgentCommandSerializer(commands, many=True).data,
+        })
+
+    @action(detail=True, methods=["get"])
+    def progress(self, request, pk=None):
+        """Progressão da carga: registros por minuto (por entidade) + estado do agente.
+
+        Alimenta a tela ao vivo. A série vem dos logs de ingest (cada lote grava
+        `imported`); o avanço da carga gradual (janela em meses) e a marca d'água
+        vêm do heartbeat do agente (health.progresso).
+        """
+        from collections import defaultdict
+        from datetime import timedelta
+
+        from django.utils import timezone
+
+        connector = self.get_object()
+        minutos = min(int(request.query_params.get("minutos") or 120), 24 * 60)
+        desde = timezone.now() - timedelta(minutes=minutos)
+
+        logs = ConnectorLog.objects.filter(
+            connector=connector, kind=ConnectorLog.Kind.INGEST, created_at__gte=desde,
+        ).only("created_at", "data")
+        por_minuto = defaultdict(lambda: defaultdict(int))
+        totais = defaultdict(int)
+        for log in logs:
+            entity = (log.data or {}).get("entity") or "?"
+            n = int((log.data or {}).get("imported") or 0)
+            minuto = timezone.localtime(log.created_at).strftime("%Y-%m-%d %H:%M")
+            por_minuto[minuto][entity] += n
+            totais[entity] += n
+
+        entidades = sorted(totais, key=lambda e: -totais[e])
+        serie = [
+            {"minuto": m, **{e: por_minuto[m].get(e, 0) for e in entidades}}
+            for m in sorted(por_minuto)
+        ]
+
+        planned = [q["entity"] for q in queries_do_plano(connector)]
+        states = {s.entity: s for s in EntitySyncState.objects.filter(connector=connector)}
+        progresso_agente = (connector.health or {}).get("progresso") or {}
+        por_entidade_agente = progresso_agente.get("entidades") or {}
+        plano = {q["entity"]: q for q in WINTHOR_QUERIES}
+        rows = []
+        for entity in planned:
+            s = states.get(entity)
+            ag = por_entidade_agente.get(entity) or {}
+            alvo = int(plano.get(entity, {}).get("backfill_meses") or 0)
+            rows.append({
+                "entity": entity,
+                "last_ingest_at": s.last_ingest_at if s else None,
+                "rows_received": s.rows_received if s else 0,
+                "rows_imported": s.rows_imported if s else 0,
+                "total_imported": s.total_imported if s else 0,
+                "last_error": s.last_error if s else "",
+                "ultimos_min": totais.get(entity, 0),
+                "marca": ag.get("marca"),
+                "janela": ag.get("janela"),
+                "janela_alvo": alvo or None,
+                "incremental": bool(plano.get(entity, {}).get("incremental")),
+                "cadencia_min": plano.get(entity, {}).get("every_minutes"),
+            })
+
+        return Response({
+            "connector": ConnectorSerializer(connector).data,
+            "coletando": bool(progresso_agente.get("coletando")),
+            "minutos": minutos,
+            "serie": serie,
+            "entidades_serie": entidades,
+            "entities": rows,
+            "total_geral": sum(r["total_imported"] for r in rows),
+            "total_periodo": sum(totais.values()),
         })
 
     @action(detail=True, methods=["post"])

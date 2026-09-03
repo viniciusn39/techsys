@@ -1,7 +1,10 @@
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { Button, Form, Modal } from "react-bootstrap";
 import { api } from "../api/client";
-import { EmptyState, Panel, Skeleton, StatCard } from "../components/ui";
+import { BAR_MAX_WIDTH, BAR_RADIUS_V, vizTokens } from "../charts/theme";
+import { EChart } from "../components/EChart";
+import { EmptyState, Meter, Panel, Skeleton, StatCard } from "../components/ui";
+import { useTheme } from "../hooks/useTheme";
 
 interface Connector {
   id: number;
@@ -17,30 +20,37 @@ interface Connector {
   agent_version: string;
 }
 
-interface EntityState {
+interface EntityRow {
   entity: string;
   last_ingest_at: string | null;
   rows_received: number;
   rows_imported: number;
   total_imported: number;
   last_error: string;
+  ultimos_min: number;
+  marca: string | null;
+  janela: number | null;
+  janela_alvo: number | null;
+  incremental: boolean;
+  cadencia_min: number | null;
+}
+
+interface Progress {
+  connector: Connector;
+  coletando: boolean;
+  minutos: number;
+  serie: Record<string, any>[];
+  entidades_serie: string[];
+  entities: EntityRow[];
+  total_geral: number;
+  total_periodo: number;
 }
 
 interface Status {
-  connector: Connector;
-  entities: EntityState[];
   logs: { id: number; kind: string; summary: string; data: any; created_at: string }[];
   commands: { id: number; command: string; status: string; result: any; error: string; created_at: string }[];
 }
 
-interface Install {
-  server: string;
-  token: string;
-  linux: string;
-  windows: string;
-  dba_script: string;
-  entities: string[];
-}
 
 const ENTITY_LABEL: Record<string, string> = {
   branch: "Filiais", salesrep: "Vendedores (RCA)", supplier: "Fornecedores", employee: "Funcionários",
@@ -56,70 +66,65 @@ const KIND_ICON: Record<string, string> = {
   update: "bi-arrow-repeat", plan: "bi-list-check", command: "bi-terminal", result: "bi-reply",
 };
 
-function Copiavel({ label, value, mono = true }: { label: string; value: string; mono?: boolean }) {
-  const [ok, setOk] = useState(false);
-  return (
-    <div className="mb-3">
-      <div className="d-flex justify-content-between align-items-center mb-1">
-        <Form.Label className="mb-0">{label}</Form.Label>
-        <Button
-          size="sm" variant="outline-secondary"
-          onClick={async () => {
-            await navigator.clipboard.writeText(value);
-            setOk(true);
-            window.setTimeout(() => setOk(false), 1500);
-          }}
-        >
-          <i className={`bi ${ok ? "bi-check-lg" : "bi-clipboard"} me-1`} />{ok ? "Copiado" : "Copiar"}
-        </Button>
-      </div>
-      <pre
-        className="p-2 rounded mb-0"
-        style={{
-          background: "var(--surface-sunken)", border: "1px solid var(--border)",
-          fontSize: mono ? "0.76rem" : "0.85rem", whiteSpace: "pre-wrap", wordBreak: "break-all",
-          maxHeight: 260, overflow: "auto",
-        }}
-      >
-        {value}
-      </pre>
-    </div>
-  );
+const REFRESH_MS = 10000;
+
+
+const fmtInt = (n: number) => (n ?? 0).toLocaleString("pt-BR");
+const fmtHora = (iso: string | null) => (iso ? new Date(iso).toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit", second: "2-digit" }) : "—");
+const fmtDataHora = (iso: string | null) => (iso ? new Date(iso).toLocaleString("pt-BR") : "—");
+
+function relativo(iso: string | null) {
+  if (!iso) return "nunca";
+  const s = Math.round((Date.now() - new Date(iso).getTime()) / 1000);
+  if (s < 60) return `há ${s}s`;
+  if (s < 3600) return `há ${Math.round(s / 60)} min`;
+  if (s < 86400) return `há ${Math.round(s / 3600)} h`;
+  return `há ${Math.round(s / 86400)} d`;
 }
 
 export function Conector() {
+  const { isDark } = useTheme();
+  const t = vizTokens(isDark);
+
   const [connectors, setConnectors] = useState<Connector[] | null>(null);
   const [current, setCurrent] = useState<Connector | null>(null);
+  const [progress, setProgress] = useState<Progress | null>(null);
   const [status, setStatus] = useState<Status | null>(null);
-  const [install, setInstall] = useState<Install | null>(null);
-  const [showInstall, setShowInstall] = useState(false);
-  const [showDba, setShowDba] = useState(false);
+  const [showLogs, setShowLogs] = useState(false);
   const [busy, setBusy] = useState("");
   const [notice, setNotice] = useState("");
+  const [minutos, setMinutos] = useState(120);
+  const [tick, setTick] = useState(0);
 
-  const loadStatus = useCallback(async (id: number) => {
-    setStatus(await api.get<Status>(`/api/erp/connectors/${id}/status/`));
-  }, []);
+  const refresh = useCallback(async (id: number) => {
+    const [p, s] = await Promise.all([
+      api.get<Progress>(`/api/erp/connectors/${id}/progress/?minutos=${minutos}`),
+      api.get<Status>(`/api/erp/connectors/${id}/status/`),
+    ]);
+    setProgress(p);
+    setStatus(s);
+    setTick((x) => x + 1);
+  }, [minutos]);
 
   const load = useCallback(async () => {
     const list = await api.get<Connector[]>("/api/erp/connectors/");
     setConnectors(list);
     if (list.length > 0) {
       setCurrent(list[0]);
-      loadStatus(list[0].id);
+      await refresh(list[0].id);
     }
-  }, [loadStatus]);
+  }, [refresh]);
 
   useEffect(() => {
     load().catch(() => setConnectors([]));
   }, [load]);
 
-  // Atualiza o status a cada 30 s enquanto a tela está aberta.
+  // Ao vivo: enquanto a tela está aberta, atualiza a cada 10 s.
   useEffect(() => {
     if (!current) return;
-    const t = window.setInterval(() => loadStatus(current.id).catch(() => {}), 30000);
-    return () => window.clearInterval(t);
-  }, [current, loadStatus]);
+    const timer = window.setInterval(() => refresh(current.id).catch(() => {}), REFRESH_MS);
+    return () => window.clearInterval(timer);
+  }, [current, refresh]);
 
   const create = async () => {
     setBusy("create");
@@ -131,25 +136,14 @@ export function Conector() {
     }
   };
 
-  const openInstall = async () => {
-    if (!current) return;
-    setInstall(await api.get<Install>(`/api/erp/connectors/${current.id}/install/`));
-    setShowInstall(true);
-  };
 
-  const openDba = async () => {
-    if (!current) return;
-    if (!install) setInstall(await api.get<Install>(`/api/erp/connectors/${current.id}/install/`));
-    setShowDba(true);
-  };
 
   const command = async (cmd: string, payload: any = {}) => {
     if (!current) return;
     setBusy(cmd);
     try {
       await api.post(`/api/erp/connectors/${current.id}/command/`, { command: cmd, payload });
-      setNotice(`Comando "${cmd}" enfileirado — o agente responde no próximo long-poll (até 30 s).`);
-      window.setTimeout(() => loadStatus(current.id), 8000);
+      setNotice(`Comando "${cmd}" enfileirado — o agente responde em até 30 s.`);
     } finally {
       setBusy("");
     }
@@ -166,12 +160,41 @@ export function Conector() {
     }
   };
 
-  const rotate = async () => {
-    if (!current || !confirm("Gerar nova chave? O agente já instalado deixa de autenticar até ser reinstalado com a chave nova.")) return;
-    await api.post(`/api/erp/connectors/${current.id}/rotate-token/`);
-    setInstall(null);
-    await load();
-  };
+
+  // --- gráfico: registros importados por minuto, empilhado por entidade ---
+  const chartOption = useMemo(() => {
+    const serie = progress?.serie ?? [];
+    const ents = (progress?.entidades_serie ?? []).slice(0, 8);
+    const cores = [...t.series, "#0d9488", "#b45309", "#6f42c1", "#d03b3b"];
+    return {
+      grid: { left: 8, right: 12, top: 30, bottom: 4, containLabel: true },
+      legend: { top: 0, left: 0, data: ents.map((e) => ENTITY_LABEL[e] ?? e) },
+      tooltip: {
+        trigger: "axis" as const,
+        axisPointer: { type: "shadow" as const },
+        valueFormatter: (v: any) => fmtInt(Number(v)),
+      },
+      xAxis: {
+        type: "category" as const,
+        data: serie.map((s) => String(s.minuto).slice(11)),
+        axisLabel: { interval: Math.max(0, Math.floor(serie.length / 12) - 1) },
+      },
+      yAxis: { type: "value" as const, minInterval: 1 },
+      series: ents.map((e, i) => ({
+        name: ENTITY_LABEL[e] ?? e,
+        type: "bar" as const,
+        stack: "carga",
+        barMaxWidth: BAR_MAX_WIDTH,
+        itemStyle: {
+          color: cores[i % cores.length],
+          borderColor: t.surface,
+          borderWidth: 1,
+          borderRadius: i === ents.length - 1 ? BAR_RADIUS_V : 0,
+        },
+        data: serie.map((s) => s[e] ?? 0),
+      })),
+    };
+  }, [progress, t]);
 
   if (connectors === null) return <Panel><Skeleton height={300} /></Panel>;
 
@@ -181,18 +204,20 @@ export function Conector() {
         <EmptyState
           icon="bi-robot"
           title="Nenhum conector configurado"
-          hint="Crie o conector para gerar a chave do agente e o script do DBA. O agente roda na rede do cliente e só lê o ERP."
+          hint="Crie o conector; a chave e o instalador do agente são fornecidos pela TechSys. O agente roda na rede do cliente e só lê o ERP."
           action={<Button onClick={create} disabled={!!busy}><i className="bi bi-plus-lg me-1" />Criar conector WinThor</Button>}
         />
       </Panel>
     );
   }
 
-  const c = status?.connector ?? current!;
+  const c = progress?.connector ?? current!;
   const h = c.health || {};
-  const totalImportado = (status?.entities ?? []).reduce((a, e) => a + (e.total_imported || 0), 0);
-  const comCarga = (status?.entities ?? []).filter((e) => e.last_ingest_at).length;
-  const lastSeen = c.last_seen_at ? new Date(c.last_seen_at).toLocaleString("pt-BR") : "nunca";
+  const rows = progress?.entities ?? [];
+  const comCarga = rows.filter((e) => e.last_ingest_at).length;
+  const comErro = rows.filter((e) => e.last_error).length;
+  const taxa = progress ? Math.round(progress.total_periodo / Math.max(1, progress.minutos)) : 0;
+  const maxTotal = Math.max(1, ...rows.map((r) => r.total_imported));
 
   return (
     <div>
@@ -203,6 +228,7 @@ export function Conector() {
         </div>
       )}
 
+      {/* --- KPI row --- */}
       <div className="row g-3 mb-3">
         <div className="col-6 col-xl-3">
           <StatCard
@@ -211,10 +237,10 @@ export function Conector() {
             value={
               <span className={`status-pill ${c.online ? "st-verde" : "st-vermelho"}`} style={{ fontSize: "0.95rem" }}>
                 <i className={`bi ${c.online ? "bi-check-circle-fill" : "bi-x-circle-fill"}`} />
-                {c.online ? "Online" : "Offline"}
+                {c.online ? (progress?.coletando ? "Coletando agora" : "Online") : "Offline"}
               </span>
             }
-            foot={`último contato: ${lastSeen}`}
+            foot={`v${c.agent_version || "?"} · ${h.host || "—"} · contato ${relativo(c.last_seen_at)}`}
           />
         </div>
         <div className="col-6 col-xl-3">
@@ -227,23 +253,35 @@ export function Conector() {
                 {h.oracle_ok ? "Conectado" : h.oracle_ok === false ? "Sem conexão" : "Sem informação"}
               </span>
             }
-            foot={h.oracle_erro ? <span className="text-danger">{String(h.oracle_erro).slice(0, 90)}</span> : h.schema ? `schema ${h.schema}` : "aguardando primeiro heartbeat"}
+            foot={h.oracle_erro ? <span className="text-danger">{String(h.oracle_erro).slice(0, 90)}</span> : h.schema ? `schema ${h.schema}` : "aguardando heartbeat"}
           />
         </div>
         <div className="col-6 col-xl-3">
-          <StatCard icon="bi-cloud-arrow-down" label="Registros importados" value={totalImportado.toLocaleString("pt-BR")} foot={`${comCarga} de ${status?.entities.length ?? 0} entidades com carga`} />
+          <StatCard
+            icon="bi-cloud-arrow-down"
+            label="Registros no espelho"
+            value={fmtInt(progress?.total_geral ?? 0)}
+            foot={`${comCarga} de ${rows.length} entidades já chegaram${comErro ? ` · ${comErro} com erro` : ""}`}
+          />
         </div>
         <div className="col-6 col-xl-3">
-          <StatCard icon="bi-cpu" label="Versão do agente" value={c.agent_version || "—"} foot={h.host ? `${h.host} · Python ${h.python ?? ""}` : "ainda não instalado"} />
+          <StatCard
+            icon="bi-speedometer2"
+            label={`Ritmo (últimos ${progress?.minutos ?? minutos} min)`}
+            value={<>{fmtInt(taxa)} <span className="fs-6 text-muted-2">reg/min</span></>}
+            foot={`${fmtInt(progress?.total_periodo ?? 0)} registros no período`}
+          />
         </div>
       </div>
 
+      {/* --- barra de ações --- */}
       <div className="filter-bar">
         <span className="fw-semibold">{c.name}</span>
         <span className="badge text-bg-light border fw-normal text-capitalize">{c.perfil}</span>
+        <span className="text-muted-2 small">
+          <i className="bi bi-arrow-repeat me-1" />ao vivo · atualizado {tick > 0 ? "agora" : "—"}
+        </span>
         <div className="ms-auto d-flex gap-2 flex-wrap">
-          <Button size="sm" onClick={openInstall}><i className="bi bi-download me-1" />Instalar agente</Button>
-          <Button size="sm" variant="outline-secondary" onClick={openDba}><i className="bi bi-shield-lock me-1" />Script do DBA</Button>
           <Button size="sm" variant="outline-secondary" onClick={() => command("validar_schema")} disabled={!!busy || !c.online}>
             <i className="bi bi-clipboard-check me-1" />Validar schema
           </Button>
@@ -253,125 +291,152 @@ export function Conector() {
           <Button size="sm" variant="outline-secondary" onClick={recalcular} disabled={!!busy}>
             <i className="bi bi-calculator me-1" />Recalcular indicadores
           </Button>
-          <Button size="sm" variant="outline-secondary" onClick={rotate}><i className="bi bi-key me-1" />Nova chave</Button>
+          <Button size="sm" variant="outline-secondary" onClick={() => setShowLogs(true)}>
+            <i className="bi bi-journal-text me-1" />Atividade
+          </Button>
         </div>
       </div>
 
-      <div className="row g-3">
-        <div className="col-xl-7">
-          <Panel title="Sincronização por entidade" subtitle="O que já chegou do ERP e quando">
-            <div className="table-responsive">
-              <table className="table table-sm align-middle">
-                <thead>
-                  <tr><th>Entidade</th><th>Última carga</th><th className="num">Último lote</th><th className="num">Total</th><th>Situação</th></tr>
-                </thead>
-                <tbody>
-                  {(status?.entities ?? []).map((e) => (
-                    <tr key={e.entity}>
-                      <td>
-                        <div className="fw-semibold small">{ENTITY_LABEL[e.entity] ?? e.entity}</div>
-                        <div className="text-muted-2" style={{ fontSize: "0.72rem" }}>{e.entity}</div>
-                      </td>
-                      <td className="small text-secondary-2">{e.last_ingest_at ? new Date(e.last_ingest_at).toLocaleString("pt-BR") : "—"}</td>
-                      <td className="num small">{e.last_ingest_at ? `${e.rows_imported}/${e.rows_received}` : "—"}</td>
-                      <td className="num small">{e.total_imported.toLocaleString("pt-BR")}</td>
-                      <td>
-                        {e.last_error ? (
-                          <span className="status-pill st-vermelho" title={e.last_error}><i className="bi bi-x-circle-fill" />erro</span>
-                        ) : e.last_ingest_at ? (
-                          <span className="status-pill st-verde"><i className="bi bi-check-circle-fill" />ok</span>
-                        ) : (
-                          <span className="status-pill st-neutro"><i className="bi bi-hourglass-split" />aguardando</span>
-                        )}
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
-          </Panel>
-        </div>
-        <div className="col-xl-5">
-          <Panel title="Atividade recente" subtitle="Comunicação do agente com a plataforma">
-            {(status?.commands ?? []).length > 0 && (
-              <div className="mb-3">
-                {status!.commands.slice(0, 3).map((cmd) => (
-                  <div key={cmd.id} className="suggestion-row">
-                    <i className="bi bi-terminal mt-1" />
-                    <div className="flex-grow-1 small">
-                      <div className="d-flex justify-content-between">
-                        <span className="fw-semibold">{cmd.command}</span>
-                        <span className={`status-pill ${cmd.status === "done" ? "st-verde" : cmd.status === "error" ? "st-vermelho" : "st-amarelo"}`}>
-                          <i className={`bi ${cmd.status === "done" ? "bi-check-circle-fill" : cmd.status === "error" ? "bi-x-circle-fill" : "bi-hourglass-split"}`} />{cmd.status}
-                        </span>
+      {/* --- progressão --- */}
+      <Panel
+        className="mb-3"
+        title="Progressão da carga"
+        subtitle="Registros importados por minuto, por entidade"
+        actions={
+          <Form.Select size="sm" style={{ width: 150 }} value={minutos} onChange={(e) => setMinutos(Number(e.target.value))}>
+            <option value={30}>Últimos 30 min</option>
+            <option value={120}>Últimas 2 horas</option>
+            <option value={360}>Últimas 6 horas</option>
+            <option value={1440}>Últimas 24 horas</option>
+          </Form.Select>
+        }
+      >
+        {(progress?.serie.length ?? 0) === 0 ? (
+          <EmptyState icon="bi-activity" title="Nenhuma carga no período" hint="Assim que o agente enviar dados, o gráfico aparece aqui." />
+        ) : (
+          <EChart option={chartOption} height={260} />
+        )}
+      </Panel>
+
+      <Panel title="Sincronização por entidade" subtitle="O que já chegou do ERP, o histórico coberto e quando foi a última carga">
+        <div className="table-responsive">
+          <table className="table table-sm align-middle">
+            <thead>
+              <tr>
+                <th>Entidade</th>
+                <th style={{ width: 220 }}>Registros no espelho</th>
+                <th>Histórico</th>
+                <th>Última carga</th>
+                <th className="num">Último lote</th>
+                <th className="num">Últ. {progress?.minutos ?? minutos} min</th>
+                <th>Situação</th>
+              </tr>
+            </thead>
+            <tbody>
+              {rows.map((e) => {
+                const backfill = e.janela_alvo ? Math.min(100, ((e.janela ?? 0) / e.janela_alvo) * 100) : null;
+                return (
+                  <tr key={e.entity}>
+                    <td>
+                      <div className="fw-semibold small">{ENTITY_LABEL[e.entity] ?? e.entity}</div>
+                      <div className="text-muted-2" style={{ fontSize: "0.72rem" }}>
+                        {e.entity}{e.cadencia_min ? ` · a cada ${e.cadencia_min >= 60 ? `${e.cadencia_min / 60} h` : `${e.cadencia_min} min`}` : ""}
                       </div>
-                      {cmd.error && <div className="text-danger" style={{ fontSize: "0.74rem" }}>{cmd.error.slice(0, 200)}</div>}
-                      {cmd.status === "done" && cmd.result?.resumo && (
-                        <div className="text-muted-2" style={{ fontSize: "0.74rem" }}>
-                          {cmd.result.resumo.ok} ok · {cmd.result.resumo.parcial} parcial · {cmd.result.resumo.falha} falha
-                          {Object.keys(cmd.result.tabelas_inacessiveis || {}).length > 0 && (
-                            <div className="mt-1">{Object.entries(cmd.result.tabelas_inacessiveis).map(([t, m]) => <div key={t}><code>{t}</code> — {String(m)}</div>)}</div>
-                          )}
+                    </td>
+                    <td>
+                      <div className="d-flex align-items-center gap-2">
+                        <div className="flex-grow-1"><Meter pct={(e.total_imported / maxTotal) * 100} /></div>
+                        <span className="num small fw-semibold" style={{ minWidth: 64 }}>{fmtInt(e.total_imported)}</span>
+                      </div>
+                    </td>
+                    <td className="small">
+                      {e.janela_alvo ? (
+                        <div>
+                          <div className="d-flex align-items-center gap-2">
+                            <div style={{ width: 90 }}><Meter pct={backfill} status={backfill! >= 100 ? "verde" : "amarelo"} /></div>
+                            <span className="text-secondary-2">{e.janela ?? 0}/{e.janela_alvo} meses</span>
+                          </div>
+                          {e.marca && <div className="text-muted-2" style={{ fontSize: "0.72rem" }}>marca d'água {String(e.marca).slice(0, 16)}</div>}
                         </div>
+                      ) : e.marca ? (
+                        <span className="text-muted-2" style={{ fontSize: "0.74rem" }}>incremental · marca {String(e.marca).slice(0, 16)}</span>
+                      ) : e.incremental ? (
+                        <span className="text-muted-2" style={{ fontSize: "0.74rem" }}>incremental</span>
+                      ) : (
+                        <span className="text-muted-2" style={{ fontSize: "0.74rem" }}>recarga cheia</span>
                       )}
-                    </div>
-                  </div>
-                ))}
-              </div>
-            )}
-            {(status?.logs ?? []).length === 0 ? (
-              <EmptyState icon="bi-activity" title="Nenhuma comunicação ainda" hint="Instale o agente na rede do cliente para começar." />
-            ) : (
-              <div style={{ maxHeight: 420, overflow: "auto" }}>
-                {status!.logs.map((l) => (
-                  <div key={l.id} className="d-flex gap-2 py-1 border-bottom small" style={{ borderColor: "var(--grid)" }}>
-                    <i className={`bi ${KIND_ICON[l.kind] ?? "bi-dot"} ${l.kind === "error" ? "text-danger" : "text-muted-2"}`} />
-                    <span className="text-muted-2" style={{ minWidth: 118, fontSize: "0.72rem" }}>{new Date(l.created_at).toLocaleString("pt-BR")}</span>
-                    <span className="flex-grow-1">{l.summary}</span>
-                  </div>
-                ))}
-              </div>
-            )}
-          </Panel>
+                    </td>
+                    <td className="small text-secondary-2" title={fmtDataHora(e.last_ingest_at)}>
+                      {e.last_ingest_at ? `${fmtHora(e.last_ingest_at)} (${relativo(e.last_ingest_at)})` : "—"}
+                    </td>
+                    <td className="num small">{e.last_ingest_at ? `${fmtInt(e.rows_imported)}/${fmtInt(e.rows_received)}` : "—"}</td>
+                    <td className="num small">{e.ultimos_min ? <span className="fw-semibold">+{fmtInt(e.ultimos_min)}</span> : <span className="text-muted-2">—</span>}</td>
+                    <td>
+                      {e.last_error ? (
+                        <span className="status-pill st-vermelho" title={e.last_error}><i className="bi bi-x-circle-fill" />erro</span>
+                      ) : e.ultimos_min > 0 ? (
+                        <span className="status-pill st-verde"><i className="bi bi-arrow-down-circle-fill" />carregando</span>
+                      ) : e.last_ingest_at ? (
+                        <span className="status-pill st-verde"><i className="bi bi-check-circle-fill" />sincronizado</span>
+                      ) : (
+                        <span className="status-pill st-neutro"><i className="bi bi-hourglass-split" />aguardando</span>
+                      )}
+                    </td>
+                  </tr>
+                );
+              })}
+            </tbody>
+          </table>
         </div>
-      </div>
+      </Panel>
 
-      <Modal show={showInstall} onHide={() => setShowInstall(false)} size="lg" centered>
-        <Modal.Header closeButton><Modal.Title className="fs-6">Instalar o agente na rede do cliente</Modal.Title></Modal.Header>
+      {/* --- modais --- */}
+      <Modal show={showLogs} onHide={() => setShowLogs(false)} size="lg" centered scrollable>
+        <Modal.Header closeButton><Modal.Title className="fs-6">Atividade do agente</Modal.Title></Modal.Header>
         <Modal.Body>
-          {install ? (
-            <>
-              <div className="alert alert-warning py-2 small">
-                <i className="bi bi-exclamation-triangle-fill me-1" />
-                Antes, o DBA precisa criar o usuário Oracle somente-leitura (botão <strong>Script do DBA</strong>).
-                Troque <code>SENHA_DO_ORACLE</code> pela senha desse usuário. Sem <code>--dsn</code> o agente descobre o Oracle sozinho.
+          {(status?.commands ?? []).length > 0 && (
+            <div className="mb-3">
+              <div className="stat-label mb-2"><i className="bi bi-terminal" />Comandos</div>
+              {status!.commands.slice(0, 5).map((cmd) => (
+                <div key={cmd.id} className="suggestion-row">
+                  <div className="flex-grow-1 small">
+                    <div className="d-flex justify-content-between">
+                      <span className="fw-semibold">{cmd.command} <span className="text-muted-2 fw-normal">{fmtDataHora(cmd.created_at)}</span></span>
+                      <span className={`status-pill ${cmd.status === "done" ? "st-verde" : cmd.status === "error" ? "st-vermelho" : "st-amarelo"}`}>
+                        <i className={`bi ${cmd.status === "done" ? "bi-check-circle-fill" : cmd.status === "error" ? "bi-x-circle-fill" : "bi-hourglass-split"}`} />{cmd.status}
+                      </span>
+                    </div>
+                    {cmd.error && <div className="text-danger" style={{ fontSize: "0.74rem" }}>{cmd.error.slice(0, 300)}</div>}
+                    {cmd.status === "done" && cmd.result?.resumo && (
+                      <div className="text-muted-2" style={{ fontSize: "0.74rem" }}>
+                        {cmd.result.resumo.ok} ok · {cmd.result.resumo.parcial} parcial · {cmd.result.resumo.falha} falha
+                        {(cmd.result.entidades || []).filter((x: any) => x.estado !== "ok").map((x: any) => (
+                          <div key={x.entidade}><code>{x.entidade}</code>: {x.estado} {x.colunas_ignoradas?.length ? `(colunas ignoradas: ${x.colunas_ignoradas.join(", ")})` : ""} {x.erro}</div>
+                        ))}
+                        {Object.entries(cmd.result.tabelas_inacessiveis || {}).map(([tb, m]) => <div key={tb}><code>{tb}</code> — {String(m)}</div>)}
+                      </div>
+                    )}
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
+          <div className="stat-label mb-2"><i className="bi bi-journal-text" />Comunicação recente</div>
+          {(status?.logs ?? []).length === 0 ? (
+            <div className="text-muted-2 small">Nenhuma comunicação ainda.</div>
+          ) : (
+            status!.logs.map((l) => (
+              <div key={l.id} className="d-flex gap-2 py-1 border-bottom small" style={{ borderColor: "var(--grid)" }}>
+                <i className={`bi ${KIND_ICON[l.kind] ?? "bi-dot"} ${l.kind === "error" ? "text-danger" : "text-muted-2"}`} />
+                <span className="text-muted-2" style={{ minWidth: 130, fontSize: "0.72rem" }}>{fmtDataHora(l.created_at)}</span>
+                <span className="flex-grow-1">{l.summary}</span>
               </div>
-              <Copiavel label="Linux (rode como root na máquina que enxerga o Oracle)" value={install.linux} />
-              <Copiavel label="Windows (PowerShell como administrador)" value={install.windows} />
-              <Copiavel label="Chave do agente" value={install.token} />
-              <div className="text-muted-2 small">
-                Servidor: <code>{install.server}</code> — se o cliente acessa a plataforma por outro endereço, defina <code>PUBLIC_URL</code> no servidor.
-                Entidades coletadas: {install.entities.length}.
-              </div>
-            </>
-          ) : <Skeleton height={200} />}
+            ))
+          )}
         </Modal.Body>
       </Modal>
 
-      <Modal show={showDba} onHide={() => setShowDba(false)} size="lg" centered>
-        <Modal.Header closeButton><Modal.Title className="fs-6">Script do DBA — usuário Oracle somente leitura</Modal.Title></Modal.Header>
-        <Modal.Body>
-          {install ? (
-            <>
-              <div className="text-muted-2 small mb-2">
-                Substitua <code>__DONO__</code> pelo schema dono das tabelas PC* e <code>__SENHA__</code> por uma senha forte.
-                Só <code>GRANT SELECT</code>, tabela a tabela — o agente nunca grava no ERP.
-              </div>
-              <Copiavel label="grants.sql" value={install.dba_script} />
-            </>
-          ) : <Skeleton height={200} />}
-        </Modal.Body>
-      </Modal>
+
     </div>
   );
 }
