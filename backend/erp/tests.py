@@ -263,11 +263,11 @@ class ColetorIngestTests(APITestCase):
         ])
         sincronizar_metas_erp(tenant_id=self.tenant.id, meses=1)
         self.assertEqual((meta(fat), meta(fat_cd)), (150, 120))
-        rq = self.client.get(f"/api/indicators/{fat_cd.id}/breakdown/?gran=dia&n=2&ate={d2.isoformat()}"); print("DEBUG", rq.status_code, rq.content[:300]); q = rq.json()
-        self.assertEqual([p["target"] for p in q["periodos"]], [70.0, 50.0])
 
         gestor = User.objects.create_user("g5@nb.com", "x", first_name="G", tenant=self.tenant, role=User.Role.GESTOR)
         self.client.force_authenticate(gestor)
+        q = self.client.get(f"/api/indicators/{fat_cd.id}/breakdown/?gran=dia&n=2&ate={d2.isoformat()}").json()
+        self.assertEqual([p["target"] for p in q["periodos"]], [70.0, 50.0])
         r = self.client.post(f"/api/indicators/{fat.id}/targets/bulk/", {"targets": [{"period": mes, "target_value": "1"}]}, format="json")
         self.assertEqual(r.status_code, 400)
         self.assertEqual(self.client.get("/api/erp/targets/").json()[0]["key"], "vlvendaprev")
