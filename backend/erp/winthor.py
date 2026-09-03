@@ -152,7 +152,7 @@ WHERE N.DTSAIDA >= ADD_MONTHS(TRUNC(SYSDATE), -:janela)
         "incremental": True,
         "since_column": "DTMOV",
         "batch": 1000,
-        "backfill_meses": 12,
+        "backfill_meses": 24,
         "backfill_passo": 1,
         "sql": """
 SELECT M.NUMTRANSITEM, M.NUMTRANSVENDA, M.NUMNOTA, M.CODOPER, M.CODFILIAL,
@@ -174,8 +174,7 @@ WHERE M.DTCANCEL IS NULL
         "since_column": "DTULTALTER",
         "batch": 2000,
         # PCPREST guarda a vida inteira da empresa (33 milhões de linhas numa
-        # distribuidora). Carga gradual: títulos emitidos na janela + tudo que
-        # está em aberto (a inadimplência precisa dos antigos ainda não pagos).
+        # distribuidora). Carga gradual pela emissão, no máximo 24 meses.
         "backfill_meses": 24,
         "backfill_passo": 3,
         "sql": """
@@ -190,8 +189,7 @@ SELECT P.NUMTRANSVENDA || '-' || P.PREST AS EXTERNAL_ID,
             ELSE 'open' END AS STATUS,
        TO_CHAR(P.DTULTALTER,'YYYY-MM-DD HH24:MI:SS') AS DTULTALTER
 FROM PCPREST P
-WHERE (P.DTEMISSAO >= ADD_MONTHS(TRUNC(SYSDATE,'MM'), -:janela)
-       OR (P.DTPAG IS NULL AND P.DTCANCEL IS NULL))
+WHERE P.DTEMISSAO >= ADD_MONTHS(TRUNC(SYSDATE,'MM'), -:janela)
   AND (:since IS NULL OR P.DTULTALTER > TO_DATE(:since,'YYYY-MM-DD HH24:MI:SS'))
 """,
     },
@@ -217,8 +215,7 @@ SELECT L.RECNUM, L.CODFORNEC, L.NUMNOTA, L.HISTORICO, CT.CONTA, L.TIPOSERVICO,
        TO_CHAR(L.DTULTALTER,'YYYY-MM-DD HH24:MI:SS') AS DTULTALTER
 FROM PCLANC L
 LEFT JOIN PCCONTA CT ON CT.CODCONTA = L.CODCONTA
-WHERE (L.DTEMISSAO >= ADD_MONTHS(TRUNC(SYSDATE,'MM'), -:janela)
-       OR (L.DTPAGTO IS NULL AND L.DTCANCEL IS NULL AND NVL(L.LANCEXCLUIDO,'N') = 'N'))
+WHERE L.DTEMISSAO >= ADD_MONTHS(TRUNC(SYSDATE,'MM'), -:janela)
   AND (:since IS NULL OR L.DTULTALTER > TO_DATE(:since,'YYYY-MM-DD HH24:MI:SS'))
 """,
     },
@@ -233,7 +230,7 @@ SELECT F.CODFILIAL || '-' || TO_CHAR(F.DATA,'YYYY-MM-DD') AS EXTERNAL_ID,
        F.SALDOESTFIN, F.SALDOREAL, F.VENDAREAL, F.RECEBREAL, F.CMVREAL,
        TO_CHAR(F.DATA,'YYYY-MM-DD') AS DATA
 FROM PCFINANC F
-WHERE F.DATA >= TRUNC(SYSDATE) - 120
+WHERE F.DATA >= ADD_MONTHS(TRUNC(SYSDATE), -24)
   AND (:since IS NULL OR F.DATA >= TRUNC(SYSDATE) - 7)
 """,
     },
@@ -247,12 +244,14 @@ FROM PCBANCO B
 """,
     },
     {  # PCMOVCR — extrato de conta corrente: entradas (D) e saídas (C) reais de caixa.
-       # Janela 180 dias, reprocessa 7 dias por ciclo (estornos somem via DTESTORNO).
+       # Carga gradual até 24 meses; reprocessa 7 dias por ciclo (estornos somem via DTESTORNO).
         "entity": "cash_movement",
         "every_minutes": 60,
         "incremental": True,
         "since_column": "DATA",
-        "batch": 1000,
+        "batch": 2000,
+        "backfill_meses": 24,
+        "backfill_passo": 3,
         "sql": """
 SELECT M.NUMTRANS || '-' || M.CODBANCO || '-' || M.CODCOB AS EXTERNAL_ID,
        M.NUMTRANS, TO_CHAR(M.DATA,'YYYY-MM-DD') AS DATA, M.CODBANCO, M.CODCOB,
@@ -261,7 +260,7 @@ SELECT M.NUMTRANS || '-' || M.CODBANCO || '-' || M.CODCOB AS EXTERNAL_ID,
        TO_CHAR(M.DTCOMPENSACAO,'YYYY-MM-DD') AS DTCOMPENSACAO
 FROM PCMOVCR M
 WHERE M.DTESTORNO IS NULL
-  AND M.DATA >= TRUNC(SYSDATE) - 180
+  AND M.DATA >= ADD_MONTHS(TRUNC(SYSDATE), -:janela)
   AND (:since IS NULL OR M.DATA >= TRUNC(SYSDATE) - 7)
 """,
     },
@@ -287,7 +286,7 @@ FROM PCEST E
         "incremental": True,
         "since_column": "DATA",
         "batch": 1000,
-        "backfill_meses": 12,
+        "backfill_meses": 24,
         "backfill_passo": 2,
         "sql": """
 SELECT C.NUMPED, C.CODFILIAL, C.CODCLI, C.CODUSUR, C.CONDVENDA, C.CODPLPAG,
@@ -319,7 +318,7 @@ SELECT N.NUMTRANSENT, MAX(N.NUMNOTA) AS NUMNOTA, MAX(N.SERIE) AS SERIE,
        MAX(N.VLIPI) AS VLIPI, MAX(N.VLFRETE) AS VLFRETE,
        TO_CHAR(MAX(N.DTLANCTO),'YYYY-MM-DD HH24:MI:SS') AS DTLANCTO
 FROM PCNFENT N
-WHERE N.DTENT >= ADD_MONTHS(TRUNC(SYSDATE), -12)
+WHERE N.DTENT >= ADD_MONTHS(TRUNC(SYSDATE), -24)
   AND (:since IS NULL OR N.DTLANCTO > TO_DATE(:since,'YYYY-MM-DD HH24:MI:SS') - 7)
 GROUP BY N.NUMTRANSENT
 """,
@@ -342,7 +341,7 @@ SELECT C.NUMCAR, C.CODFILIALSAIDA, E.NOME AS MOTORISTA, V.PLACA, C.CODROTAPRINC,
 FROM PCCARREG C
 LEFT JOIN PCEMPR E   ON E.MATRICULA = C.CODMOTORISTA
 LEFT JOIN PCVEICUL V ON V.CODVEICULO = C.CODVEICULO
-WHERE C.DTSAIDA >= ADD_MONTHS(TRUNC(SYSDATE), -12)
+WHERE C.DTSAIDA >= ADD_MONTHS(TRUNC(SYSDATE), -24)
   AND (:since IS NULL OR C.DTULTALTER > TO_DATE(:since,'YYYY-MM-DD HH24:MI:SS'))
 """,
     },
@@ -383,7 +382,7 @@ SELECT R.CODFILIAL || '-' || R.CODUSUR || '-' || TO_CHAR(R.DATA,'YYYYMMDD') AS E
        MAX(R.PERVENDAPREV) AS PERVENDAPREV,
        TO_CHAR(MAX(NVL(R.DTMXSALTER, R.DATA)),'YYYY-MM-DD HH24:MI:SS') AS DTMXSALTER
 FROM PCMETARCA R
-WHERE R.DATA >= ADD_MONTHS(TRUNC(SYSDATE,'MM'), -13)
+WHERE R.DATA >= ADD_MONTHS(TRUNC(SYSDATE,'MM'), -24)
 GROUP BY R.CODFILIAL, R.CODUSUR, R.DATA
 HAVING (SUM(NVL(R.VLVENDAPREV,0)) > 0 OR SUM(NVL(R.NUMCLIPOS,0)) > 0 OR SUM(NVL(R.QTPEDPREV,0)) > 0)
    AND (:since IS NULL OR MAX(NVL(R.DTMXSALTER, R.DATA)) > TO_DATE(:since,'YYYY-MM-DD HH24:MI:SS'))
