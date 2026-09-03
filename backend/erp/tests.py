@@ -181,6 +181,47 @@ class ColetorIngestTests(APITestCase):
         r = self.client.post("/api/indicator-values/bulk/", {"values": [{"indicator": manual.id, "period": "2026-08-01", "value": "70"}]}, format="json")
         self.assertEqual(r.status_code, 201)
 
+    def test_quebra_por_periodo_valores_e_metas(self):
+        from datetime import date, timedelta
+
+        from indicators.models import Indicator, IndicatorTarget, IndicatorValue
+
+        hoje = date.today()
+        ontem = hoje - timedelta(days=1)
+        self.ingest("branch", [{"CODIGO": "1", "RAZAOSOCIAL": "Matriz"}])
+        self.ingest("sales_invoice", [
+            {"NUMTRANSVENDA": "1", "NUMNOTA": "1", "CODFILIAL": "1", "DTSAIDA": hoje.isoformat(), "CONDVENDA": 1, "VLTOTAL": "300.00"},
+            {"NUMTRANSVENDA": "2", "NUMNOTA": "2", "CODFILIAL": "1", "DTSAIDA": ontem.isoformat(), "CONDVENDA": 1, "VLTOTAL": "200.00"},
+        ])
+        fat = Indicator.objects.create(tenant=self.tenant, code="FAT", name="Faturamento", erp_metric="faturamento", aggregation="soma")
+        IndicatorTarget.objects.create(indicator=fat, period=hoje.replace(day=1), target_value=3100)
+        if ontem.month != hoje.month:
+            IndicatorTarget.objects.create(indicator=fat, period=ontem.replace(day=1), target_value=3100)
+        nps = Indicator.objects.create(tenant=self.tenant, code="NPS", name="NPS", aggregation="media")
+        for mes in (1, 2, 3):
+            IndicatorTarget.objects.create(indicator=nps, period=date(2026, mes, 1), target_value=70)
+            IndicatorValue.objects.create(indicator=nps, period=date(2026, mes, 1), value=60 + mes * 10)
+        gestor = User.objects.create_user("g4@nb.com", "x", first_name="G", tenant=self.tenant, role=User.Role.GESTOR)
+        self.client.force_authenticate(gestor)
+
+        # ERP por dia: valor exato do dia; meta = meta do mês ÷ dias × 1.
+        d = self.client.get(f"/api/indicators/{fat.id}/breakdown/?gran=dia&n=2").json()
+        self.assertTrue(d["disponivel"])
+        self.assertEqual([p["value"] for p in d["periodos"]], [200.0, 300.0])
+        from calendar import monthrange
+        self.assertAlmostEqual(d["periodos"][-1]["target"], 3100 / monthrange(hoje.year, hoje.month)[1], places=2)
+
+        # ERP por semana e ano somam o intervalo.
+        s = self.client.get(f"/api/indicators/{fat.id}/breakdown/?gran=semana&n=1").json()
+        self.assertEqual(s["periodos"][0]["value"], 500.0 if ontem.weekday() <= hoje.weekday() else 300.0)
+        a = self.client.get(f"/api/indicators/{fat.id}/breakdown/?gran=ano&n=1").json()
+        self.assertEqual(a["periodos"][0]["value"], 500.0)
+
+        # Manual: semestre agrega pela média; dia não está disponível.
+        sm = self.client.get(f"/api/indicators/{nps.id}/breakdown/?gran=semestre&ate=2026-06-30&n=1").json()
+        self.assertEqual((sm["periodos"][0]["value"], sm["periodos"][0]["target"], sm["periodos"][0]["status"]), (80.0, 70.0, "verde"))
+        self.assertFalse(self.client.get(f"/api/indicators/{nps.id}/breakdown/?gran=dia").json()["disponivel"])
+
     def test_heartbeat_atualiza_health_e_last_seen(self):
         r = self.client.post("/api/coletor/heartbeat/", {"oracle_ok": True, "agent_version": "1.0.0"},
                              format="json", **self.headers)

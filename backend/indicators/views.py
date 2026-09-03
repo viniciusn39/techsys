@@ -125,6 +125,23 @@ class IndicatorViewSet(TenantScopedViewSet):
             IndicatorTargetSerializer(indicator.targets.all(), many=True).data
         )
 
+    @action(detail=True, methods=["get"], url_path="breakdown")
+    def breakdown(self, request, pk=None):
+        """Valores e metas por dia, semana, mês, semestre ou ano."""
+        from .breakdown import GRANULARIDADES, breakdown
+
+        indicator = self.get_object()
+        gran = request.query_params.get("gran", "mes")
+        if gran not in GRANULARIDADES:
+            raise ValidationError({"gran": f"Use uma de: {', '.join(GRANULARIDADES)}."})
+        raw = request.query_params.get("ate")
+        ate = parse_period(raw) if raw else None
+        try:
+            n = int(request.query_params.get("n")) if request.query_params.get("n") else None
+        except ValueError:
+            raise ValidationError({"n": "Inteiro."})
+        return Response(breakdown(indicator, gran, ate, n))
+
     @action(detail=True, methods=["post"], url_path="values")
     def set_value(self, request, pk=None):
         indicator = self.get_object()

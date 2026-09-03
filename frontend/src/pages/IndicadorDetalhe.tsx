@@ -11,6 +11,7 @@ import {
   vizTokens,
 } from "../charts/theme";
 import { EChart } from "../components/EChart";
+import { QuebraPeriodo } from "../components/QuebraPeriodo";
 import {
   ChartLegend,
   ChartSkeleton,
@@ -331,6 +332,10 @@ export function IndicadorDetalhe() {
             <EChart option={ytdOption} height={320} />
           </Panel>
         </div>
+      </div>
+
+      <div className="mt-3">
+        <QuebraPeriodo indicatorId={ind.id} unit={ind.unit} decimals={dec} erp={!!ind.erp_metric} />
       </div>
 
       <div className="mt-3">
