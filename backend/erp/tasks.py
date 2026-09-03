@@ -122,8 +122,11 @@ def sincronizar_metas_erp(tenant_id=None, indicator_id=None, meses=12):
                 logger.warning("meta %s do indicador %s falhou: %s", indicator.erp_target, indicator.code, exc)
                 continue
             if meta is None:
+                # Mês sem meta no ERP: não fica meta "à mão" escondida por baixo.
+                apagadas, _ = IndicatorTarget.objects.filter(indicator=indicator, period=periodo).delete()
+                mudou = mudou or bool(apagadas)
                 continue
-            _, created = IndicatorTarget.objects.update_or_create(
+            IndicatorTarget.objects.update_or_create(
                 indicator=indicator, period=periodo, defaults={"target_value": meta}
             )
             mudou = True
