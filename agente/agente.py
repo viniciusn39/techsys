@@ -39,7 +39,7 @@ import time
 import traceback
 import urllib.request
 
-VERSION = "1.0.4"  # BUMP ao publicar: os agentes instalados se auto-atualizam
+VERSION = "1.0.5"  # BUMP ao publicar: os agentes instalados se auto-atualizam
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 BASE_DIR = os.path.dirname(os.path.abspath(sys.executable)) if getattr(sys, "frozen", False) else HERE
@@ -486,7 +486,50 @@ def _na_janela(horas, hora_atual=None):
     return h >= inicio or h <= fim
 
 
+def _rss_mb():
+    """Memória residente do processo em MB (Linux via /proc; psutil onde houver)."""
+    try:
+        with open("/proc/self/status") as f:
+            for linha in f:
+                if linha.startswith("VmRSS:"):
+                    return int(linha.split()[1]) // 1024
+    except Exception:  # noqa: BLE001
+        pass
+    try:
+        import psutil
+        return int(psutil.Process().memory_info().rss // (1024 * 1024))
+    except Exception:  # noqa: BLE001
+        return None
+
+
+def _checar_memoria(cfg, entity):
+    """Guarda de memória: acima do teto, interrompe a entidade em vez de derrubar a máquina."""
+    teto = int((cfg or {}).get("memoria_max_mb") or 1024)
+    rss = _rss_mb()
+    if rss is not None and rss > teto:
+        raise RuntimeError("memória do agente em %d MB (teto %d MB) — entidade %s interrompida"
+                           % (rss, teto, entity))
+
+
+ULTIMO_PROGRESSO = [time.time()]  # cão de guarda: último avanço da coleta
+
+
+def _bater_progresso():
+    ULTIMO_PROGRESSO[0] = time.time()
+
+
+def watchdog_loop(cfg):
+    """Coleta sem avanço por muito tempo = processo preso. Sai; o serviço sobe de novo."""
+    limite = int((cfg or {}).get("watchdog_min") or 30) * 60
+    while not STOP.is_set():
+        STOP.wait(60)
+        if BUSY.is_set() and time.time() - ULTIMO_PROGRESSO[0] > limite:
+            _log("watchdog: coleta sem progresso há %d min — reiniciando o processo" % (limite // 60))
+            os._exit(3)
+
+
 def _progresso_inicio(state, entity, esperado):
+    _bater_progresso()
     passes = state.setdefault("_passe", {})
     passes[entity] = {"esperado": esperado, "lidos": 0, "importados": 0, "inicio": time.time(),
                       "em_andamento": True, "ok": None}
@@ -494,6 +537,7 @@ def _progresso_inicio(state, entity, esperado):
 
 
 def _progresso_avanco(state, entity, lidos, importados):
+    _bater_progresso()
     p = (state.get("_passe") or {}).get(entity)
     if p is None:
         return
@@ -677,6 +721,7 @@ def run_sync(platform_api, oracle, plan, state, machine=""):
             incremental = bool(q.get("incremental")) and bool(since_col)
 
             # Quanto vem: o "esperado" da barra de progresso. Falhar aqui não impede a coleta.
+            _bater_progresso()
             esperado = None
             try:
                 esperado = oracle.count(sql, params or None)
@@ -698,6 +743,7 @@ def run_sync(platform_api, oracle, plan, state, machine=""):
                     for lote in oracle.query_iter(sql, params or None, batch):
                         lote = _to_jsonable(lote)
                         lidos += len(lote)
+                        _checar_memoria(load_config(), entity)
                         res = None
                         for tentativa in range(4):
                             try:
@@ -1110,6 +1156,7 @@ def run_service(cfg):
         threading.Thread(target=sync_loop, args=(cfg, platform_api, Oracle(cfg)), daemon=True),
         threading.Thread(target=command_loop, args=(cfg, platform_api, Oracle(cfg)), daemon=True),
         threading.Thread(target=heartbeat_loop, args=(cfg, platform_api, Oracle(cfg)), daemon=True),
+        threading.Thread(target=watchdog_loop, args=(cfg,), daemon=True),
     ]
     for t in threads:
         t.start()

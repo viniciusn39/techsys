@@ -125,6 +125,15 @@ WorkingDirectory=$DIR
 ExecStart=$PY -u $DIR/agente.py --service
 Restart=always
 RestartSec=10
+# Proteção do servidor do ERP: o agente nunca pode disputar recursos com o Oracle.
+# Passou do teto de memória, o kernel mata SÓ o agente e o serviço sobe de novo.
+MemoryMax=${MEM_MAX:-1536M}
+MemoryLimit=${MEM_MAX:-1536M}
+CPUQuota=${CPU_QUOTA:-50%}
+Nice=10
+IOSchedulingClass=best-effort
+IOSchedulingPriority=7
+OOMScoreAdjust=800
 
 [Install]
 WantedBy=multi-user.target
