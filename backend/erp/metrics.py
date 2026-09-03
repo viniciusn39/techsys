@@ -55,8 +55,19 @@ class Metric:
 
 
 def _branch_q(filters, path="branch"):
+    """`branch` aceita um código ("10"), vários separados por vírgula ("11,12")
+    ou uma lista (["11", "12"]) — as lojas de um atacarejo, por exemplo."""
     code = (filters or {}).get("branch")
-    return Q(**{f"{path}__code": str(code)}) if code else Q()
+    if not code:
+        return Q()
+    if isinstance(code, str):
+        code = [c.strip() for c in code.split(",") if c.strip()]
+    codes = [str(c) for c in code]
+    if not codes:
+        return Q()
+    if len(codes) == 1:
+        return Q(**{f"{path}__code": codes[0]})
+    return Q(**{f"{path}__code__in": codes})
 
 
 def _sum(qs, expr):

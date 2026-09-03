@@ -103,7 +103,7 @@ export function Indicadores() {
     setPreview({ value: null, loading: true });
     try {
       const params = new URLSearchParams({ metric: editing.erp_metric });
-      const branch = (editing.erp_filters as any)?.branch;
+      const branch = ([] as string[]).concat((editing.erp_filters as any)?.branch ?? []).join(",");
       if (branch) params.set("branch", branch);
       const r = await api.get<{ value: string | null }>(`/api/erp/metrics/preview/?${params}`);
       setPreview({ value: r.value, loading: false });
@@ -401,11 +401,11 @@ export function Indicadores() {
                 <div className="col-md-5">
                   <Form.Label>Filial (opcional)</Form.Label>
                   <Form.Control
-                    placeholder="código no ERP, ex.: 1"
-                    value={(editing?.erp_filters as any)?.branch || ""}
+                    placeholder="código no ERP, ex.: 10 — ou várias: 11,12"
+                    value={([] as string[]).concat((editing?.erp_filters as any)?.branch ?? []).join(",")}
                     onChange={(e) => {
-                      const branch = e.target.value.trim();
-                      setEditing({ ...editing!, erp_filters: branch ? { branch } : {} });
+                      const branch = e.target.value.replace(/[^0-9A-Za-z,\s]/g, "");
+                      setEditing({ ...editing!, erp_filters: branch.trim() ? { branch } : {} });
                       setPreview(null);
                     }}
                     disabled={!editing?.erp_metric}

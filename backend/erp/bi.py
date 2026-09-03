@@ -134,18 +134,27 @@ def serie_mensal(tenant, meses, filters):
     return out
 
 
-def foto_mes(tenant, filters):
+def mes_de_referencia(tenant):
+    """O mês corrente, se já tem nota nele; senão o mês da última nota que chegou.
+
+    A carga vem mês a mês, então no início o corrente está vazio e o painel
+    ficaria todo em "—" — melhor mostrar o último mês que o ERP já entregou.
+    """
     hoje = date.today()
-    atual = {k: _num(m.compute_metric(k, tenant, hoje, filters)) for k in FOTO_MES}
-    anterior = {k: _num(m.compute_metric(k, tenant, _mes_anterior(hoje), filters)) for k in ("faturamento", "qtd_notas", "ticket_medio", "margem_bruta_pct", "positivacao")}
-    return {"periodo": hoje.replace(day=1), "atual": atual, "mes_anterior": anterior}
+    ultima = SalesInvoice.objects.filter(tenant=tenant, issued_at__lte=hoje).aggregate(d=Max("issued_at"))["d"]
+    return ultima if ultima else hoje
 
 
-def por_filial(tenant):
-    hoje = date.today()
-    ini_mes, fim = m.month_bounds(hoje)
-    fim = min(fim, hoje)
-    ini_ano = hoje.replace(month=1, day=1)
+def foto_mes(tenant, filters, ref):
+    atual = {k: _num(m.compute_metric(k, tenant, ref, filters)) for k in FOTO_MES}
+    anterior = {k: _num(m.compute_metric(k, tenant, _mes_anterior(ref), filters)) for k in ("faturamento", "qtd_notas", "ticket_medio", "margem_bruta_pct", "positivacao")}
+    return {"periodo": ref.replace(day=1), "atual": atual, "mes_anterior": anterior}
+
+
+def por_filial(tenant, ref):
+    ini_mes, fim = m.month_bounds(ref)
+    fim = min(fim, date.today())
+    ini_ano = ref.replace(month=1, day=1)
     mes_map = {
         r["branch__code"]: (r["v"], r["n"])
         for r in m.notas_do_periodo(tenant, ini_mes, fim, {}).values("branch__code").annotate(v=Sum("total"), n=Count("id"))
@@ -164,10 +173,9 @@ def por_filial(tenant):
     return linhas
 
 
-def rankings(tenant, filters):
-    hoje = date.today()
-    ini, fim = m.month_bounds(hoje)
-    fim = min(fim, hoje)
+def rankings(tenant, filters, ref):
+    ini, fim = m.month_bounds(ref)
+    fim = min(fim, date.today())
     notas = m.notas_do_periodo(tenant, ini, fim, filters)
     vendedores = [
         {"name": r["sales_rep__name"] or "(sem vendedor)", "valor": _num(r["v"]), "notas": r["n"]}
@@ -263,6 +271,7 @@ def painel(tenant, meses=12, branch=None):
         "aguardando": sum(1 for c in confer if c["situacao"] == "aguardando"),
         "sem_dados": sum(1 for c in confer if c["situacao"] in ("sem_dados", "sem_valor", "metrica_invalida")),
     }
+    ref = mes_de_referencia(tenant)
     return {
         "gerado_em": timezone.now(),
         "meses": meses,
@@ -270,9 +279,9 @@ def painel(tenant, meses=12, branch=None):
         "filiais": [{"code": b.code, "name": b.trade_name or b.name} for b in Branch.objects.filter(tenant=tenant).order_by("code")],
         "cobertura": cob,
         "serie": serie_mensal(tenant, meses, filters),
-        "foto": foto_mes(tenant, filters),
-        "por_filial": por_filial(tenant),
-        "rankings": rankings(tenant, filters),
+        "foto": foto_mes(tenant, filters, ref),
+        "por_filial": por_filial(tenant, ref),
+        "rankings": rankings(tenant, filters, ref),
         "indicadores": confer,
         "resumo_conferencia": resumo,
     }

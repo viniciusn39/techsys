@@ -134,7 +134,7 @@ export interface Indicator {
   /** Métrica do ERP que calcula este KPI (vazio = lançamento manual). */
   erp_metric?: string;
   erp_metric_label?: string | null;
-  erp_filters?: Record<string, string>;
+  erp_filters?: { branch?: string | string[] };
   yellow_threshold_pct: string;
   is_active: boolean;
   last_value?: {

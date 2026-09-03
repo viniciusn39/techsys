@@ -64,8 +64,8 @@ LINKS = [
 INDICATORS = [
     # Financeira
     ("FAT", "Faturamento líquido", "faturamento", "Comercial", "Crescer o faturamento com rentabilidade", 4_500_000, 90),
-    ("FAT_CD", "Faturamento — distribuição (CD)", "faturamento", "Distribuição", "Crescer o faturamento com rentabilidade", 3_200_000, 90, {"branch": "1"}),
-    ("FAT_LOJA", "Faturamento — varejo (lojas)", "faturamento", "Varejo", "Crescer o faturamento com rentabilidade", 1_300_000, 90, {"branch": "2"}),
+    ("FAT_CD", "Faturamento — distribuição (CD)", "faturamento", "Distribuição", "Crescer o faturamento com rentabilidade", 3_200_000, 90, {"branch": "10"}),
+    ("FAT_LOJA", "Faturamento — varejo (lojas)", "faturamento", "Varejo", "Crescer o faturamento com rentabilidade", 1_300_000, 90, {"branch": ["11", "12"]}),
     ("MARGEM", "Margem bruta", "margem_bruta_pct", "Financeiro", "Proteger a margem bruta", 22, 92),
     ("CMV", "CMV", "cmv", "Financeiro", "Proteger a margem bruta", 3_500_000, 95),
     ("DESP", "Despesas por competência", "despesas_competencia", "Financeiro", "Proteger a margem bruta", 650_000, 95),

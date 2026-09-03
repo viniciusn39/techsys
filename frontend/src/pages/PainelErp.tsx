@@ -30,7 +30,7 @@ interface Conferencia {
   decimals: number;
   erp_metric: string;
   erp_metric_label: string;
-  erp_filters: Record<string, string>;
+  erp_filters: { branch?: string | string[] };
   entities: string[];
   periodo: string;
   valor_gravado: number | null;
@@ -346,7 +346,8 @@ export function PainelErp() {
               <tbody>
                 {data.indicadores.map((c) => {
                   const s = SITUACAO[c.situacao];
-                  const filtro = c.erp_filters?.branch ? ` · filial ${c.erp_filters.branch}` : "";
+                  const filiais = ([] as string[]).concat(c.erp_filters?.branch ?? []);
+                  const filtro = filiais.length ? ` · ${filiais.length > 1 ? "filiais" : "filial"} ${filiais.join(", ")}` : "";
                   return (
                     <tr key={c.id}>
                       <td>

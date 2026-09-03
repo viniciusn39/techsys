@@ -546,6 +546,7 @@ class MetricPreviewView(APIView):
         period = date.fromisoformat(raw) if raw else date.today()
         filters = {}
         if request.query_params.get("branch"):
-            filters["branch"] = request.query_params["branch"]
+            codes = [c.strip() for c in request.query_params["branch"].split(",") if c.strip()]
+            filters["branch"] = codes[0] if len(codes) == 1 else codes
         value = compute_metric(key, tenant, period, filters)
         return Response({"metric": key, "period": period.replace(day=1), "value": value})
