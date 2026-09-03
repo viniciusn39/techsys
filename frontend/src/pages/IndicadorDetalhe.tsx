@@ -336,7 +336,7 @@ export function IndicadorDetalhe() {
       <div className="mt-3">
         <Tabs defaultActiveKey="lancamentos" className="mb-3">
           <Tab eventKey="lancamentos" title="Lançamentos">
-            <Panel>
+            <Panel subtitle={ind.erp_metric ? <><i className="bi bi-robot me-1" />Calculado do ERP ({ind.erp_metric_label}) pelo agente a cada 30 min — lançamento manual bloqueado.</> : undefined}>
               <div className="table-responsive">
                 <table className="table table-sm">
                   <thead>
@@ -352,19 +352,27 @@ export function IndicadorDetalhe() {
                         <td className="fw-semibold">{MONTHS_SHORT[i]}/{year}</td>
                         <td className="num text-muted-2">{fmtNumber(p.target, dec)}</td>
                         <td>
-                          <Form.Control
-                            size="sm" type="number" step="any" className="num"
-                            value={values[p.period] ?? ""}
-                            onChange={(e) => setValues({ ...values, [p.period]: e.target.value })}
-                            onKeyDown={(e) => e.key === "Enter" && saveValue(p.period)}
-                          />
+                          {ind.erp_metric ? (
+                            <span className="num d-block">{values[p.period] ? fmtNumber(values[p.period], dec) : "—"}</span>
+                          ) : (
+                            <Form.Control
+                              size="sm" type="number" step="any" className="num"
+                              value={values[p.period] ?? ""}
+                              onChange={(e) => setValues({ ...values, [p.period]: e.target.value })}
+                              onKeyDown={(e) => e.key === "Enter" && saveValue(p.period)}
+                            />
+                          )}
                         </td>
                         <td className="num fw-semibold">{fmtPct(p.achievement_pct)}</td>
                         <td><StatusPill status={p.status} /></td>
                         <td className="text-end">
-                          <Button size="sm" variant="outline-secondary" onClick={() => saveValue(p.period)} title="Salvar">
-                            <i className="bi bi-check-lg" />
-                          </Button>
+                          {ind.erp_metric ? (
+                            <i className="bi bi-lock-fill text-muted-2" title="Calculado do ERP pelo agente; lançamento manual bloqueado" />
+                          ) : (
+                            <Button size="sm" variant="outline-secondary" onClick={() => saveValue(p.period)} title="Salvar">
+                              <i className="bi bi-check-lg" />
+                            </Button>
+                          )}
                         </td>
                       </tr>
                     ))}

@@ -160,6 +160,27 @@ class ColetorIngestTests(APITestCase):
         fat = self.client.get("/api/erp/painel/").json()["indicadores"][0]
         self.assertEqual((fat["valor_erp"], fat["situacao"]), (1600.0, "divergente"))
 
+    def test_indicador_do_erp_bloqueia_lancamento_manual(self):
+        from indicators.models import Indicator, IndicatorValue
+
+        erp = Indicator.objects.create(tenant=self.tenant, code="FAT", name="Faturamento", erp_metric="faturamento")
+        manual = Indicator.objects.create(tenant=self.tenant, code="NPS", name="NPS")
+        gestor = User.objects.create_user("g3@nb.com", "x", first_name="G", tenant=self.tenant, role=User.Role.GESTOR)
+        self.client.force_authenticate(gestor)
+
+        r = self.client.post(f"/api/indicators/{erp.id}/values/", {"period": "2026-08-01", "value": "1"}, format="json")
+        self.assertEqual(r.status_code, 400)
+        r = self.client.post("/api/indicator-values/bulk/", {"values": [
+            {"indicator": manual.id, "period": "2026-08-01", "value": "70"},
+            {"indicator": erp.id, "period": "2026-08-01", "value": "1"},
+        ]}, format="json")
+        self.assertEqual(r.status_code, 400)
+        self.assertIn("FAT", str(r.json()))
+        self.assertFalse(IndicatorValue.objects.filter(indicator=erp).exists())
+
+        r = self.client.post("/api/indicator-values/bulk/", {"values": [{"indicator": manual.id, "period": "2026-08-01", "value": "70"}]}, format="json")
+        self.assertEqual(r.status_code, 201)
+
     def test_heartbeat_atualiza_health_e_last_seen(self):
         r = self.client.post("/api/coletor/heartbeat/", {"oracle_ok": True, "agent_version": "1.0.0"},
                              format="json", **self.headers)

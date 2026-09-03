@@ -470,11 +470,17 @@ export function Indicadores() {
                     {r.unit && <span className="text-muted-2 small"> ({r.unit})</span>}
                   </td>
                   <td>
-                    <Form.Control
-                      size="sm" type="number" step="any" className="num"
-                      value={launchValues[r.id] ?? ""}
-                      onChange={(e) => setLaunchValues({ ...launchValues, [r.id]: e.target.value })}
-                    />
+                    {r.erp_metric ? (
+                      <span className="small text-muted-2" title={`Calculado do ERP: ${r.erp_metric_label}`}>
+                        <i className="bi bi-lock-fill me-1" />calculado do ERP
+                      </span>
+                    ) : (
+                      <Form.Control
+                        size="sm" type="number" step="any" className="num"
+                        value={launchValues[r.id] ?? ""}
+                        onChange={(e) => setLaunchValues({ ...launchValues, [r.id]: e.target.value })}
+                      />
+                    )}
                   </td>
                 </tr>
               ))}

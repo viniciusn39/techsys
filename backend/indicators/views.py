@@ -21,6 +21,8 @@ from .serializers import (
 from .services import compute_ytd, recompute_indicator
 from .sources.registry import get_source
 
+ERP_BLOQUEADO = "Este indicador é calculado do ERP pelo agente; o lançamento manual está bloqueado."
+
 
 def parse_period(raw):
     try:
@@ -126,6 +128,8 @@ class IndicatorViewSet(TenantScopedViewSet):
     @action(detail=True, methods=["post"], url_path="values")
     def set_value(self, request, pk=None):
         indicator = self.get_object()
+        if indicator.erp_metric:
+            raise ValidationError(ERP_BLOQUEADO)
         period = parse_period(request.data.get("period"))
         raw = request.data.get("value")
         if raw in (None, ""):
@@ -158,6 +162,9 @@ class IndicatorValueBulkView(APIView):
             ).first()
             if indicator is None:
                 continue
+            if indicator.erp_metric:
+                # Valor vem do agente do ERP; lançamento manual não sobrescreve.
+                raise ValidationError({"indicator": f"{indicator.code}: {ERP_BLOQUEADO}"})
             period = parse_period(item.get("period"))
             raw = item.get("value")
             if raw in (None, ""):
