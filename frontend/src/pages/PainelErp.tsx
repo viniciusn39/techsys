@@ -316,66 +316,6 @@ export function PainelErp() {
         <div className="col-6 col-lg-2"><StatCard label="Estoque a custo" icon="bi-box-seam" value={moneyCompact(a.estoque_valor)} foot={`ruptura ${pct(a.ruptura_pct)} · ${fmtNumber(a.cobertura_estoque_dias, 0)} dias · ${fmtNumber(a.headcount, 0)} func.`} /></div>
       </div>
 
-      {/* Conferência dos indicadores — o coração da página */}
-      <Panel
-        title="Conferência dos indicadores ligados ao ERP"
-        subtitle={`${res.confere} de ${res.total} conferem · ${res.divergente} divergentes · ${res.aguardando} aguardando cálculo · ${res.sem_dados} sem dados`}
-        actions={isAdmin && (
-          <Button size="sm" variant="outline-primary" onClick={recalcular} disabled={busy}>
-            <i className="bi bi-calculator me-1" />Recalcular indicadores
-          </Button>
-        )}
-      >
-        {data.indicadores.length === 0 ? (
-          <EmptyState icon="bi-link-45deg" title="Nenhum indicador ligado ao ERP" hint="Em Indicadores, vincule um KPI a uma métrica do ERP para ele ser calculado do espelho." />
-        ) : (
-          <div className="table-responsive">
-            <table className="table table-sm align-middle mb-0">
-              <thead>
-                <tr>
-                  <th>Indicador</th>
-                  <th>Métrica do ERP</th>
-                  <th>Período</th>
-                  <th className="text-end">Gravado no KPI</th>
-                  <th className="text-end">ERP agora</th>
-                  <th className="text-end">Meta</th>
-                  <th>Farol</th>
-                  <th>Situação</th>
-                </tr>
-              </thead>
-              <tbody>
-                {data.indicadores.map((c) => {
-                  const s = SITUACAO[c.situacao];
-                  const filiais = ([] as string[]).concat(c.erp_filters?.branch ?? []);
-                  const filtro = filiais.length ? ` · ${filiais.length > 1 ? "filiais" : "filial"} ${filiais.join(", ")}` : "";
-                  return (
-                    <tr key={c.id}>
-                      <td>
-                        <Link to={`/indicadores/${c.id}`} className="fw-semibold text-decoration-none">{c.code}</Link>
-                        <div className="small text-muted-2">{c.name}</div>
-                      </td>
-                      <td className="small">{c.erp_metric_label}<span className="text-muted-2">{filtro}</span></td>
-                      <td className="small text-nowrap">{fmtPeriod(c.periodo)}</td>
-                      <td className="text-end text-nowrap">
-                        {valorFmt(c.valor_gravado, c.unit, c.decimals)}
-                        {c.calculado_em && <div className="small text-muted-2">{new Date(c.calculado_em).toLocaleString("pt-BR", { day: "2-digit", month: "2-digit", hour: "2-digit", minute: "2-digit" })}</div>}
-                      </td>
-                      <td className={`text-end text-nowrap ${c.situacao === "divergente" ? "fw-semibold" : ""}`}>{valorFmt(c.valor_erp, c.unit, c.decimals)}</td>
-                      <td className="text-end text-nowrap">{valorFmt(c.meta, c.unit, c.decimals)}</td>
-                      <td>{c.status ? <StatusPill status={c.status} compact /> : <span className="text-muted-2">—</span>}</td>
-                      <td><span className={`badge ${s.cls}`}><i className={`bi ${s.icon} me-1`} />{s.label}</span></td>
-                    </tr>
-                  );
-                })}
-              </tbody>
-            </table>
-          </div>
-        )}
-        <div className="small text-muted-2 mt-2">
-          <strong>Confere</strong>: o valor do KPI é exatamente o que o espelho do ERP dá hoje. <strong>Divergente</strong>: a carga avançou desde o último cálculo (ou a regra mudou) — recalcule. <strong>Aguardando</strong>: o ERP já tem dados, mas o cálculo automático ainda não rodou (roda a cada 30 min).
-        </div>
-      </Panel>
-
       {/* Séries mensais */}
       <div className="row g-3">
         <div className="col-lg-6">
@@ -448,6 +388,66 @@ export function PainelErp() {
           </Panel>
         </div>
       </div>
+
+      {/* Conferência dos indicadores — o coração da página */}
+      <Panel
+        title="Conferência dos indicadores ligados ao ERP"
+        subtitle={`${res.confere} de ${res.total} conferem · ${res.divergente} divergentes · ${res.aguardando} aguardando cálculo · ${res.sem_dados} sem dados`}
+        actions={isAdmin && (
+          <Button size="sm" variant="outline-primary" onClick={recalcular} disabled={busy}>
+            <i className="bi bi-calculator me-1" />Recalcular indicadores
+          </Button>
+        )}
+      >
+        {data.indicadores.length === 0 ? (
+          <EmptyState icon="bi-link-45deg" title="Nenhum indicador ligado ao ERP" hint="Em Indicadores, vincule um KPI a uma métrica do ERP para ele ser calculado do espelho." />
+        ) : (
+          <div className="table-responsive">
+            <table className="table table-sm align-middle mb-0">
+              <thead>
+                <tr>
+                  <th>Indicador</th>
+                  <th>Métrica do ERP</th>
+                  <th>Período</th>
+                  <th className="text-end">Gravado no KPI</th>
+                  <th className="text-end">ERP agora</th>
+                  <th className="text-end">Meta</th>
+                  <th>Farol</th>
+                  <th>Situação</th>
+                </tr>
+              </thead>
+              <tbody>
+                {data.indicadores.map((c) => {
+                  const s = SITUACAO[c.situacao];
+                  const filiais = ([] as string[]).concat(c.erp_filters?.branch ?? []);
+                  const filtro = filiais.length ? ` · ${filiais.length > 1 ? "filiais" : "filial"} ${filiais.join(", ")}` : "";
+                  return (
+                    <tr key={c.id}>
+                      <td>
+                        <Link to={`/indicadores/${c.id}`} className="fw-semibold text-decoration-none">{c.code}</Link>
+                        <div className="small text-muted-2">{c.name}</div>
+                      </td>
+                      <td className="small">{c.erp_metric_label}<span className="text-muted-2">{filtro}</span></td>
+                      <td className="small text-nowrap">{fmtPeriod(c.periodo)}</td>
+                      <td className="text-end text-nowrap">
+                        {valorFmt(c.valor_gravado, c.unit, c.decimals)}
+                        {c.calculado_em && <div className="small text-muted-2">{new Date(c.calculado_em).toLocaleString("pt-BR", { day: "2-digit", month: "2-digit", hour: "2-digit", minute: "2-digit" })}</div>}
+                      </td>
+                      <td className={`text-end text-nowrap ${c.situacao === "divergente" ? "fw-semibold" : ""}`}>{valorFmt(c.valor_erp, c.unit, c.decimals)}</td>
+                      <td className="text-end text-nowrap">{valorFmt(c.meta, c.unit, c.decimals)}</td>
+                      <td>{c.status ? <StatusPill status={c.status} compact /> : <span className="text-muted-2">—</span>}</td>
+                      <td><span className={`badge ${s.cls}`}><i className={`bi ${s.icon} me-1`} />{s.label}</span></td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          </div>
+        )}
+        <div className="small text-muted-2 mt-2">
+          <strong>Confere</strong>: o valor do KPI é exatamente o que o espelho do ERP dá hoje. <strong>Divergente</strong>: a carga avançou desde o último cálculo (ou a regra mudou) — recalcule. <strong>Aguardando</strong>: o ERP já tem dados, mas o cálculo automático ainda não rodou (roda a cada 30 min).
+        </div>
+      </Panel>
 
       {/* Cobertura */}
       <Panel title="O que já veio do ERP" subtitle="Registros no espelho e período coberto por entidade">
