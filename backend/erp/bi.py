@@ -77,6 +77,7 @@ FOTO_MES = [
 ]
 
 TOP_N = 10
+MESES_PROCURA = 12
 
 _VALOR = ExpressionWrapper(F("quantity") * F("unit_price"), output_field=DecimalField(max_digits=18, decimal_places=4))
 _CUSTO = ExpressionWrapper(F("quantity") * F("cost"), output_field=DecimalField(max_digits=18, decimal_places=4))
@@ -208,6 +209,16 @@ def conferencia(tenant, carregadas=None):
         periodo = ultimo.period if ultimo else hoje.replace(day=1)
         tem_dados = bool(metric) and all(e in carregadas for e in metric.entities)
         erp_agora = m.compute_metric(ind.erp_metric, tenant, periodo, ind.erp_filters) if tem_dados else None
+        # Sem valor gravado ainda: mostra o mês mais recente em que o ERP já
+        # responde (a carga chega mês a mês; o corrente costuma vir por último).
+        if ultimo is None and tem_dados and erp_agora is None:
+            p = _mes_anterior(periodo)
+            for _ in range(MESES_PROCURA):
+                erp_agora = m.compute_metric(ind.erp_metric, tenant, p, ind.erp_filters)
+                if erp_agora is not None:
+                    periodo = p
+                    break
+                p = _mes_anterior(p)
         meta = ind.targets.filter(period=periodo).first()
 
         if metric is None:
