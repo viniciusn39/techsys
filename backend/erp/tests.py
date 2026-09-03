@@ -245,7 +245,8 @@ class ColetorIngestTests(APITestCase):
         margem = Indicator.objects.create(tenant=self.tenant, code="MARGEM", name="Margem", erp_target="margemprev")
         IndicatorValue.objects.create(indicator=fat, period=mes, value="900", source="agent")
 
-        self.assertEqual(sincronizar_metas_erp(tenant_id=self.tenant.id, meses=1), 4)
+        # 4 metas do mês corrente (+ a do cadastro do RCA nos meses futuros do ano, que é constante)
+        self.assertGreaterEqual(sincronizar_metas_erp(tenant_id=self.tenant.id, meses=1), 4)
         meta = lambda ind: IndicatorTarget.objects.get(indicator=ind, period=mes).target_value  # noqa: E731
         self.assertEqual(meta(fat), 1000)
         self.assertEqual(meta(fat_cd), 800)

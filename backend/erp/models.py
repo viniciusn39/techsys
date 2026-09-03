@@ -653,13 +653,15 @@ class SalesTarget(ErpModel):
     kind = models.CharField(max_length=4, blank=True)  # TIPOMETA da PCMETA, ou "DIA"
     sales_value = models.DecimalField(max_digits=14, decimal_places=2, null=True, blank=True)   # VLVENDAPREV
     sales_qty = models.DecimalField(max_digits=16, decimal_places=3, null=True, blank=True)     # QTVENDAPREV
-    mix = models.IntegerField(null=True, blank=True)                                            # MIXPREV
-    positivation = models.IntegerField(null=True, blank=True)                                   # CLIPOSPREV
+    # Contagens em decimal: a meta diária do WinThor rateia clientes/pedidos
+    # do mês por dia em frações (1,37 cliente/dia) — inteiro truncaria a soma.
+    mix = models.DecimalField(max_digits=12, decimal_places=3, null=True, blank=True)            # MIXPREV
+    positivation = models.DecimalField(max_digits=12, decimal_places=3, null=True, blank=True)   # CLIPOSPREV / NUMCLIPOS
     positivation_pct = models.DecimalField(max_digits=8, decimal_places=2, null=True, blank=True)  # PERCLIPOSPREV
     margin_pct = models.DecimalField(max_digits=8, decimal_places=2, null=True, blank=True)     # MARGEMPREV
-    orders = models.IntegerField(null=True, blank=True)                                         # PEDIDOSPREV
+    orders = models.DecimalField(max_digits=12, decimal_places=3, null=True, blank=True)         # PEDIDOSPREV / QTPEDPREV
     avg_order_value = models.DecimalField(max_digits=14, decimal_places=2, null=True, blank=True)  # VLMEDIOPEDIDO
-    active_customers = models.IntegerField(null=True, blank=True)                               # QTDCLIENTESATIVO
+    active_customers = models.DecimalField(max_digits=12, decimal_places=3, null=True, blank=True)  # QTDCLIENTESATIVO
 
     class Meta:
         constraints = [models.UniqueConstraint(fields=["tenant", "external_id"], name="uniq_sales_target_ext")]

@@ -106,6 +106,9 @@ def sincronizar_metas_erp(tenant_id=None, indicator_id=None, meses=12):
         m -= 1
         if m == 0:
             y, m = y - 1, 12
+    # Meses futuros do ano corrente também: meta digitada à mão (ou do seed)
+    # não pode sobreviver escondida num indicador cuja meta vem do ERP.
+    periodos += [date(hoje.year, mm, 1) for mm in range(hoje.month + 1, 13)]
 
     gravadas = 0
     for indicator in qs.select_related("tenant"):

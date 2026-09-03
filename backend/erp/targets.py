@@ -57,10 +57,12 @@ def _soma_mensal(tenant, period, filters, campo):
 
 
 def _soma(tenant, period, filters, campo):
-    """Meta do mês: PCMETARCA (soma dos dias) se houver; senão PCMETA."""
+    """Meta do mês: PCMETARCA (soma dos dias) se houver; senão PCMETA. Zero = sem meta."""
     ini, fim = month_bounds(period)
     v = _soma_diaria(tenant, ini, fim, filters, campo)
-    return v if v is not None else _soma_mensal(tenant, period, filters, campo)
+    if v is None:
+        v = _soma_mensal(tenant, period, filters, campo)
+    return v if v else None
 
 
 def _media_ponderada(tenant, period, filters, campo):
