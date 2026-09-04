@@ -122,7 +122,7 @@ class ColetorIngestTests(APITestCase):
         self.assertEqual(d["total_geral"], 2)
         self.assertEqual(sum(p.get("branch", 0) for p in d["serie"]), 2)
         nf = next(e for e in d["entities"] if e["entity"] == "sales_invoice")
-        self.assertEqual((nf["janela"], nf["janela_alvo"], nf["marca"]), (4, 24, "2026-08-01"))
+        self.assertEqual((nf["janela"], nf["janela_alvo"], nf["marca"]), (4, 12, "2026-08-01"))
         self.assertEqual((nf["pct"], nf["esperado"], nf["lidos"], nf["em_andamento"]), (25.0, 2000, 500, True))
         br = next(e for e in d["entities"] if e["entity"] == "branch")
         self.assertEqual(br["pct"], 100.0)   # sem contagem, passe concluído = 100 %
