@@ -79,6 +79,23 @@ class ColetorIngestTests(APITestCase):
         state = EntitySyncState.objects.get(connector=self.connector, entity="branch")
         self.assertEqual(state.total_imported, 2)
 
+    def test_ingest_em_lote_sem_cair_para_linha_a_linha(self):
+        # Todas as entidades do plano gravam num único INSERT ... ON CONFLICT; o fallback linha a linha loga WARNING.
+        self.ingest("branch", [{"CODIGO": "1", "RAZAOSOCIAL": "Matriz"}])
+        self.ingest("product", [{"CODPROD": 10, "DESCRICAO": "Picanha", "IS_ACTIVE": 1}])
+        with self.assertNoLogs("erp.sync", level="WARNING"):
+            r = self.ingest("stock", [
+                {"EXTERNAL_ID": "1-10", "CODPROD": 10, "CODFILIAL": "1", "QTEST": "5"},
+                {"EXTERNAL_ID": "1-10", "CODPROD": 10, "CODFILIAL": "1", "QTEST": "7"},   # repetido no lote: o último vence
+            ])
+            self.assertEqual(r.json()["imported"], 1)
+            r = self.ingest("title_receivable", [{"EXTERNAL_ID": "9-1", "VALOR": "10", "STATUS": "open"}, {"EXTERNAL_ID": "9-1", "VALOR": "12", "STATUS": "paid"}])
+            self.assertEqual(r.json()["imported"], 1)
+        from .models import StockBalance
+
+        self.assertEqual(StockBalance.objects.get(tenant=self.tenant).quantity, Decimal("7"))
+        self.assertEqual(FinancialTitle.objects.get(tenant=self.tenant, external_id="9-1").status, "paid")
+
     def test_titulos_receber_e_pagar_convivem_no_mesmo_modelo(self):
         self.ingest("title_receivable", [
             {"EXTERNAL_ID": "77-1", "VALOR": "100.50", "DTVENC": "2026-08-01", "STATUS": "open"},

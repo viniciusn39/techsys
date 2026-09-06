@@ -14,7 +14,7 @@ from datetime import date, datetime
 from decimal import Decimal, InvalidOperation
 
 from django.core.exceptions import MultipleObjectsReturned
-from django.db import models as dj_models
+from django.db import models as dj_models, transaction
 
 from .models import (
     BankAccount,
@@ -213,12 +213,9 @@ def _normalize_ext(value):
     return ext[:-2] if ext.endswith(".0") else ext
 
 
-def map_and_upsert(connector, entity, raw_items, fields):
-    """Grava um lote. Retorna (importados, erro-amostra)."""
-    model = ENTITY_MODELS.get(entity)
-    if model is None:
-        return _upsert_erp_records(connector, entity, raw_items, fields)
-
+def _linhas_preparadas(connector, entity, raw_items, fields):
+    """Traduz o lote cru em (lookup, data) por linha, já com FKs resolvidas."""
+    model = ENTITY_MODELS[entity]
     tenant = connector.tenant
     fks = ENTITY_FKS.get(entity, {})
     required = REQUIRED_FKS.get(entity, ())
@@ -228,9 +225,7 @@ def map_and_upsert(connector, entity, raw_items, fields):
     model_fields = {f.name: f for f in model._meta.get_fields() if hasattr(f, "attname")}
 
     cache = {}
-    imported = 0
-    errors = []
-
+    linhas, errors = [], []
     for raw in raw_items or []:
         try:
             data = dict(defaults_fixed)
@@ -244,10 +239,8 @@ def map_and_upsert(connector, entity, raw_items, fields):
                     coerced = _coerce(model_fields[local], value)
                     if coerced is not None:
                         data[local] = coerced
-
             if any(data.get(f) is None for f in required):
                 continue
-
             ext = _normalize_ext(data.pop("external_id", ""))
             if natural:
                 lookup = {"tenant": tenant, **{k: data.pop(k) for k in natural if k in data}}
@@ -260,7 +253,43 @@ def map_and_upsert(connector, entity, raw_items, fields):
                 lookup = {"tenant": tenant, "external_id": ext}
                 for extra in lookup_extra:
                     lookup[extra] = data.get(extra)
+            linhas.append((lookup, data))
+        except Exception as exc:  # noqa: BLE001 — uma linha ruim não derruba o lote
+            if len(errors) < 3:
+                errors.append(f"{type(exc).__name__}: {str(exc)[:160]}")
+            logger.warning("ingest %s: linha rejeitada: %s", entity, exc)
+    return model, linhas, errors
 
+
+def _upsert_em_lote(model, entity, linhas):
+    """Um INSERT ... ON CONFLICT DO UPDATE para o lote inteiro (Postgres).
+
+    Um lote de 500 títulos custava ~1.000 consultas (SELECT + UPDATE por linha);
+    aqui custa uma. A chave do conflito é a constraint única da entidade.
+    """
+    if not linhas:
+        return 0
+    natural = NATURAL_KEYS.get(entity)
+    # Tem de ser exatamente a constraint única do modelo (ON CONFLICT exige índice igual).
+    unique_fields = list(natural) if natural else ["tenant", *LOOKUP_EXTRA.get(entity, ()), "external_id"]
+    # Última ocorrência de cada chave vence (ON CONFLICT não aceita a mesma chave duas vezes).
+    por_chave = {}
+    for lookup, data in linhas:
+        chave = tuple(str(lookup.get(k).pk if hasattr(lookup.get(k), "pk") else lookup.get(k)) for k in unique_fields)
+        por_chave[chave] = (lookup, data)
+    objs, campos = [], set()
+    for lookup, data in por_chave.values():
+        campos.update(data.keys())
+        objs.append(model(**{**data, **lookup}))
+    update_fields = sorted((campos | {"synced_at"}) - set(unique_fields) - {"id"})
+    model.objects.bulk_create(objs, update_conflicts=True, unique_fields=unique_fields, update_fields=update_fields, batch_size=1000)
+    return len(objs)
+
+
+def _upsert_linha_a_linha(model, linhas):
+    imported, errors = 0, []
+    for lookup, data in linhas:
+        try:
             try:
                 model.objects.update_or_create(defaults=data, **lookup)
             except MultipleObjectsReturned:
@@ -269,12 +298,27 @@ def map_and_upsert(connector, entity, raw_items, fields):
                     setattr(obj, k, v)
                 obj.save()
             imported += 1
-        except Exception as exc:  # noqa: BLE001 — uma linha ruim não derruba o lote
+        except Exception as exc:  # noqa: BLE001
             if len(errors) < 3:
                 errors.append(f"{type(exc).__name__}: {str(exc)[:160]}")
-            logger.warning("ingest %s: linha rejeitada: %s", entity, exc)
+            logger.warning("ingest: linha rejeitada: %s", exc)
+    return imported, errors
 
-    return imported, "; ".join(errors)
+
+def map_and_upsert(connector, entity, raw_items, fields):
+    """Grava um lote. Retorna (importados, erro-amostra)."""
+    if ENTITY_MODELS.get(entity) is None:
+        return _upsert_erp_records(connector, entity, raw_items, fields)
+
+    model, linhas, errors = _linhas_preparadas(connector, entity, raw_items, fields)
+    try:
+        with transaction.atomic():
+            imported = _upsert_em_lote(model, entity, linhas)
+    except Exception as exc:  # noqa: BLE001 — cai para linha a linha (diagnóstico e resiliência)
+        logger.warning("ingest %s: upsert em lote falhou (%s); gravando linha a linha", entity, exc)
+        imported, mais = _upsert_linha_a_linha(model, linhas)
+        errors.extend(mais)
+    return imported, "; ".join(errors[:3])
 
 
 def _upsert_erp_records(connector, entity, raw_items, fields):
