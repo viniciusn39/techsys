@@ -694,11 +694,14 @@ class KpiCatalogoTecnicoView(APIView):
                 "target_formula": fonte(src.compute) if src else "",
                 "target_entities": list(src.entities) if src else [],
             })
+        from .catalogo_winthor import FONTES
+
         return Response({
             "erp": erp,
             "setores": [{"key": k, "label": v} for k, v in KpiTemplate.Setor.choices],
             "consultas": consultas,
             "bases": bases,
+            "fontes": FONTES,
             "itens": itens,
         })
 

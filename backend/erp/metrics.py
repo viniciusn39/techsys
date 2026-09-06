@@ -71,7 +71,9 @@ def _branch_q(filters, path="branch"):
 
 
 def _rep_q(filters, path="sales_rep"):
-    """`sales_rep` aceita um código de RCA ("120") ou vários ("120,121") — visão por vendedor."""
+    """`sales_rep` aceita um código de RCA ("120") ou vários ("120,121") — visão por vendedor.
+
+    `path=""` aplica o filtro no próprio SalesRep (campo `code`)."""
     code = (filters or {}).get("sales_rep")
     if not code:
         return Q()
@@ -80,9 +82,10 @@ def _rep_q(filters, path="sales_rep"):
     codes = [str(c) for c in code]
     if not codes:
         return Q()
+    campo = f"{path}__code" if path else "code"
     if len(codes) == 1:
-        return Q(**{f"{path}__code": codes[0]})
-    return Q(**{f"{path}__code__in": codes})
+        return Q(**{campo: codes[0]})
+    return Q(**{f"{campo}__in": codes})
 
 
 def _sum(qs, expr):
@@ -1020,6 +1023,39 @@ def folha_estimada(tenant, ini, fim, filters=None):
     return _money(v) if v else None
 
 
+# --- Carteira por RCA: o que o BI/geomarketing (schema GEO, F_BI_CARTEIRA,
+# F_BI_CLISEMVENDAMES, F_BI_RCASEMVENDA) apura, lido direto do espelho ------------
+
+def clientes_perdidos_mes(tenant, ini, fim, filters=None):
+    """Clientes positivados no mês anterior que não compraram neste (F_BI_CLISEMVENDAMES)."""
+    ini_ant = (ini.replace(day=1) - timedelta(days=1)).replace(day=1)
+    fim_ant = ini.replace(day=1) - timedelta(days=1)
+    anteriores = set(notas_do_periodo(tenant, ini_ant, fim_ant, filters).filter(customer__isnull=False).values_list("customer_id", flat=True))
+    atuais = set(notas_do_periodo(tenant, ini, fim, filters).filter(customer__isnull=False).values_list("customer_id", flat=True))
+    return D(len(anteriores - atuais))
+
+
+def rcas_sem_venda(tenant, ini, fim, filters=None):
+    """Vendedores ativos sem nenhuma nota faturada no período (F_BI_RCASEMVENDA)."""
+    ativos = set(SalesRep.objects.filter(tenant=tenant, is_active=True).filter(_rep_q(filters, path="")).values_list("id", flat=True))
+    com_venda = set(notas_do_periodo(tenant, ini, fim, filters).filter(sales_rep__isnull=False).values_list("sales_rep_id", flat=True))
+    return D(len(ativos - com_venda))
+
+
+def carteira_positivada_pct(tenant, ini, fim, filters=None):
+    """Positivados ÷ carteira (clientes não bloqueados com RCA) — a régua da F_BI_CARTEIRA."""
+    carteira = Customer.objects.filter(tenant=tenant, blocked=False, sales_rep__isnull=False).filter(_rep_q(filters)).count()
+    return _pct(positivacao(tenant, ini, fim, filters), carteira) if carteira else None
+
+
+def carteira_inativa_pct(tenant, ini, fim, filters=None):
+    """% da carteira sem compra há mais de NUMDIASCLIINATIV (90) dias — F_BI_CARTEIRA.INATIVO."""
+    qs = Customer.objects.filter(tenant=tenant, blocked=False, sales_rep__isnull=False).filter(_rep_q(filters))
+    n = qs.count()
+    inativos = qs.filter(Q(last_purchase_at__lt=fim - timedelta(days=90)) | Q(last_purchase_at__isnull=True)).count()
+    return _pct(inativos, n) if n else None
+
+
 # --- WMS: ordens de serviço do armazém (PCMOVENDPEND agregada por OS) ---------
 
 def _os(tenant, ini, fim, filters):
@@ -1438,6 +1474,15 @@ CATALOG = [
        "% dos clientes com limite cujo crédito disponível está zerado.", ["customer", "title_receivable", "order"], clientes_sem_credito_pct),
     _m("clientes_positivados_delta", "Variação de positivados", "un", "maior_melhor", "soma", "Força de vendas",
        "Positivados no período menos os do período anterior.", ["sales_invoice"], clientes_positivados_delta, 0),
+    # Carteira por RCA (aprendido do BI/geomarketing GEO)
+    _m("clientes_perdidos_mes", "Clientes perdidos no mês", "un", "menor_melhor", "soma", "Força de vendas",
+       "Positivados no mês anterior que não compraram neste mês.", ["sales_invoice"], clientes_perdidos_mes, 0),
+    _m("rcas_sem_venda", "RCAs ativos sem venda", "un", "menor_melhor", "ultimo", "Força de vendas",
+       "Vendedores ativos sem nota faturada no período.", ["salesrep", "sales_invoice"], rcas_sem_venda, 0),
+    _m("carteira_positivada_pct", "Carteira positivada", "%", "maior_melhor", "media", "Força de vendas",
+       "Positivados ÷ clientes da carteira (não bloqueados, com RCA).", ["sales_invoice", "customer"], carteira_positivada_pct),
+    _m("carteira_inativa_pct", "Carteira inativa", "%", "menor_melhor", "ultimo", "Força de vendas",
+       "% da carteira sem compra há mais de 90 dias.", ["customer"], carteira_inativa_pct),
     # WMS (PCMOVENDPEND agregada por OS)
     _m("wms_os_concluidas", "OS de separação concluídas", "un", "maior_melhor", "soma", "WMS",
        "Ordens de serviço de saída com separação concluída no período.", ["wms_os"], lambda t, i, f, fl=None: wms_os_concluidas(t, i, f, fl), 0),

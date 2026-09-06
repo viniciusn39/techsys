@@ -45,11 +45,22 @@ interface Item {
   target_entities: string[];
 }
 
+interface Fonte {
+  key: string;
+  nome: string;
+  papel: string;
+  como_le: string;
+  tabelas: string;
+  aprendemos: string;
+  exige: string;
+}
+
 interface Tecnico {
   erp: string;
   setores: { key: string; label: string }[];
   consultas: Record<string, Consulta>;
   bases: Record<string, string>;
+  fontes: Fonte[];
   itens: Item[];
 }
 
@@ -122,6 +133,26 @@ export function CatalogoTecnico() {
             </div>
           </div>
         )}
+      </Panel>
+
+      <Panel title="Como os sistemas satélites leem o WinThor" subtitle="O que cada integração faz no banco do cliente, quais tabelas lê e o que reproduzimos direto do ERP — para qualquer cliente, com ou sem o sistema.">
+        <div className="row g-3">
+          {(data.fontes ?? []).map((f) => (
+            <div className="col-lg-6" key={f.key}>
+              <div className="h-100 p-3 rounded" style={{ background: "var(--surface-sunken)", border: "1px solid var(--border)" }}>
+                <div className="d-flex align-items-start gap-2">
+                  <div className="fw-semibold">{f.nome}</div>
+                  <span className={`badge ms-auto ${f.exige ? "text-bg-warning" : "text-bg-success"}`}>{f.exige ? "só com o sistema" : "qualquer WinThor"}</span>
+                </div>
+                <div className="small text-muted-2 mt-1">{f.papel}</div>
+                <div className="small mt-2"><strong>Como lê:</strong> {f.como_le}</div>
+                <div className="small mt-1"><strong>Tabelas:</strong> <code style={{ fontSize: "0.72rem" }}>{f.tabelas}</code></div>
+                <div className="small mt-1"><strong>O que aprendemos e reproduzimos:</strong> {f.aprendemos}</div>
+                {f.exige && <div className="small mt-1 text-warning-emphasis"><strong>Exige:</strong> {f.exige}</div>}
+              </div>
+            </div>
+          ))}
+        </div>
       </Panel>
 
       <Panel title="Plano de coleta (o SQL que roda no WinThor)" subtitle="Clique numa entidade para ver a consulta. :since = marca d'água da carga incremental; :janela = meses do histórico gradual.">

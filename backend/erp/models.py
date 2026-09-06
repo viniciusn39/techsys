@@ -791,6 +791,7 @@ class KpiTemplate(models.Model):
         FORCA_VENDAS = "forca_vendas", "Aprendida da força de vendas (Ion / MaxSoluções)"
         WMS = "wms", "Módulo WMS do WinThor"
         ROTEIRIZADOR = "roteirizador", "Roteirizador (FusionTrak)"
+        BI = "bi", "BI / geomarketing (schema GEO)"
         TECHSYS = "techsys", "Composição TechSys sobre dados do ERP"
 
     erp = models.CharField(max_length=20, default=Connector.Erp.WINTHOR, db_index=True)
