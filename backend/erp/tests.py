@@ -304,14 +304,14 @@ class ColetorIngestTests(APITestCase):
         self.assertGreater(len(por_codigo), 100)
         self.assertTrue(por_codigo["FAT"]["dados_ok"])           # notas já no espelho
         self.assertFalse(por_codigo["ESTQ"]["dados_ok"])         # estoque ainda não chegou
-        self.assertEqual(por_codigo["FILA_BLOQ"]["status"], "planejado")
+        self.assertEqual(por_codigo["DIVERG_RECEB"]["status"], "planejado")
         self.assertFalse(por_codigo["FAT"]["plugado"])
 
-        r = self.client.post("/api/erp/kpi-catalogo/", {"codes": ["FAT", "POSIT", "FILA_BLOQ", "fat"]}, format="json")
+        r = self.client.post("/api/erp/kpi-catalogo/", {"codes": ["FAT", "POSIT", "DIVERG_RECEB", "fat"]}, format="json")
         self.assertEqual(r.status_code, 201, r.content)
         criados = {i["code"] for i in r.json()["created"]}
         self.assertEqual(criados, {"FAT", "POSIT"})
-        self.assertIn("FILA_BLOQ", r.json()["skipped"])          # planejado não pluga
+        self.assertIn("DIVERG_RECEB", r.json()["skipped"])          # planejado não pluga
         fat = Indicator.objects.get(tenant=self.tenant, code="FAT")
         self.assertEqual((fat.erp_metric, fat.erp_target, fat.unit, fat.polarity), ("faturamento", "vlvendaprev", "R$", "maior_melhor"))
         self.assertTrue(self.client.get("/api/erp/kpi-catalogo/").json()["itens"] and
@@ -366,6 +366,79 @@ class ColetorIngestTests(APITestCase):
         # crédito: cliente 1 = 1000 − 600 − 300 = 100; cliente 2 = 500 − 0 − 50 = 450
         self.assertEqual(compute_metric("credito_disponivel_carteira", t, date.today()), 550)
         self.assertEqual(compute_metric("clientes_sem_credito_pct", t, date.today()), 0)
+
+    def test_tabelas_da_varredura_entram_no_espelho_e_viram_kpi(self):
+        from django.utils import timezone
+
+        self.ingest("branch", [{"CODIGO": "1", "RAZAOSOCIAL": "Matriz", "IS_ACTIVE": 1}])
+        self.ingest("customer", [{"CODCLI": 7, "CLIENTE": "Cliente 7"}])
+        self.ingest("order", [
+            {"NUMPED": 501, "CODFILIAL": "1", "CODCLI": 7, "VLTOTAL": "1500.00", "DATA": "2026-08-10", "STATUS": "pending"},
+            {"NUMPED": 502, "CODFILIAL": "1", "CODCLI": 7, "VLTOTAL": "800.00", "DATA": "2026-08-11", "STATUS": "pending"},
+        ])
+        r = self.ingest("order_block", [
+            {"CODIGO": "1", "NUMPED": "501", "CODMOTIVO": 3, "MOTIVO_DESC": "Limite de crédito", "STATUS": "B", "TIPO": "F",
+             "DTINCLUSAO": "2026-08-10 09:00:00"},
+            {"CODIGO": "2", "NUMPED": "502", "CODMOTIVO": 5, "MOTIVO_DESC": "Preço", "STATUS": "L", "TIPO": "C",
+             "DTINCLUSAO": "2026-08-11 08:00:00", "DTLIBERA": "2026-08-11 12:00:00"},
+        ])
+        self.assertEqual(r.status_code, 200, r.content)
+        self.assertEqual(r.json()["imported"], 2)
+        hoje = timezone.now().date()
+        self.assertEqual(compute_metric("fila_bloqueio_valor", self.tenant, hoje), Decimal("1500.00"))
+        self.assertEqual(compute_metric("tempo_fila_bloqueio_horas", self.tenant, date(2026, 8, 1)), Decimal("4.0"))
+
+        self.ingest("fv_order", [
+            {"EXTERNAL_ID": "7-1", "NUMPEDRCA": "1", "CODUSUR": 7, "CODCLI": 7, "CODFILIAL": "1", "IMPORTADO": 0, "DTINCLUSAO": "2026-08-12 10:00:00"},
+            {"EXTERNAL_ID": "7-2", "NUMPEDRCA": "2", "CODUSUR": 7, "CODCLI": 7, "CODFILIAL": "1", "IMPORTADO": 1, "NUMPED": "502", "DTINCLUSAO": "2026-08-12 10:05:00"},
+        ])
+        self.assertEqual(compute_metric("pedidos_fv_pendentes", self.tenant, hoje), Decimal("1"))
+
+        self.ingest("customer_credit", [
+            {"EXTERNAL_ID": "c1", "CODCLI": 7, "CODFILIAL": "1", "VALOR": "120.50", "DTLANC": "2026-08-02", "IS_CASHBACK": 0},
+            {"EXTERNAL_ID": "c2", "CODCLI": 7, "CODFILIAL": "1", "VALOR": "50.00", "DTLANC": "2026-08-03", "DTDESCONTO": "2026-08-20", "IS_CASHBACK": 0},
+            {"EXTERNAL_ID": "c3", "CODCLI": 7, "CODFILIAL": "1", "VALOR": "30.00", "DTLANC": "2026-08-03", "IS_CASHBACK": 1, "DTVALIDADECASHBACK": "2026-09-10"},
+        ])
+        self.assertEqual(compute_metric("creditos_cliente_aberto", self.tenant, date(2026, 8, 1)), Decimal("120.50"))
+        self.assertEqual(compute_metric("cashback_a_expirar", self.tenant, date(2026, 8, 1)), Decimal("30.00"))
+
+        self.ingest("card_settlement", [
+            {"CODBAIXAITEM": "10", "CODFILIAL": "1", "DATA": "2026-08-05", "VALORPARCELA": "100.00", "VALORPARCELALIQUIDO": "97.50"},
+            {"CODBAIXAITEM": "11", "CODFILIAL": "1", "DATA": "2026-08-06", "VALORPARCELA": "100.00", "VALORPARCELALIQUIDO": "96.50"},
+        ])
+        self.assertEqual(compute_metric("taxa_cartao_pct", self.tenant, date(2026, 8, 1)), Decimal("3.00"))
+
+        self.ingest("pos_daily", [
+            {"EXTERNAL_ID": "1-1-20260805-1", "CODFILIAL": "1", "NUMECF": "1", "DTEMISSAO": "2026-08-05", "CUPONS": 40, "VENDABRUTA": "2000.00"},
+            {"EXTERNAL_ID": "1-1-20260806-2", "CODFILIAL": "1", "NUMECF": "1", "DTEMISSAO": "2026-08-06", "CUPONS": 60, "VENDABRUTA": "4000.00"},
+        ])
+        self.assertEqual(compute_metric("pdv_cupons", self.tenant, date(2026, 8, 1)), Decimal("100"))
+        self.assertEqual(compute_metric("pdv_ticket_medio", self.tenant, date(2026, 8, 1)), Decimal("60.00"))
+
+        self.ingest("purchase_order", [
+            {"NUMPED": "9001", "CODFILIAL": "1", "DTEMISSAO": "2026-07-01", "DTPREVENT": "2026-07-20", "VLTOTAL": "10000", "VLENTREGUE": "4000"},
+            {"NUMPED": "9002", "CODFILIAL": "1", "DTEMISSAO": "2026-07-01", "DTPREVENT": "2026-07-20", "VLTOTAL": "10000", "VLENTREGUE": "10000"},
+        ])
+        self.assertEqual(compute_metric("pedidos_compra_atrasados", self.tenant, date(2026, 8, 1)), Decimal("1"))
+
+        self.ingest("mdfe", [
+            {"EXTERNAL_ID": "1-1", "NUMMDFE": "1", "CODFILIAL": "1", "DATAHORAGERACAO": "2026-08-01 10:00:00", "PROTOCOLOMDFE": "123", "IS_CANCELED": 0},
+            {"EXTERNAL_ID": "2-1", "NUMMDFE": "2", "CODFILIAL": "1", "DATAHORAGERACAO": "2026-08-02 10:00:00", "IS_CANCELED": 0},
+        ])
+        self.assertEqual(compute_metric("mdfe_pendentes", self.tenant, date(2026, 8, 1)), Decimal("1"))
+
+        # Estrutura do espelho: só root, lista as tabelas novas com colunas e linhas
+        admin = User.objects.create_user("adm10@nb.com", "x", first_name="A", tenant=self.tenant, role=User.Role.ADMIN)
+        root = User.objects.create_user("root10@t.com", "x", first_name="R", role=User.Role.ROOT)
+        self.client.force_authenticate(admin)
+        self.assertEqual(self.client.get("/api/erp/espelho/estrutura/").status_code, 403)
+        self.client.force_authenticate(root)
+        d = self.client.get("/api/erp/espelho/estrutura/").json()
+        por = {t["entity"]: t for t in d["tabelas"]}
+        self.assertEqual(por["order_block"]["rows"], 2)
+        self.assertIn("PCBLOQUEIOSPEDIDO", por["order_block"]["erp_tables"])
+        col = next(c for c in por["order_block"]["columns"] if c["name"] == "blocked_at")
+        self.assertEqual((col["type"], col["erp"]), ("timestamp", "DTINCLUSAO"))
 
     def test_heartbeat_atualiza_health_e_last_seen(self):
         r = self.client.post("/api/coletor/heartbeat/", {"oracle_ok": True, "agent_version": "1.0.0"},

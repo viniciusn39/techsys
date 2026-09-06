@@ -706,6 +706,70 @@ class KpiCatalogoTecnicoView(APIView):
         })
 
 
+class EspelhoEstruturaView(APIView):
+    """Só root: a estrutura do banco local (espelho) — tabela por entidade, colunas,
+    tipos, coluna de origem no WinThor, chaves e quantidade de linhas.
+
+    Com uma empresa aberta (X-Tenant-Id) as linhas são da empresa; sem, do banco todo.
+    """
+
+    permission_classes = [IsRoot]
+
+    def get(self, request):
+        import re
+
+        from django.db import models as dj
+
+        from .sync import ENTITY_DEFAULTS, ENTITY_MODELS
+
+        tenant = getattr(request, "tenant", None)
+        plano = {q["entity"]: q for q in WINTHOR_QUERIES}
+        tabelas = []
+        for entity, model in ENTITY_MODELS.items():
+            q = plano.get(entity, {})
+            mapa = (DEFAULT_SYNC.get(entity) or {}).get("fields", {})
+            origem = sorted({t.upper() for t in re.findall(r"(?:FROM|JOIN)\s+([A-Z_$.]+)", q.get("sql", ""), re.I)})
+            colunas = []
+            for f in model._meta.get_fields():
+                if not getattr(f, "concrete", False):
+                    continue
+                tipo = f.get_internal_type()
+                if isinstance(f, dj.DecimalField):
+                    tipo = f"decimal({f.max_digits},{f.decimal_places})"
+                elif isinstance(f, dj.CharField):
+                    tipo = f"varchar({f.max_length})"
+                elif isinstance(f, dj.ForeignKey):
+                    tipo = f"fk → {f.related_model._meta.db_table}"
+                else:
+                    tipo = {"DateField": "date", "DateTimeField": "timestamp", "BooleanField": "bool",
+                            "IntegerField": "int", "BigAutoField": "bigserial", "AutoField": "serial",
+                            "PositiveIntegerField": "int", "JSONField": "jsonb", "TextField": "text"}.get(tipo, tipo.lower())
+                colunas.append({
+                    "name": f.column, "type": tipo, "null": bool(f.null),
+                    "erp": mapa.get(f.name, ""), "indexed": bool(getattr(f, "db_index", False) or f.unique or f.is_relation),
+                })
+            qs = model.objects.all()
+            if tenant is not None:
+                qs = qs.filter(tenant=tenant)
+            for k, v in ENTITY_DEFAULTS.get(entity, {}).items():
+                qs = qs.filter(**{k: v})
+            unicas = [list(c.fields) for c in model._meta.constraints if isinstance(c, dj.UniqueConstraint)]
+            indices = [list(i.fields) for i in model._meta.indexes]
+            doc = (model.__doc__ or "").strip().splitlines()
+            tabelas.append({
+                "entity": entity, "label": q.get("label", entity), "table": model._meta.db_table,
+                "model": model.__name__, "doc": doc[0] if doc else "",
+                "erp_tables": origem, "opcional": bool(q.get("opcional")),
+                "every_minutes": q.get("every_minutes"), "incremental": bool(q.get("incremental")),
+                "rows": qs.count(), "columns": colunas, "unique": unicas, "indexes": indices,
+            })
+        return Response({
+            "escopo": "empresa" if tenant is not None else "banco inteiro",
+            "tenant": getattr(tenant, "name", "") if tenant is not None else "",
+            "tabelas": tabelas,
+        })
+
+
 class TargetCatalogView(APIView):
     """Fontes de meta do ERP (PCMETA, cadastro do RCA) que um indicador pode usar."""
 

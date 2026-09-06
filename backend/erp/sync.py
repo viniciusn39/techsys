@@ -19,17 +19,25 @@ from django.db import models as dj_models
 from .models import (
     BankAccount,
     Branch,
+    CardSettlement,
     CashMovement,
+    CreditAuthorization,
     Customer,
+    CustomerCredit,
     DeliveryEvent,
     DeliveryLoad,
     Employee,
     ErpRecord,
     FinancialSnapshot,
     FinancialTitle,
+    FvOrder,
+    Mdfe,
     Order,
+    OrderBlock,
+    PosDaily,
     Product,
     PurchaseInvoice,
+    PurchaseOrder,
     RouteLoad,
     SalesInvoice,
     SalesInvoiceItem,
@@ -37,6 +45,7 @@ from .models import (
     SalesTarget,
     StockBalance,
     Supplier,
+    SupplierCredit,
     WmsOrder,
 )
 
@@ -65,6 +74,15 @@ ENTITY_MODELS = {
     "wms_os": WmsOrder,
     "route_load": RouteLoad,
     "delivery_event": DeliveryEvent,
+    "order_block": OrderBlock,
+    "fv_order": FvOrder,
+    "customer_credit": CustomerCredit,
+    "credit_auth": CreditAuthorization,
+    "card_settlement": CardSettlement,
+    "pos_daily": PosDaily,
+    "purchase_order": PurchaseOrder,
+    "supplier_credit": SupplierCredit,
+    "mdfe": Mdfe,
 }
 
 ENTITY_DEFAULTS = {
@@ -95,6 +113,14 @@ ENTITY_FKS = {
     "target_daily": {"branch": Branch, "sales_rep": SalesRep},
     "wms_os": {"branch": Branch},
     "route_load": {"branch": Branch},
+    "fv_order": {"sales_rep": SalesRep, "customer": Customer, "branch": Branch},
+    "customer_credit": {"customer": Customer, "branch": Branch},
+    "credit_auth": {"customer": Customer, "sales_rep": SalesRep},
+    "card_settlement": {"branch": Branch, "customer": Customer},
+    "pos_daily": {"branch": Branch},
+    "purchase_order": {"supplier": Supplier, "branch": Branch},
+    "supplier_credit": {"supplier": Supplier, "branch": Branch},
+    "mdfe": {"branch": Branch},
 }
 
 REQUIRED_FKS = {

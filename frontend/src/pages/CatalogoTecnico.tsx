@@ -64,6 +64,14 @@ interface Tecnico {
   itens: Item[];
 }
 
+interface Coluna { name: string; type: string; null: boolean; erp: string; indexed: boolean }
+interface Tabela {
+  entity: string; label: string; table: string; model: string; doc: string;
+  erp_tables: string[]; opcional: boolean; every_minutes: number | null; incremental: boolean;
+  rows: number; columns: Coluna[]; unique: string[][]; indexes: string[][];
+}
+interface Estrutura { escopo: string; tenant: string; tabelas: Tabela[] }
+
 const pre: React.CSSProperties = {
   background: "var(--surface-sunken)", border: "1px solid var(--border)", borderRadius: 8,
   padding: "10px 12px", fontSize: "0.76rem", whiteSpace: "pre-wrap", wordBreak: "break-word",
@@ -79,6 +87,14 @@ export function CatalogoTecnico() {
   const [aberto, setAberto] = useState<string | null>(null);
   const [verBases, setVerBases] = useState(false);
   const [verPlano, setVerPlano] = useState<string | null>(null);
+  const [estrutura, setEstrutura] = useState<Estrutura | null>(null);
+  const [carregandoEstrutura, setCarregandoEstrutura] = useState(false);
+  const [tabelaAberta, setTabelaAberta] = useState<string | null>(null);
+
+  const carregarEstrutura = () => {
+    setCarregandoEstrutura(true);
+    api.get<Estrutura>("/api/erp/espelho/estrutura/").then(setEstrutura).catch((e) => setErro(e.message)).finally(() => setCarregandoEstrutura(false));
+  };
 
   useEffect(() => {
     api.get<Tecnico>("/api/erp/kpi-catalogo/tecnico/").then(setData).catch((e) => setErro(e.message));
@@ -177,6 +193,78 @@ export function CatalogoTecnico() {
             </div>
           );
         })()}
+      </Panel>
+
+      <Panel
+        title="Estrutura do espelho (banco local)"
+        subtitle="Cada tabela do PostgreSQL que recebe o que o agente extrai: colunas, tipos, a coluna de origem no WinThor, chaves e quantidade de linhas. Com uma empresa aberta, as linhas são dela; sem empresa, do banco inteiro."
+        actions={
+          <button className="btn btn-sm btn-outline-secondary" onClick={carregarEstrutura} disabled={carregandoEstrutura}>
+            <i className="bi bi-diagram-3 me-1" />{estrutura ? "Atualizar" : "Carregar estrutura"}
+          </button>
+        }
+      >
+        {carregandoEstrutura && <Skeleton height={120} />}
+        {estrutura && !carregandoEstrutura && (
+          <>
+            <div className="small text-muted-2 mb-2">
+              {estrutura.tabelas.length} tabelas · escopo: {estrutura.escopo}{estrutura.tenant ? ` (${estrutura.tenant})` : ""} · {estrutura.tabelas.reduce((s, t) => s + t.rows, 0).toLocaleString("pt-BR")} linhas
+            </div>
+            <div className="table-responsive">
+              <table className="table table-sm align-middle mb-0">
+                <thead><tr><th>Entidade</th><th>Tabela local</th><th>Origem no WinThor</th><th>Carga</th><th className="text-end">Colunas</th><th className="text-end">Linhas</th></tr></thead>
+                <tbody>
+                  {estrutura.tabelas.map((t) => (
+                    <>
+                      <tr key={t.entity} style={{ cursor: "pointer" }} onClick={() => setTabelaAberta(tabelaAberta === t.entity ? null : t.entity)}>
+                        <td>
+                          <span className="fw-semibold">{t.label}</span> <span className="text-muted-2 small">· {t.entity}</span>
+                          <i className={`bi ms-1 small ${tabelaAberta === t.entity ? "bi-chevron-up" : "bi-chevron-down"}`} />
+                          {t.doc && <div className="small text-muted-2">{t.doc}</div>}
+                        </td>
+                        <td><code>{t.table}</code><div className="text-muted-2" style={{ fontSize: "0.72rem" }}>{t.model}</div></td>
+                        <td className="small"><code style={{ fontSize: "0.72rem" }}>{t.erp_tables.join(", ") || "—"}</code></td>
+                        <td className="small">
+                          {t.incremental ? "incremental" : "cheia"}{t.every_minutes ? ` · ${t.every_minutes} min` : ""}
+                          {t.opcional && <span className="badge text-bg-light border ms-1">opcional</span>}
+                        </td>
+                        <td className="text-end small">{t.columns.length}</td>
+                        <td className="text-end small">{t.rows.toLocaleString("pt-BR")}</td>
+                      </tr>
+                      {tabelaAberta === t.entity && (
+                        <tr key={`${t.entity}-cols`}>
+                          <td colSpan={6}>
+                            <div className="table-responsive">
+                              <table className="table table-sm mb-2" style={{ fontSize: "0.78rem" }}>
+                                <thead><tr><th>Coluna</th><th>Tipo</th><th>Nulo</th><th>Coluna no WinThor</th><th>Índice</th></tr></thead>
+                                <tbody>
+                                  {t.columns.map((c) => (
+                                    <tr key={c.name}>
+                                      <td><code>{c.name}</code></td>
+                                      <td>{c.type}</td>
+                                      <td>{c.null ? "sim" : "não"}</td>
+                                      <td>{c.erp ? <code>{c.erp}</code> : <span className="text-muted-2">—</span>}</td>
+                                      <td>{c.indexed ? <i className="bi bi-check2" /> : ""}</td>
+                                    </tr>
+                                  ))}
+                                </tbody>
+                              </table>
+                            </div>
+                            <div className="small text-muted-2">
+                              {t.unique.length > 0 && <>Chave única: {t.unique.map((u) => `(${u.join(", ")})`).join(" · ")} </>}
+                              {t.indexes.length > 0 && <>· Índices: {t.indexes.map((u) => `(${u.join(", ")})`).join(" · ")}</>}
+                            </div>
+                          </td>
+                        </tr>
+                      )}
+                    </>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          </>
+        )}
+        {!estrutura && !carregandoEstrutura && <div className="small text-muted-2">Clique em "Carregar estrutura" para listar as tabelas do espelho.</div>}
       </Panel>
 
       <Panel title="KPIs">

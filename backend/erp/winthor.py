@@ -24,7 +24,10 @@ ORDEM_DE_VALOR = [
     "branch", "salesrep", "supplier", "employee", "customer", "product",
     "sales_invoice", "sales_invoice_item", "title_receivable", "title_payable",
     "financial_snapshot", "bank_account", "cash_movement", "stock", "order",
-    "purchase", "load", "target", "target_daily", "wms_os", "route_load", "delivery_event",
+    "purchase", "load", "target", "target_daily",
+    "order_block", "fv_order", "customer_credit", "credit_auth", "card_settlement",
+    "pos_daily", "purchase_order", "supplier_credit", "mdfe",
+    "wms_os", "route_load", "delivery_event",
 ]
 
 WINTHOR_QUERIES = [
@@ -44,7 +47,7 @@ FROM PCFILIAL
         "since_column": "DTULTALTERACAO",
         "sql": """
 SELECT U.CODUSUR, U.NOME, U.TIPOVEND, U.CODEQUIPE, S.NOME AS SUPERVISOR,
-       U.VLVENDAPREV,
+       U.VLVENDAPREV, U.VLCORRENTE, U.VLLIMCRED,
        CASE WHEN NVL(U.BLOQUEIO,'N') = 'N' AND U.DTEXCLUSAO IS NULL THEN 1 ELSE 0 END AS IS_ACTIVE,
        TO_CHAR(U.DTULTALTERACAO,'YYYY-MM-DD HH24:MI:SS') AS DTULTALTERACAO
 FROM PCUSUARI U
@@ -77,6 +80,8 @@ SELECT E.MATRICULA, E.NOME, E.FUNCAO, E.CODSETOR, E.CODFILIAL,
        TO_CHAR(E.ADMISSAO,'YYYY-MM-DD') AS ADMISSAO,
        TO_CHAR(E.DTDEMISSAO,'YYYY-MM-DD') AS DTDEMISSAO,
        CASE WHEN E.TIPOMOTORISTA IS NOT NULL THEN 1 ELSE 0 END AS IS_DRIVER,
+       TO_CHAR(E.DTVALIDADECNH,'YYYY-MM-DD') AS DTVALIDADECNH,
+       CASE WHEN E.USUARIOBD IS NOT NULL THEN 1 ELSE 0 END AS HAS_DB_USER,
        CASE WHEN NVL(E.SITUACAO,'A') = 'A' AND E.DT_EXCLUSAO IS NULL THEN 1 ELSE 0 END AS IS_ACTIVE,
        TO_CHAR(E.DTULTALTER,'YYYY-MM-DD HH24:MI:SS') AS DTULTALTER
 FROM PCEMPR E
@@ -183,7 +188,8 @@ SELECT P.NUMTRANSVENDA || '-' || P.PREST AS EXTERNAL_ID,
        TO_CHAR(P.DTEMISSAO,'YYYY-MM-DD') AS DTEMISSAO,
        TO_CHAR(P.DTVENC,'YYYY-MM-DD') AS DTVENC,
        TO_CHAR(P.DTPAG,'YYYY-MM-DD') AS DTPAG,
-       P.VPAGO, P.VALORMULTA,
+       P.VPAGO, P.VALORMULTA, P.VALORDESC,
+       TO_CHAR(P.DTVENCANTERIOR,'YYYY-MM-DD') AS DTVENCANTERIOR,
        CASE WHEN P.DTCANCEL IS NOT NULL THEN 'canceled'
             WHEN P.DTPAG IS NOT NULL THEN 'paid'
             ELSE 'open' END AS STATUS,
@@ -208,7 +214,9 @@ SELECT L.RECNUM, L.CODFORNEC, L.NUMNOTA, L.HISTORICO, CT.CONTA, L.TIPOSERVICO,
        TO_CHAR(L.DTCOMPETENCIA,'YYYY-MM-DD') AS DTCOMPETENCIA,
        TO_CHAR(L.DTVENC,'YYYY-MM-DD') AS DTVENC,
        TO_CHAR(L.DTPAGTO,'YYYY-MM-DD') AS DTPAGTO,
-       L.VPAGO,
+       L.VPAGO, L.CODFUNCAUTOR1, L.CODFUNCAUTOR2,
+       CASE WHEN NVL(L.ADIANTAMENTO,'N') = 'S' THEN 1 ELSE 0 END AS IS_ADVANCE,
+       L.VLRUTILIZADOADIANTFORNEC,
        CASE WHEN L.DTCANCEL IS NOT NULL OR NVL(L.LANCEXCLUIDO,'N') = 'S' THEN 'canceled'
             WHEN L.DTPAGTO IS NOT NULL THEN 'paid'
             ELSE 'open' END AS STATUS,
@@ -276,7 +284,8 @@ SELECT E.CODFILIAL || '-' || E.CODPROD AS EXTERNAL_ID,
        E.ESTMIN, E.ESTMAX, E.ESTIDEAL, E.CUSTOREAL, E.CUSTOULTENT, E.CUSTOREP,
        E.QTVENDMES, E.QTGIRODIA, E.QTVENDAPERDIDA,
        TO_CHAR(E.DTULTENT,'YYYY-MM-DD') AS DTULTENT,
-       TO_CHAR(E.DTULTSAIDA,'YYYY-MM-DD') AS DTULTSAIDA
+       TO_CHAR(E.DTULTSAIDA,'YYYY-MM-DD') AS DTULTSAIDA,
+       TO_CHAR(E.DTULTINVENT,'YYYY-MM-DD') AS DTULTINVENT
 FROM PCEST E
 """,
     },
@@ -334,14 +343,19 @@ SELECT C.NUMCAR, C.CODFILIALSAIDA, E.NOME AS MOTORISTA, V.PLACA, C.CODROTAPRINC,
        C.TOTPESO, C.VLTOTAL, C.VLFRETE,
        TO_CHAR(C.DTSAIDA,'YYYY-MM-DD') AS DTSAIDA,
        TO_CHAR(C.DTRETORNO,'YYYY-MM-DD') AS DTRETORNO,
+       TO_CHAR(C.DATAMON,'YYYY-MM-DD HH24:MI:SS') AS DATAMON,
+       TO_CHAR(C.DATACONF,'YYYY-MM-DD HH24:MI:SS') AS DATACONF,
+       TO_CHAR(C.DTFECHA,'YYYY-MM-DD HH24:MI:SS') AS DTFECHA,
+       R.PRAZOPREVENT,
        CASE WHEN C.DT_CANCEL IS NOT NULL THEN 'canceled'
             WHEN C.DTRETORNO IS NOT NULL THEN 'returned'
             WHEN C.DTSAIDA IS NOT NULL THEN 'dispatched'
             ELSE 'open' END AS STATUS,
        TO_CHAR(C.DTULTALTER,'YYYY-MM-DD HH24:MI:SS') AS DTULTALTER
 FROM PCCARREG C
-LEFT JOIN PCEMPR E   ON E.MATRICULA = C.CODMOTORISTA
-LEFT JOIN PCVEICUL V ON V.CODVEICULO = C.CODVEICULO
+LEFT JOIN PCEMPR E    ON E.MATRICULA = C.CODMOTORISTA
+LEFT JOIN PCVEICUL V  ON V.CODVEICULO = C.CODVEICULO
+LEFT JOIN PCROTAEXP R ON R.CODROTA = C.CODROTAPRINC
 WHERE C.DTSAIDA >= ADD_MONTHS(TRUNC(SYSDATE), -12)
   AND (:since IS NULL OR C.DTULTALTER > TO_DATE(:since,'YYYY-MM-DD HH24:MI:SS'))
 """,
@@ -387,6 +401,184 @@ WHERE R.DATA >= ADD_MONTHS(TRUNC(SYSDATE,'MM'), -12)
 GROUP BY R.CODFILIAL, R.CODUSUR, R.DATA
 HAVING (SUM(NVL(R.VLVENDAPREV,0)) > 0 OR SUM(NVL(R.NUMCLIPOS,0)) > 0 OR SUM(NVL(R.QTPEDPREV,0)) > 0)
    AND (:since IS NULL OR MAX(NVL(R.DTMXSALTER, R.DATA)) > TO_DATE(:since,'YYYY-MM-DD HH24:MI:SS'))
+""",
+    },
+    {  # PCBLOQUEIOSPEDIDO — fila de bloqueio de pedidos. Carga CHEIA de 3 meses:
+       # a Integradora apaga a linha ao liberar, e a linha que some deixa de ser
+       # atualizada aqui (synced_at velho = saiu da fila).
+        "entity": "order_block",
+        "label": "Bloqueios de pedido (PCBLOQUEIOSPEDIDO)",
+        "every_minutes": 60,
+        "opcional": True,
+        "sql": """
+SELECT TO_CHAR(B.CODIGO) AS CODIGO, TO_CHAR(B.NUMPED) AS NUMPED, B.CODMOTIVO,
+       NVL(M.DESCRICAO, B.MOTIVO) AS MOTIVO_DESC, B.STATUS, B.TIPO, B.CODFUNCLIBERA,
+       TO_CHAR(B.DTINCLUSAO,'YYYY-MM-DD HH24:MI:SS') AS DTINCLUSAO,
+       TO_CHAR(B.DTLIBERA,'YYYY-MM-DD HH24:MI:SS') AS DTLIBERA
+FROM PCBLOQUEIOSPEDIDO B
+LEFT JOIN PCMOTBLOQUEIO M ON M.CODMOTIVO = B.CODMOTIVO
+WHERE B.DTINCLUSAO >= ADD_MONTHS(TRUNC(SYSDATE), -3)
+""",
+    },
+    {  # PCPEDCFV — caixa de entrada do força de vendas (o que o RCA transmitiu).
+       # Carga cheia de 2 meses; pendente = IMPORTADO = 0 e sem NUMPED.
+        "entity": "fv_order",
+        "label": "Pedidos do força de vendas (PCPEDCFV)",
+        "every_minutes": 30,
+        "opcional": True,
+        "sql": """
+SELECT F.CODUSUR || '-' || F.NUMPEDRCA AS EXTERNAL_ID,
+       TO_CHAR(F.NUMPEDRCA) AS NUMPEDRCA, F.CODUSUR, F.CODCLI, F.CODFILIAL,
+       TO_CHAR(F.NUMPED) AS NUMPED, NVL(F.IMPORTADO, 0) AS IMPORTADO, F.POSICAO_ATUAL,
+       TO_CHAR(F.DTINCLUSAO,'YYYY-MM-DD HH24:MI:SS') AS DTINCLUSAO,
+       TO_CHAR(F.DTALTERACAO,'YYYY-MM-DD HH24:MI:SS') AS DTALTERACAO
+FROM PCPEDCFV F
+WHERE F.DTINCLUSAO >= ADD_MONTHS(TRUNC(SYSDATE), -2)
+""",
+    },
+    {  # PCCRECLI — créditos de cliente (devolução, cashback). Reprocessa 7 dias
+       # por lançamento, uso, estorno ou cancelamento.
+        "entity": "customer_credit",
+        "label": "Créditos de cliente (PCCRECLI)",
+        "every_minutes": 120,
+        "incremental": True,
+        "since_column": "DTLANC",
+        "batch": 1000,
+        "opcional": True,
+        "sql": """
+SELECT NVL(TO_CHAR(C.CODIGO), C.CODCLI || '-' || NVL(C.NUMTRANSVENDA, 0) || '-' || TO_CHAR(C.DTLANC,'YYYYMMDDHH24MISS')) AS EXTERNAL_ID,
+       C.CODCLI, C.CODFILIAL, C.VALOR, C.ORIGEM, C.SITUACAO, TO_CHAR(C.NUMNOTA) AS NUMNOTA,
+       TO_CHAR(C.DTLANC,'YYYY-MM-DD') AS DTLANC,
+       TO_CHAR(C.DTDESCONTO,'YYYY-MM-DD') AS DTDESCONTO,
+       TO_CHAR(C.DTVENC,'YYYY-MM-DD') AS DTVENC,
+       TO_CHAR(C.DTCANCEL,'YYYY-MM-DD') AS DTCANCEL,
+       TO_CHAR(C.DTESTORNO,'YYYY-MM-DD') AS DTESTORNO,
+       CASE WHEN NVL(C.CASHBACK,'N') = 'S' THEN 1 ELSE 0 END AS IS_CASHBACK,
+       TO_CHAR(C.DTVALIDADECASHBACK,'YYYY-MM-DD') AS DTVALIDADECASHBACK
+FROM PCCRECLI C
+WHERE C.DTLANC >= ADD_MONTHS(TRUNC(SYSDATE), -12)
+  AND (:since IS NULL OR C.DTLANC >= TRUNC(SYSDATE) - 7 OR C.DTDESCONTO >= TRUNC(SYSDATE) - 7
+       OR C.DTESTORNO >= TRUNC(SYSDATE) - 7 OR C.DTCANCEL >= TRUNC(SYSDATE) - 7
+       OR (C.DTDESCONTO IS NULL AND C.DTCANCEL IS NULL AND C.DTESTORNO IS NULL))
+""",
+    },
+    {  # PCAUTORC — autorizações de crédito acima do limite.
+        "entity": "credit_auth",
+        "label": "Autorizações de crédito (PCAUTORC)",
+        "every_minutes": 120,
+        "incremental": True,
+        "since_column": "DATA",
+        "opcional": True,
+        "sql": """
+SELECT A.NUMPEDIDO || '-' || TO_CHAR(A.DATA,'YYYYMMDDHH24MISS') AS EXTERNAL_ID,
+       TO_CHAR(A.NUMPEDIDO) AS NUMPEDIDO, A.CODCLI, A.CODUSUR, A.CODFUNC,
+       TO_CHAR(A.DATA,'YYYY-MM-DD') AS DATA, A.LIMCRED, A.VLPENDENTE, A.VLLIBERADO,
+       TO_CHAR(A.DTUTILIZACAO,'YYYY-MM-DD') AS DTUTILIZACAO,
+       TO_CHAR(A.NUMPEDUTILIZACAO) AS NUMPEDUTILIZACAO
+FROM PCAUTORC A
+WHERE A.DATA >= ADD_MONTHS(TRUNC(SYSDATE), -12)
+  AND (:since IS NULL OR A.DATA >= TRUNC(SYSDATE) - 7 OR A.DTUTILIZACAO >= TRUNC(SYSDATE) - 7)
+""",
+    },
+    {  # PCBAIXACARTAOI (+ C) — parcelas de cartão conciliadas: bruto × líquido.
+        "entity": "card_settlement",
+        "label": "Conciliação de cartão (PCBAIXACARTAOI)",
+        "every_minutes": 120,
+        "incremental": True,
+        "since_column": "DATA",
+        "batch": 2000,
+        "opcional": True,
+        "backfill_meses": 12,
+        "backfill_passo": 3,
+        "sql": """
+SELECT TO_CHAR(I.CODBAIXAITEM) AS CODBAIXAITEM, C.CODFILIAL, I.CODCLI,
+       TO_CHAR(I.DATA,'YYYY-MM-DD') AS DATA,
+       TO_CHAR(I.DATACREDITO,'YYYY-MM-DD') AS DATACREDITO,
+       TO_CHAR(I.DTBAIXA,'YYYY-MM-DD') AS DTBAIXA,
+       I.PARCELA, I.QTTOTALPARCELAS, I.VALORPARCELA, I.VALORPARCELALIQUIDO, I.TAXA,
+       I.CODREDE, I.CODBANDEIRA, I.TIPOPRODUTO, NVL(I.STATUS, I.SITUACAO) AS STATUS
+FROM PCBAIXACARTAOI I
+LEFT JOIN PCBAIXACARTAOC C ON C.CODBAIXACARTAO = I.CODBAIXACARTAO
+WHERE I.DATA >= ADD_MONTHS(TRUNC(SYSDATE), -:janela)
+  AND (:since IS NULL OR I.DATA >= TRUNC(SYSDATE) - 7 OR I.DTBAIXA >= TRUNC(SYSDATE) - 7)
+""",
+    },
+    {  # PCCUPOMFISCALZ — redução Z: cupons e venda bruta por ECF × dia (lojas).
+        "entity": "pos_daily",
+        "label": "Redução Z do PDV (PCCUPOMFISCALZ)",
+        "every_minutes": 120,
+        "incremental": True,
+        "since_column": "DTEMISSAO",
+        "opcional": True,
+        "sql": """
+SELECT Z.CODFILIAL || '-' || Z.NUMECF || '-' || TO_CHAR(Z.DTEMISSAO,'YYYYMMDD') || '-' || NVL(Z.NUMREDUCAOZ, 0) AS EXTERNAL_ID,
+       Z.CODFILIAL, TO_CHAR(Z.NUMECF) AS NUMECF,
+       TO_CHAR(Z.DTEMISSAO,'YYYY-MM-DD') AS DTEMISSAO,
+       GREATEST(NVL(Z.NUMCUPOMFIM, 0) - NVL(Z.NUMCUPOMINICIO, 0) + 1, 0) AS CUPONS,
+       Z.VENDABRUTA, Z.VLCONTABIL
+FROM PCCUPOMFISCALZ Z
+WHERE Z.DTEMISSAO >= ADD_MONTHS(TRUNC(SYSDATE), -12)
+  AND (:since IS NULL OR Z.DTEMISSAO >= TRUNC(SYSDATE) - 7)
+""",
+    },
+    {  # PCPEDIDO (+ PCITEM agregado) — pedidos de compra: previsão × entrega.
+       # Reprocessa 7 dias e TODOS os que ainda não entregaram por completo.
+        "entity": "purchase_order",
+        "label": "Pedidos de compra (PCPEDIDO)",
+        "every_minutes": 120,
+        "incremental": True,
+        "since_column": "DTEMISSAO",
+        "opcional": True,
+        "sql": """
+SELECT TO_CHAR(P.NUMPED) AS NUMPED, P.CODFORNEC, P.CODFILIAL, P.CODCOMPRADOR,
+       TO_CHAR(P.DTEMISSAO,'YYYY-MM-DD') AS DTEMISSAO,
+       TO_CHAR(P.DTPREVENT,'YYYY-MM-DD') AS DTPREVENT,
+       TO_CHAR(P.DTENTRADAESTOQUE,'YYYY-MM-DD') AS DTENTRADAESTOQUE,
+       P.VLTOTAL, P.VLENTREGUE,
+       (SELECT COUNT(*) FROM PCITEM I WHERE I.NUMPED = P.NUMPED) AS ITENS,
+       (SELECT SUM(NVL(I.QTPEDIDA,0)) FROM PCITEM I WHERE I.NUMPED = P.NUMPED) AS QTPEDIDA,
+       (SELECT SUM(NVL(I.QTENTREGUE,0)) FROM PCITEM I WHERE I.NUMPED = P.NUMPED) AS QTENTREGUE
+FROM PCPEDIDO P
+WHERE P.DTEMISSAO >= ADD_MONTHS(TRUNC(SYSDATE), -12)
+  AND (:since IS NULL OR P.DTEMISSAO >= TRUNC(SYSDATE) - 7 OR NVL(P.VLENTREGUE,0) < NVL(P.VLTOTAL,0) * 0.99)
+""",
+    },
+    {  # PCVERBA — verbas de fornecedor (acordos comerciais). Reprocessa as abertas.
+        "entity": "supplier_credit",
+        "label": "Verbas de fornecedor (PCVERBA)",
+        "every_minutes": 240,
+        "incremental": True,
+        "since_column": "DTEMISSAO",
+        "opcional": True,
+        "sql": """
+SELECT TO_CHAR(V.NUMVERBA) AS NUMVERBA, V.CODFORNEC, V.CODFILIAL, V.TIPO, V.ORIGEM,
+       TO_CHAR(V.DTEMISSAO,'YYYY-MM-DD') AS DTEMISSAO,
+       TO_CHAR(V.DTVENC,'YYYY-MM-DD') AS DTVENC,
+       V.VALOR, V.VPAGO,
+       TO_CHAR(V.DTQUITACAO,'YYYY-MM-DD') AS DTQUITACAO,
+       TO_CHAR(V.DTCANCEL,'YYYY-MM-DD') AS DTCANCEL
+FROM PCVERBA V
+WHERE V.DTEMISSAO >= ADD_MONTHS(TRUNC(SYSDATE), -12)
+  AND (:since IS NULL OR V.DTEMISSAO >= TRUNC(SYSDATE) - 7 OR (V.DTQUITACAO IS NULL AND V.DTCANCEL IS NULL))
+""",
+    },
+    {  # PCMANIFESTOELETRONICOC — MDF-e gerado × autorizado. Reprocessa os sem protocolo.
+        "entity": "mdfe",
+        "label": "MDF-e (PCMANIFESTOELETRONICOC)",
+        "every_minutes": 120,
+        "incremental": True,
+        "since_column": "DATAHORAGERACAO",
+        "opcional": True,
+        "sql": """
+SELECT M.NUMMDFE || '-' || M.CODFILIAL AS EXTERNAL_ID, TO_CHAR(M.NUMMDFE) AS NUMMDFE, M.CODFILIAL,
+       TO_CHAR(M.DATAHORAGERACAO,'YYYY-MM-DD HH24:MI:SS') AS DATAHORAGERACAO,
+       TO_CHAR(M.DATAHORAAUTORSEFAZ,'YYYY-MM-DD HH24:MI:SS') AS DATAHORAAUTORSEFAZ,
+       M.SITUACAOMDFE, M.PROTOCOLOMDFE,
+       CASE WHEN M.JUSTIFICATIVACANCEL IS NOT NULL THEN 1 ELSE 0 END AS IS_CANCELED,
+       TO_CHAR(M.DATAHORAEVENTO,'YYYY-MM-DD HH24:MI:SS') AS DATAHORAEVENTO
+FROM PCMANIFESTOELETRONICOC M
+WHERE M.DATAHORAGERACAO >= ADD_MONTHS(TRUNC(SYSDATE), -12)
+  AND (:since IS NULL OR M.DATAHORAGERACAO >= TRUNC(SYSDATE) - 7 OR M.PROTOCOLOMDFE IS NULL)
 """,
     },
     {  # PCMOVENDPEND — a OS do WMS, agregada por NUMOS (uma linha por produto no
@@ -472,6 +664,7 @@ DEFAULT_SYNC = {
     "salesrep": {"fields": {
         "external_id": "CODUSUR", "code": "CODUSUR", "name": "NOME", "type": "TIPOVEND",
         "team": "CODEQUIPE", "supervisor": "SUPERVISOR", "sales_target": "VLVENDAPREV",
+        "flex_balance": "VLCORRENTE", "flex_limit": "VLLIMCRED",
         "is_active": "IS_ACTIVE",
     }},
     "supplier": {"fields": {
@@ -484,7 +677,8 @@ DEFAULT_SYNC = {
         "external_id": "MATRICULA", "registration": "MATRICULA", "name": "NOME",
         "role": "FUNCAO", "department": "CODSETOR", "branch": "CODFILIAL",
         "admission_date": "ADMISSAO", "dismissal_date": "DTDEMISSAO",
-        "is_driver": "IS_DRIVER", "is_active": "IS_ACTIVE",
+        "is_driver": "IS_DRIVER", "cnh_expires_at": "DTVALIDADECNH", "has_db_user": "HAS_DB_USER",
+        "is_active": "IS_ACTIVE",
     }},
     "customer": {"fields": {
         "external_id": "CODCLI", "name": "CLIENTE", "trade_name": "FANTASIA",
@@ -523,6 +717,7 @@ DEFAULT_SYNC = {
         "customer": "CODCLI", "branch": "CODFILIAL", "order": "NUMPED", "amount": "VALOR",
         "collection_type": "CODCOB", "issue_date": "DTEMISSAO", "due_date": "DTVENC",
         "paid_at": "DTPAG", "amount_paid": "VPAGO", "fine": "VALORMULTA", "status": "STATUS",
+        "discount_paid": "VALORDESC", "previous_due_date": "DTVENCANTERIOR",
     }},
     "title_payable": {"fields": {
         "external_id": "RECNUM", "supplier": "CODFORNEC", "number": "NUMNOTA",
@@ -530,6 +725,8 @@ DEFAULT_SYNC = {
         "payment_method": "FORMAPGTO", "branch": "CODFILIAL", "amount": "VALOR",
         "issue_date": "DTEMISSAO", "accrual_date": "DTCOMPETENCIA", "due_date": "DTVENC",
         "paid_at": "DTPAGTO", "amount_paid": "VPAGO", "status": "STATUS",
+        "authorizer1": "CODFUNCAUTOR1", "authorizer2": "CODFUNCAUTOR2",
+        "is_advance": "IS_ADVANCE", "advance_used": "VLRUTILIZADOADIANTFORNEC",
     }},
     "financial_snapshot": {"fields": {
         "external_id": "EXTERNAL_ID", "branch": "CODFILIAL", "date": "DATA",
@@ -557,7 +754,7 @@ DEFAULT_SYNC = {
         "avg_cost": "CUSTOREAL", "last_entry_cost": "CUSTOULTENT",
         "replacement_cost": "CUSTOREP", "qty_sold_month": "QTVENDMES",
         "daily_turnover": "QTGIRODIA", "qty_lost_sales": "QTVENDAPERDIDA",
-        "last_entry_at": "DTULTENT", "last_exit_at": "DTULTSAIDA",
+        "last_entry_at": "DTULTENT", "last_exit_at": "DTULTSAIDA", "last_inventory_at": "DTULTINVENT",
     }},
     "order": {"fields": {
         "external_id": "NUMPED", "number": "NUMPED", "branch": "CODFILIAL",
@@ -582,6 +779,59 @@ DEFAULT_SYNC = {
         "km_start": "KMINICIAL", "km_end": "KMFINAL",
         "total_weight": "TOTPESO", "total_value": "VLTOTAL",
         "freight": "VLFRETE", "status": "STATUS",
+        "assembled_at": "DATAMON", "checked_at": "DATACONF", "closed_at": "DTFECHA",
+        "route_lead_days": "PRAZOPREVENT",
+    }},
+    "order_block": {"fields": {
+        "external_id": "CODIGO", "order_number": "NUMPED", "reason_code": "CODMOTIVO",
+        "reason": "MOTIVO_DESC", "status": "STATUS", "kind": "TIPO", "released_by": "CODFUNCLIBERA",
+        "blocked_at": "DTINCLUSAO", "released_at": "DTLIBERA",
+    }},
+    "fv_order": {"fields": {
+        "external_id": "EXTERNAL_ID", "rca_order_number": "NUMPEDRCA", "sales_rep": "CODUSUR",
+        "customer": "CODCLI", "branch": "CODFILIAL", "order_number": "NUMPED", "imported": "IMPORTADO",
+        "position": "POSICAO_ATUAL", "received_at": "DTINCLUSAO", "changed_at": "DTALTERACAO",
+    }},
+    "customer_credit": {"fields": {
+        "external_id": "EXTERNAL_ID", "customer": "CODCLI", "branch": "CODFILIAL", "amount": "VALOR",
+        "origin": "ORIGEM", "situation": "SITUACAO", "invoice_number": "NUMNOTA",
+        "launched_at": "DTLANC", "used_at": "DTDESCONTO", "expires_at": "DTVENC",
+        "canceled_at": "DTCANCEL", "reversed_at": "DTESTORNO",
+        "is_cashback": "IS_CASHBACK", "cashback_expires_at": "DTVALIDADECASHBACK",
+    }},
+    "credit_auth": {"fields": {
+        "external_id": "EXTERNAL_ID", "order_number": "NUMPEDIDO", "customer": "CODCLI",
+        "sales_rep": "CODUSUR", "authorized_by": "CODFUNC", "date": "DATA",
+        "credit_limit": "LIMCRED", "pending_value": "VLPENDENTE", "released_value": "VLLIBERADO",
+        "used_at": "DTUTILIZACAO", "used_order_number": "NUMPEDUTILIZACAO",
+    }},
+    "card_settlement": {"fields": {
+        "external_id": "CODBAIXAITEM", "branch": "CODFILIAL", "customer": "CODCLI", "date": "DATA",
+        "credit_date": "DATACREDITO", "settled_at": "DTBAIXA", "installment": "PARCELA",
+        "installments": "QTTOTALPARCELAS", "gross": "VALORPARCELA", "net": "VALORPARCELALIQUIDO",
+        "fee_pct": "TAXA", "network": "CODREDE", "brand": "CODBANDEIRA", "product_type": "TIPOPRODUTO",
+        "status": "STATUS",
+    }},
+    "pos_daily": {"fields": {
+        "external_id": "EXTERNAL_ID", "branch": "CODFILIAL", "ecf_number": "NUMECF", "date": "DTEMISSAO",
+        "coupons": "CUPONS", "gross_sales": "VENDABRUTA", "accounting_value": "VLCONTABIL",
+    }},
+    "purchase_order": {"fields": {
+        "external_id": "NUMPED", "number": "NUMPED", "supplier": "CODFORNEC", "branch": "CODFILIAL",
+        "buyer": "CODCOMPRADOR", "issue_date": "DTEMISSAO", "expected_at": "DTPREVENT",
+        "stock_entry_at": "DTENTRADAESTOQUE", "total": "VLTOTAL", "delivered_value": "VLENTREGUE",
+        "items": "ITENS", "qty_ordered": "QTPEDIDA", "qty_delivered": "QTENTREGUE",
+    }},
+    "supplier_credit": {"fields": {
+        "external_id": "NUMVERBA", "supplier": "CODFORNEC", "branch": "CODFILIAL", "kind": "TIPO",
+        "origin": "ORIGEM", "issue_date": "DTEMISSAO", "due_date": "DTVENC", "amount": "VALOR",
+        "paid": "VPAGO", "settled_at": "DTQUITACAO", "canceled_at": "DTCANCEL",
+    }},
+    "mdfe": {"fields": {
+        "external_id": "EXTERNAL_ID", "number": "NUMMDFE", "branch": "CODFILIAL",
+        "generated_at": "DATAHORAGERACAO", "authorized_at": "DATAHORAAUTORSEFAZ",
+        "situation": "SITUACAOMDFE", "protocol": "PROTOCOLOMDFE", "is_canceled": "IS_CANCELED",
+        "event_at": "DATAHORAEVENTO",
     }},
     "target": {"fields": {
         "external_id": "EXTERNAL_ID", "branch": "CODFILIAL", "sales_rep": "CODUSUR",

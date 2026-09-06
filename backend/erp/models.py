@@ -14,6 +14,8 @@ Duas metades:
 
 Derivado do schema validado do vsystems-mi6 contra bases WinThor reais.
 """
+from decimal import Decimal
+
 from django.db import models
 
 from accounts.models import Tenant, TenantOwnedModel
@@ -184,6 +186,8 @@ class SalesRep(ErpModel):
     supervisor = models.CharField(max_length=120, blank=True)
     commission_pct = models.DecimalField(max_digits=6, decimal_places=2, null=True, blank=True)
     sales_target = models.DecimalField(max_digits=14, decimal_places=2, null=True, blank=True)
+    flex_balance = models.DecimalField(max_digits=14, decimal_places=2, null=True, blank=True)  # VLCORRENTE (conta corrente/flex)
+    flex_limit = models.DecimalField(max_digits=14, decimal_places=2, null=True, blank=True)    # VLLIMCRED
     is_active = models.BooleanField(default=True)
 
     class Meta:
@@ -235,6 +239,8 @@ class Employee(ErpModel):
     email = models.CharField(max_length=120, blank=True)
     phone = models.CharField(max_length=30, blank=True)
     is_driver = models.BooleanField(default=False)
+    cnh_expires_at = models.DateField(null=True, blank=True)   # DTVALIDADECNH
+    has_db_user = models.BooleanField(default=False)           # USUARIOBD preenchido (login no WinThor)
     is_active = models.BooleanField(default=True)
 
     class Meta:
@@ -353,6 +359,7 @@ class StockBalance(ErpModel):
     qty_lost_sales = models.DecimalField(max_digits=16, decimal_places=3, null=True, blank=True)
     last_entry_at = models.DateField(null=True, blank=True)
     last_exit_at = models.DateField(null=True, blank=True)
+    last_inventory_at = models.DateField(null=True, blank=True)   # DTULTINVENT
 
     class Meta:
         constraints = [models.UniqueConstraint(fields=["product", "branch"], name="uniq_stock_product_branch")]
@@ -524,6 +531,14 @@ class FinancialTitle(ErpModel):
     amount_paid = models.DecimalField(max_digits=14, decimal_places=2, null=True, blank=True)
     fine = models.DecimalField(max_digits=14, decimal_places=2, null=True, blank=True)
     status = models.CharField(max_length=12, choices=Status.choices, default=Status.OPEN)
+    # A receber (PCPREST): prorrogação e desconto na baixa
+    previous_due_date = models.DateField(null=True, blank=True)     # DTVENCANTERIOR (título prorrogado)
+    discount_paid = models.DecimalField(max_digits=14, decimal_places=2, null=True, blank=True)  # VALORDESC
+    # A pagar (PCLANC): dupla autorização e adiantamento a fornecedor
+    authorizer1 = models.CharField(max_length=20, blank=True)       # CODFUNCAUTOR1
+    authorizer2 = models.CharField(max_length=20, blank=True)       # CODFUNCAUTOR2
+    is_advance = models.BooleanField(default=False)                 # ADIANTAMENTO = S
+    advance_used = models.DecimalField(max_digits=14, decimal_places=2, null=True, blank=True)  # VLRUTILIZADOADIANTFORNEC
 
     class Meta:
         constraints = [
@@ -634,6 +649,10 @@ class DeliveryLoad(ErpModel):
     total_value = models.DecimalField(max_digits=14, decimal_places=2, null=True, blank=True)
     freight = models.DecimalField(max_digits=14, decimal_places=2, null=True, blank=True)
     status = models.CharField(max_length=12, choices=Status.choices, default=Status.OPEN)
+    assembled_at = models.DateTimeField(null=True, blank=True)   # DATAMON (montagem)
+    checked_at = models.DateTimeField(null=True, blank=True)     # DATACONF (conferência)
+    closed_at = models.DateTimeField(null=True, blank=True)      # DTFECHA (fechamento/acerto)
+    route_lead_days = models.IntegerField(null=True, blank=True) # PCROTAEXP.PRAZOPREVENT da rota principal
 
     class Meta:
         constraints = [models.UniqueConstraint(fields=["tenant", "external_id"], name="uniq_load_ext")]
@@ -828,6 +847,190 @@ class KpiTemplate(models.Model):
 
     def __str__(self):
         return f"[{self.erp}] {self.code} — {self.name}"
+
+
+class OrderBlock(ErpModel):
+    """Bloqueio de pedido (PCBLOQUEIOSPEDIDO + descrição em PCMOTBLOQUEIO).
+
+    A Integradora apaga a linha quando libera; só a rotina 336 marca STATUS = L.
+    Por isso a carga é cheia (janela de 3 meses) e "em fila" = STATUS B com
+    `synced_at` recente — linha que sumiu do ERP deixa de ser atualizada.
+    """
+
+    order_number = models.CharField(max_length=30, db_index=True)   # NUMPED
+    reason_code = models.CharField(max_length=10, blank=True)       # CODMOTIVO
+    reason = models.CharField(max_length=160, blank=True)           # PCMOTBLOQUEIO.DESCRICAO (ou MOTIVO)
+    status = models.CharField(max_length=2, blank=True)             # B bloqueado, L liberado
+    kind = models.CharField(max_length=2, blank=True)               # TIPO (C comercial, F financeiro...)
+    released_by = models.CharField(max_length=20, blank=True)       # CODFUNCLIBERA
+    blocked_at = models.DateTimeField(null=True, blank=True)        # DTINCLUSAO
+    released_at = models.DateTimeField(null=True, blank=True)       # DTLIBERA
+
+    class Meta:
+        constraints = [models.UniqueConstraint(fields=["tenant", "external_id"], name="uniq_order_block_ext")]
+        indexes = [models.Index(fields=["tenant", "status", "blocked_at"])]
+
+
+class FvOrder(ErpModel):
+    """Pedido transmitido pelo força de vendas (PCPEDCFV) — a caixa de entrada da Integradora."""
+
+    rca_order_number = models.CharField(max_length=30, blank=True)  # NUMPEDRCA
+    sales_rep = models.ForeignKey(SalesRep, on_delete=models.SET_NULL, null=True, blank=True, related_name="fv_orders")
+    customer = models.ForeignKey(Customer, on_delete=models.SET_NULL, null=True, blank=True, related_name="fv_orders")
+    branch = models.ForeignKey(Branch, on_delete=models.SET_NULL, null=True, blank=True, related_name="fv_orders")
+    order_number = models.CharField(max_length=30, blank=True)      # NUMPED gerado (vazio = ainda não integrou)
+    imported = models.BooleanField(default=False)                   # IMPORTADO = 1
+    position = models.CharField(max_length=4, blank=True)           # POSICAO_ATUAL
+    received_at = models.DateTimeField(null=True, blank=True)       # DTINCLUSAO
+    changed_at = models.DateTimeField(null=True, blank=True)        # DTALTERACAO
+
+    class Meta:
+        constraints = [models.UniqueConstraint(fields=["tenant", "external_id"], name="uniq_fv_order_ext")]
+        indexes = [models.Index(fields=["tenant", "imported", "received_at"])]
+
+
+class CustomerCredit(ErpModel):
+    """Crédito do cliente (PCCRECLI): devolução, cashback, adiantamento. Em aberto = sem DTDESCONTO."""
+
+    customer = models.ForeignKey(Customer, on_delete=models.SET_NULL, null=True, blank=True, related_name="credits")
+    branch = models.ForeignKey(Branch, on_delete=models.SET_NULL, null=True, blank=True, related_name="customer_credits")
+    amount = models.DecimalField(max_digits=14, decimal_places=2, default=0)   # VALOR
+    launched_at = models.DateField(null=True, blank=True)     # DTLANC
+    used_at = models.DateField(null=True, blank=True)         # DTDESCONTO (abatido num pedido/nota)
+    expires_at = models.DateField(null=True, blank=True)      # DTVENC
+    canceled_at = models.DateField(null=True, blank=True)     # DTCANCEL
+    reversed_at = models.DateField(null=True, blank=True)     # DTESTORNO
+    is_cashback = models.BooleanField(default=False)          # CASHBACK = S
+    cashback_expires_at = models.DateField(null=True, blank=True)  # DTVALIDADECASHBACK
+    origin = models.CharField(max_length=10, blank=True)      # ORIGEM
+    situation = models.CharField(max_length=4, blank=True)    # SITUACAO
+    invoice_number = models.CharField(max_length=30, blank=True)   # NUMNOTA de origem (devolução)
+
+    class Meta:
+        constraints = [models.UniqueConstraint(fields=["tenant", "external_id"], name="uniq_customer_credit_ext")]
+        indexes = [models.Index(fields=["tenant", "used_at", "launched_at"])]
+
+    @property
+    def is_open(self):
+        return self.used_at is None and self.canceled_at is None and self.reversed_at is None
+
+
+class CreditAuthorization(ErpModel):
+    """Autorização de crédito acima do limite (PCAUTORC)."""
+
+    order_number = models.CharField(max_length=30, blank=True)       # NUMPEDIDO
+    customer = models.ForeignKey(Customer, on_delete=models.SET_NULL, null=True, blank=True, related_name="credit_authorizations")
+    sales_rep = models.ForeignKey(SalesRep, on_delete=models.SET_NULL, null=True, blank=True, related_name="credit_authorizations")
+    date = models.DateField(null=True, blank=True)                   # DATA
+    credit_limit = models.DecimalField(max_digits=14, decimal_places=2, null=True, blank=True)   # LIMCRED
+    pending_value = models.DecimalField(max_digits=14, decimal_places=2, null=True, blank=True)  # VLPENDENTE
+    released_value = models.DecimalField(max_digits=14, decimal_places=2, null=True, blank=True) # VLLIBERADO
+    authorized_by = models.CharField(max_length=20, blank=True)      # CODFUNC
+    used_at = models.DateField(null=True, blank=True)                # DTUTILIZACAO
+    used_order_number = models.CharField(max_length=30, blank=True)  # NUMPEDUTILIZACAO
+
+    class Meta:
+        constraints = [models.UniqueConstraint(fields=["tenant", "external_id"], name="uniq_credit_auth_ext")]
+        indexes = [models.Index(fields=["tenant", "date"])]
+
+
+class CardSettlement(ErpModel):
+    """Parcela de cartão conciliada (PCBAIXACARTAOI): bruto × líquido = custo de adquirência."""
+
+    branch = models.ForeignKey(Branch, on_delete=models.SET_NULL, null=True, blank=True, related_name="card_settlements")
+    customer = models.ForeignKey(Customer, on_delete=models.SET_NULL, null=True, blank=True, related_name="card_settlements")
+    date = models.DateField(null=True, blank=True)                 # DATA (venda)
+    credit_date = models.DateField(null=True, blank=True)          # DATACREDITO
+    settled_at = models.DateField(null=True, blank=True)           # DTBAIXA
+    installment = models.IntegerField(null=True, blank=True)       # PARCELA
+    installments = models.IntegerField(null=True, blank=True)      # QTTOTALPARCELAS
+    gross = models.DecimalField(max_digits=14, decimal_places=2, default=0)   # VALORPARCELA
+    net = models.DecimalField(max_digits=14, decimal_places=2, null=True, blank=True)  # VALORPARCELALIQUIDO
+    fee_pct = models.DecimalField(max_digits=8, decimal_places=4, null=True, blank=True)  # TAXA
+    network = models.CharField(max_length=20, blank=True)          # CODREDE
+    brand = models.CharField(max_length=20, blank=True)            # CODBANDEIRA
+    product_type = models.CharField(max_length=10, blank=True)     # TIPOPRODUTO (crédito/débito)
+    status = models.CharField(max_length=4, blank=True)            # STATUS/SITUACAO
+
+    class Meta:
+        constraints = [models.UniqueConstraint(fields=["tenant", "external_id"], name="uniq_card_settlement_ext")]
+        indexes = [models.Index(fields=["tenant", "date"])]
+
+
+class PosDaily(ErpModel):
+    """Redução Z do PDV (PCCUPOMFISCALZ): cupons e venda bruta por ECF × dia."""
+
+    branch = models.ForeignKey(Branch, on_delete=models.SET_NULL, null=True, blank=True, related_name="pos_daily")
+    date = models.DateField(null=True, blank=True)                 # DTEMISSAO
+    ecf_number = models.CharField(max_length=10, blank=True)       # NUMECF / NUMCAIXA
+    coupons = models.IntegerField(default=0)                       # NUMCUPOMFIM − NUMCUPOMINICIO + 1
+    gross_sales = models.DecimalField(max_digits=14, decimal_places=2, null=True, blank=True)      # VENDABRUTA
+    accounting_value = models.DecimalField(max_digits=14, decimal_places=2, null=True, blank=True) # VLCONTABIL
+
+    class Meta:
+        constraints = [models.UniqueConstraint(fields=["tenant", "external_id"], name="uniq_pos_daily_ext")]
+        indexes = [models.Index(fields=["tenant", "date"])]
+
+
+class PurchaseOrder(ErpModel):
+    """Pedido de compra (PCPEDIDO) com itens agregados de PCITEM."""
+
+    number = models.CharField(max_length=30, blank=True)           # NUMPED
+    supplier = models.ForeignKey(Supplier, on_delete=models.SET_NULL, null=True, blank=True, related_name="purchase_orders")
+    branch = models.ForeignKey(Branch, on_delete=models.SET_NULL, null=True, blank=True, related_name="purchase_orders")
+    buyer = models.CharField(max_length=20, blank=True)            # CODCOMPRADOR
+    issue_date = models.DateField(null=True, blank=True)           # DTEMISSAO
+    expected_at = models.DateField(null=True, blank=True)          # DTPREVENT
+    stock_entry_at = models.DateField(null=True, blank=True)       # DTENTRADAESTOQUE
+    total = models.DecimalField(max_digits=14, decimal_places=2, null=True, blank=True)            # VLTOTAL
+    delivered_value = models.DecimalField(max_digits=14, decimal_places=2, null=True, blank=True)  # VLENTREGUE
+    items = models.IntegerField(null=True, blank=True)             # COUNT(PCITEM)
+    qty_ordered = models.DecimalField(max_digits=16, decimal_places=3, null=True, blank=True)     # Σ QTPEDIDA
+    qty_delivered = models.DecimalField(max_digits=16, decimal_places=3, null=True, blank=True)   # Σ QTENTREGUE
+
+    class Meta:
+        constraints = [models.UniqueConstraint(fields=["tenant", "external_id"], name="uniq_purchase_order_ext")]
+        indexes = [models.Index(fields=["tenant", "expected_at"])]
+
+    @property
+    def is_open(self):
+        return (self.delivered_value or 0) < (self.total or 0) * Decimal("0.99")
+
+
+class SupplierCredit(ErpModel):
+    """Verba de fornecedor (PCVERBA): acordo comercial a receber/abater."""
+
+    supplier = models.ForeignKey(Supplier, on_delete=models.SET_NULL, null=True, blank=True, related_name="credits")
+    branch = models.ForeignKey(Branch, on_delete=models.SET_NULL, null=True, blank=True, related_name="supplier_credits")
+    kind = models.CharField(max_length=4, blank=True)              # TIPO
+    origin = models.CharField(max_length=10, blank=True)           # ORIGEM
+    issue_date = models.DateField(null=True, blank=True)           # DTEMISSAO
+    due_date = models.DateField(null=True, blank=True)             # DTVENC
+    amount = models.DecimalField(max_digits=14, decimal_places=2, default=0)   # VALOR
+    paid = models.DecimalField(max_digits=14, decimal_places=2, null=True, blank=True)  # VPAGO
+    settled_at = models.DateField(null=True, blank=True)           # DTQUITACAO
+    canceled_at = models.DateField(null=True, blank=True)          # DTCANCEL
+
+    class Meta:
+        constraints = [models.UniqueConstraint(fields=["tenant", "external_id"], name="uniq_supplier_credit_ext")]
+        indexes = [models.Index(fields=["tenant", "settled_at"])]
+
+
+class Mdfe(ErpModel):
+    """MDF-e (PCMANIFESTOELETRONICOC): gerado, autorizado ou cancelado."""
+
+    number = models.CharField(max_length=30, blank=True)           # NUMMDFE
+    branch = models.ForeignKey(Branch, on_delete=models.SET_NULL, null=True, blank=True, related_name="mdfes")
+    generated_at = models.DateTimeField(null=True, blank=True)     # DATAHORAGERACAO
+    authorized_at = models.DateTimeField(null=True, blank=True)    # DATAHORAAUTORSEFAZ
+    situation = models.IntegerField(null=True, blank=True)         # SITUACAOMDFE
+    protocol = models.CharField(max_length=40, blank=True)         # PROTOCOLOMDFE
+    is_canceled = models.BooleanField(default=False)               # JUSTIFICATIVACANCEL preenchida
+    event_at = models.DateTimeField(null=True, blank=True)         # DATAHORAEVENTO (encerramento/cancelamento)
+
+    class Meta:
+        constraints = [models.UniqueConstraint(fields=["tenant", "external_id"], name="uniq_mdfe_ext")]
+        indexes = [models.Index(fields=["tenant", "generated_at"])]
 
 
 class ErpRecord(ErpModel):

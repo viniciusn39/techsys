@@ -29,6 +29,7 @@ urlpatterns = [
     path("targets/", views.TargetCatalogView.as_view()),
     path("kpi-catalogo/", views.KpiCatalogoView.as_view()),
     path("kpi-catalogo/tecnico/", views.KpiCatalogoTecnicoView.as_view()),
+    path("espelho/estrutura/", views.EspelhoEstruturaView.as_view()),
     path("metrics/preview/", views.MetricPreviewView.as_view()),
     path("", include(router.urls)),
 ]

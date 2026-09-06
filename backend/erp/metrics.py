@@ -21,18 +21,28 @@ from django.db.models import Count, DecimalField, ExpressionWrapper, F, Q, Sum
 from . import regras
 from .models import (
     BankAccount,
+    CardSettlement,
     CashMovement,
+    CreditAuthorization,
     Customer,
+    CustomerCredit,
     DeliveryLoad,
     Employee,
     FinancialSnapshot,
     FinancialTitle,
+    FvOrder,
+    Mdfe,
     Order,
+    OrderBlock,
+    PosDaily,
     Product,
     PurchaseInvoice,
+    PurchaseOrder,
     SalesInvoice,
     SalesInvoiceItem,
+    SalesRep,
     StockBalance,
+    SupplierCredit,
 )
 
 D = Decimal
@@ -1242,6 +1252,189 @@ def entregas_com_ocorrencia_pct(tenant, ini, fim, filters=None):
 
 # --- Catálogo ----------------------------------------------------------------
 
+# --- Varredura completa do WinThor: tabelas novas do espelho ---------------------
+# "Visto na última carga": tabelas em que o ERP APAGA a linha (fila de bloqueio,
+# caixa de entrada do FV) só contam o que o agente ainda enxergou há pouco.
+
+_JANELA_VISTO = timedelta(hours=6)
+
+
+def _visto_recente():
+    from django.utils import timezone
+
+    return timezone.now() - _JANELA_VISTO
+
+
+def fila_bloqueio_valor(tenant, ini, fim, filters=None):
+    """Valor (PCPEDC.VLTOTAL) dos pedidos com bloqueio STATUS = B ainda presente no ERP."""
+    peds = OrderBlock.objects.filter(tenant=tenant, status="B", synced_at__gte=_visto_recente()) \
+        .values_list("order_number", flat=True).distinct()
+    qs = Order.objects.filter(tenant=tenant, number__in=list(peds)).filter(_branch_q(filters))
+    return _money(_sum(qs, "total") or ZERO)
+
+
+def tempo_fila_bloqueio_horas(tenant, ini, fim, filters=None):
+    """Média de DTLIBERA − DTINCLUSAO dos bloqueios liberados no período."""
+    pares = OrderBlock.objects.filter(
+        tenant=tenant, released_at__date__range=(ini, fim), blocked_at__isnull=False,
+    ).values_list("blocked_at", "released_at")
+    horas = [(r - b).total_seconds() / 3600 for b, r in pares if r and b and r >= b]
+    return D(sum(horas) / len(horas)).quantize(D("0.1")) if horas else None
+
+
+def pedidos_fv_pendentes(tenant, ini, fim, filters=None):
+    """Pedidos em PCPEDCFV ainda não importados (IMPORTADO = 0 e sem NUMPED)."""
+    qs = FvOrder.objects.filter(
+        tenant=tenant, imported=False, order_number="", synced_at__gte=_visto_recente(),
+    ).filter(_branch_q(filters))
+    return D(qs.count())
+
+
+def rcas_flex_negativo(tenant, ini, fim, filters=None):
+    """RCAs ativos com conta corrente (flex) negativa: PCUSUARI.VLCORRENTE < 0."""
+    return D(SalesRep.objects.filter(tenant=tenant, is_active=True, flex_balance__lt=0).count())
+
+
+def _creditos_abertos(tenant, fim, filters):
+    return CustomerCredit.objects.filter(
+        tenant=tenant, launched_at__lte=fim, used_at__isnull=True, canceled_at__isnull=True, reversed_at__isnull=True,
+    ).filter(_branch_q(filters))
+
+
+def creditos_cliente_aberto(tenant, ini, fim, filters=None):
+    """PCCRECLI sem DTDESCONTO, DTCANCEL e DTESTORNO (fora cashback)."""
+    return _money(_sum(_creditos_abertos(tenant, fim, filters).filter(is_cashback=False), "amount") or ZERO)
+
+
+def cashback_a_expirar(tenant, ini, fim, filters=None):
+    """Cashback em aberto com validade nos próximos 30 dias."""
+    qs = _creditos_abertos(tenant, fim, filters).filter(
+        is_cashback=True, cashback_expires_at__range=(fim, fim + timedelta(days=30)),
+    )
+    return _money(_sum(qs, "amount") or ZERO)
+
+
+def credito_autorizado(tenant, ini, fim, filters=None):
+    """Σ PCAUTORC.VLLIBERADO das autorizações do período."""
+    qs = CreditAuthorization.objects.filter(tenant=tenant, date__range=(ini, fim))
+    return _money(_sum(qs, "released_value") or ZERO)
+
+
+def taxa_cartao_pct(tenant, ini, fim, filters=None):
+    """(bruto − líquido) ÷ bruto das parcelas de cartão vendidas no período."""
+    qs = CardSettlement.objects.filter(tenant=tenant, date__range=(ini, fim), net__isnull=False).filter(_branch_q(filters))
+    agg = qs.aggregate(b=Sum("gross"), l=Sum("net"))
+    if not agg["b"]:
+        return None
+    return _pct(D(agg["b"]) - D(agg["l"] or 0), agg["b"])
+
+
+def _pdv(tenant, ini, fim, filters):
+    return PosDaily.objects.filter(tenant=tenant, date__range=(ini, fim)).filter(_branch_q(filters))
+
+
+def pdv_cupons(tenant, ini, fim, filters=None):
+    return D(_sum(_pdv(tenant, ini, fim, filters), "coupons") or 0)
+
+
+def pdv_ticket_medio(tenant, ini, fim, filters=None):
+    agg = _pdv(tenant, ini, fim, filters).aggregate(v=Sum("gross_sales"), c=Sum("coupons"))
+    return _money(D(agg["v"]) / D(agg["c"])) if agg["c"] and agg["v"] is not None else None
+
+
+def titulos_prorrogados(tenant, ini, fim, filters=None):
+    """Títulos cujo vencimento original (DTVENCANTERIOR) caiu no período e foi prorrogado."""
+    return D(_receber(tenant, filters).filter(previous_due_date__range=(ini, fim)).exclude(status="canceled").count())
+
+
+def desconto_na_baixa(tenant, ini, fim, filters=None):
+    """Σ PCPREST.VALORDESC dos títulos pagos no período."""
+    return _money(_sum(_receber(tenant, filters).filter(status="paid", paid_at__range=(ini, fim)), "discount_paid") or ZERO)
+
+
+def pagar_sem_dupla_autorizacao(tenant, ini, fim, filters=None):
+    """Títulos a pagar em aberto sem os dois autorizadores (CODFUNCAUTOR1 e 2)."""
+    qs = _pagar(tenant, filters).filter(status="open").filter(Q(authorizer1="") | Q(authorizer2=""))
+    return D(qs.count())
+
+
+def adiantamentos_fornecedor_aberto(tenant, ini, fim, filters=None):
+    """Adiantamentos (PCLANC.ADIANTAMENTO = S) pagos e ainda não abatidos em nota."""
+    qs = _pagar(tenant, filters).filter(is_advance=True, status="paid")
+    agg = qs.aggregate(a=Sum("amount"), u=Sum("advance_used"))
+    total = D(agg["a"] or 0) - D(agg["u"] or 0)
+    return _money(total if total > 0 else ZERO)
+
+
+def itens_sem_inventario_pct(tenant, ini, fim, filters=None):
+    """Itens com saldo sem contagem (DTULTINVENT) há mais de 90 dias."""
+    qs = _estoque(tenant, filters).filter(quantity__gt=0)
+    total = qs.count()
+    sem = qs.filter(Q(last_inventory_at__isnull=True) | Q(last_inventory_at__lt=fim - timedelta(days=90))).count()
+    return _pct(sem, total)
+
+
+def pedidos_compra_atrasados(tenant, ini, fim, filters=None):
+    """Pedidos de compra com DTPREVENT vencida e entrega incompleta (VLENTREGUE < 99% de VLTOTAL)."""
+    qs = PurchaseOrder.objects.filter(
+        tenant=tenant, expected_at__lt=fim, issue_date__gte=fim - timedelta(days=365), total__gt=0,
+    ).filter(Q(delivered_value__isnull=True) | Q(delivered_value__lt=F("total") * D("0.99"))).filter(_branch_q(filters))
+    return D(qs.count())
+
+
+def verba_fornecedor_aberta(tenant, ini, fim, filters=None):
+    """PCVERBA sem quitação nem cancelamento: VALOR − VPAGO."""
+    qs = SupplierCredit.objects.filter(
+        tenant=tenant, issue_date__lte=fim, settled_at__isnull=True, canceled_at__isnull=True,
+    ).filter(_branch_q(filters))
+    agg = qs.aggregate(a=Sum("amount"), p=Sum("paid"))
+    return _money(D(agg["a"] or 0) - D(agg["p"] or 0))
+
+
+def ciclo_carga_horas(tenant, ini, fim, filters=None):
+    """Horas entre montagem (DATAMON) e conferência (DATACONF) das cargas expedidas no período."""
+    pares = _cargas(tenant, ini, fim, filters).filter(
+        assembled_at__isnull=False, checked_at__isnull=False,
+    ).values_list("assembled_at", "checked_at")
+    horas = [(c - a).total_seconds() / 3600 for a, c in pares if c >= a]
+    return D(sum(horas) / len(horas)).quantize(D("0.1")) if horas else None
+
+
+def cargas_alem_prazo_rota(tenant, ini, fim, filters=None):
+    """Cargas retornadas em mais dias do que PCROTAEXP.PRAZOPREVENT da rota principal."""
+    linhas = _cargas(tenant, ini, fim, filters).filter(
+        return_date__isnull=False, route_lead_days__isnull=False,
+    ).values_list("departure_date", "return_date", "route_lead_days")
+    return D(sum(1 for s, r, p in linhas if (r - s).days > p))
+
+
+def nfe_denegadas(tenant, ini, fim, filters=None):
+    """PCNFSAID.SITUACAONFE em 110 (denegada), 205, 301, 302."""
+    codigos = ["110", "205", "301", "302", "110.0", "205.0", "301.0", "302.0"]
+    qs = SalesInvoice.objects.filter(tenant=tenant, issued_at__range=(ini, fim), nfe_status__in=codigos).filter(_branch_q(filters))
+    return D(qs.count())
+
+
+def mdfe_pendentes(tenant, ini, fim, filters=None):
+    """MDF-e gerados sem protocolo de autorização e não cancelados."""
+    qs = Mdfe.objects.filter(tenant=tenant, generated_at__date__lte=fim, protocol="", is_canceled=False).filter(_branch_q(filters))
+    return D(qs.count())
+
+
+def cnh_vencendo_30d(tenant, ini, fim, filters=None):
+    """Motoristas ativos com CNH vencida ou vencendo em 30 dias."""
+    qs = Employee.objects.filter(
+        tenant=tenant, is_active=True, is_driver=True, cnh_expires_at__lte=fim + timedelta(days=30),
+    ).filter(_branch_q(filters))
+    return D(qs.count())
+
+
+def usuarios_de_desligados(tenant, ini, fim, filters=None):
+    """Funcionários com DTDEMISSAO e ainda com USUARIOBD (login do WinThor)."""
+    qs = Employee.objects.filter(tenant=tenant, dismissal_date__isnull=False, dismissal_date__lte=fim, has_db_user=True)
+    return D(qs.filter(_branch_q(filters)).count())
+
+
 def _m(key, label, unit, polarity, aggregation, group, description, entities, fn, decimals=2):
     return Metric(key, label, unit, polarity, aggregation, description, entities, fn, group, decimals)
 
@@ -1380,6 +1573,53 @@ CATALOG = [
        "Clientes distintos com título a receber em aberto vencido no fim do período.", ["financial_title"], clientes_com_titulo_vencido),
     _m("clientes_com_titulo_vencido_pct", "Clientes com título vencido (%)", "%", "menor_melhor", "ultimo", "Financeiro",
        "Clientes com título vencido ÷ clientes ativos.", ["financial_title", "customer"], clientes_com_titulo_vencido_pct),
+    # Varredura completa do WinThor: tabelas novas do espelho
+    _m("fila_bloqueio_valor", "Pedidos bloqueados aguardando liberação", "R$", "menor_melhor", "ultimo", "Vendas",
+       "Valor dos pedidos com bloqueio STATUS = B ainda presente no ERP.", ["order_block", "order"], fila_bloqueio_valor),
+    _m("tempo_fila_bloqueio_horas", "Tempo médio em fila de bloqueio", "h", "menor_melhor", "media", "Vendas",
+       "Média de DTLIBERA − DTINCLUSAO dos bloqueios liberados no período.", ["order_block"], tempo_fila_bloqueio_horas, decimals=1),
+    _m("pedidos_fv_pendentes", "Pedidos do força de vendas aguardando integração", "pedidos", "menor_melhor", "ultimo", "Vendas",
+       "PCPEDCFV com IMPORTADO = 0 e sem NUMPED.", ["fv_order"], pedidos_fv_pendentes, decimals=0),
+    _m("rcas_flex_negativo", "RCAs com flex negativo", "un", "menor_melhor", "ultimo", "Vendas",
+       "RCAs ativos com PCUSUARI.VLCORRENTE < 0.", ["salesrep"], rcas_flex_negativo, decimals=0),
+    _m("creditos_cliente_aberto", "Créditos de devolução em aberto", "R$", "menor_melhor", "ultimo", "Clientes",
+       "PCCRECLI sem uso, cancelamento ou estorno (fora cashback).", ["customer_credit"], creditos_cliente_aberto),
+    _m("cashback_a_expirar", "Cashback a expirar", "R$", "menor_melhor", "ultimo", "Clientes",
+       "Cashback em aberto com validade nos próximos 30 dias.", ["customer_credit"], cashback_a_expirar),
+    _m("credito_autorizado", "Crédito liberado por autorização", "R$", "menor_melhor", "soma", "Clientes",
+       "Σ PCAUTORC.VLLIBERADO no período.", ["credit_auth"], credito_autorizado),
+    _m("taxa_cartao_pct", "Custo de adquirência de cartão", "%", "menor_melhor", "media", "Financeiro",
+       "(bruto − líquido) ÷ bruto das parcelas de cartão do período.", ["card_settlement"], taxa_cartao_pct),
+    _m("pdv_cupons", "Cupons emitidos no PDV", "cupons", "maior_melhor", "soma", "Vendas",
+       "Σ cupons das reduções Z do período.", ["pos_daily"], pdv_cupons, decimals=0),
+    _m("pdv_ticket_medio", "Ticket médio do PDV", "R$", "maior_melhor", "media", "Vendas",
+       "Venda bruta das reduções Z ÷ cupons.", ["pos_daily"], pdv_ticket_medio),
+    _m("titulos_prorrogados", "Títulos prorrogados", "un", "menor_melhor", "soma", "Financeiro",
+       "Títulos com DTVENCANTERIOR no período.", ["title_receivable"], titulos_prorrogados, decimals=0),
+    _m("desconto_na_baixa", "Desconto concedido na baixa", "R$", "menor_melhor", "soma", "Financeiro",
+       "Σ PCPREST.VALORDESC dos títulos pagos no período.", ["title_receivable"], desconto_na_baixa),
+    _m("pagar_sem_dupla_autorizacao", "Títulos a pagar sem dupla autorização", "un", "menor_melhor", "ultimo", "Financeiro",
+       "A pagar em aberto sem CODFUNCAUTOR1 e CODFUNCAUTOR2.", ["title_payable"], pagar_sem_dupla_autorizacao, decimals=0),
+    _m("adiantamentos_fornecedor_aberto", "Adiantamentos a fornecedor em aberto", "R$", "menor_melhor", "ultimo", "Financeiro",
+       "Adiantamentos pagos − valor já abatido em nota.", ["title_payable"], adiantamentos_fornecedor_aberto),
+    _m("itens_sem_inventario_pct", "Itens sem inventário há +90 dias", "%", "menor_melhor", "ultimo", "Estoque",
+       "Itens com saldo sem DTULTINVENT nos últimos 90 dias ÷ itens com saldo.", ["stock"], itens_sem_inventario_pct),
+    _m("pedidos_compra_atrasados", "Pedidos de compra atrasados", "un", "menor_melhor", "ultimo", "Compras",
+       "PCPEDIDO com DTPREVENT vencida e entrega incompleta.", ["purchase_order"], pedidos_compra_atrasados, decimals=0),
+    _m("verba_fornecedor_aberta", "Verba de fornecedor a receber", "R$", "maior_melhor", "ultimo", "Compras",
+       "PCVERBA sem quitação: VALOR − VPAGO.", ["supplier_credit"], verba_fornecedor_aberta),
+    _m("ciclo_carga_horas", "Ciclo da carga (montagem → conferência)", "h", "menor_melhor", "media", "Logística",
+       "Horas entre DATAMON e DATACONF das cargas expedidas.", ["load"], ciclo_carga_horas, decimals=1),
+    _m("cargas_alem_prazo_rota", "Cargas além do prazo de rota", "un", "menor_melhor", "soma", "Logística",
+       "Cargas cujo retorno passou de PCROTAEXP.PRAZOPREVENT dias.", ["load"], cargas_alem_prazo_rota, decimals=0),
+    _m("nfe_denegadas", "NF-e denegadas ou rejeitadas", "un", "menor_melhor", "soma", "Fiscal",
+       "PCNFSAID.SITUACAONFE em 110/205/301/302.", ["sales_invoice"], nfe_denegadas, decimals=0),
+    _m("mdfe_pendentes", "MDF-e pendentes de transmissão", "un", "menor_melhor", "ultimo", "Fiscal",
+       "MDF-e gerados sem protocolo e não cancelados.", ["mdfe"], mdfe_pendentes, decimals=0),
+    _m("cnh_vencendo_30d", "CNH de motorista vencendo em 30 dias", "un", "menor_melhor", "ultimo", "Pessoas",
+       "Motoristas ativos com DTVALIDADECNH até 30 dias à frente.", ["employee"], cnh_vencendo_30d, decimals=0),
+    _m("usuarios_de_desligados", "Usuários ativos de funcionários desligados", "un", "menor_melhor", "ultimo", "Pessoas",
+       "PCEMPR com DTDEMISSAO e USUARIOBD preenchido.", ["employee"], usuarios_de_desligados, decimals=0),
     # Financeiro (aging, prazos, liquidez, resultado)
     _m("a_receber_vencido_60_pct", "Carteira vencida há +60 dias", "%", "menor_melhor", "ultimo", "Financeiro",
        "Vencido há mais de 60 dias sobre o total em aberto.", ["title_receivable"], a_receber_vencido_60_pct),
