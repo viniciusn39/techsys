@@ -33,6 +33,7 @@ ORDEM_DE_VALOR = [
 WINTHOR_QUERIES = [
     {  # PCFILIAL — minúscula: recarga cheia
         "entity": "branch",
+        "label": "Filiais (PCFILIAL)",
         "every_minutes": 720,
         "sql": """
 SELECT CODIGO, RAZAOSOCIAL, FANTASIA, CGC, CIDADE, UF,
@@ -42,6 +43,7 @@ FROM PCFILIAL
     },
     {  # PCUSUARI (+ PCSUPERV) — dimensão de vendas; watermark DTULTALTERACAO
         "entity": "salesrep",
+        "label": "Vendedores / RCA (PCUSUARI)",
         "every_minutes": 360,
         "incremental": True,
         "since_column": "DTULTALTERACAO",
@@ -57,6 +59,7 @@ WHERE (:since IS NULL OR U.DTULTALTERACAO > TO_DATE(:since,'YYYY-MM-DD HH24:MI:S
     },
     {  # PCFORNEC — dimensão de compras/pagar; watermark DTULTALTER
         "entity": "supplier",
+        "label": "Fornecedores (PCFORNEC)",
         "every_minutes": 360,
         "incremental": True,
         "since_column": "DTULTALTER",
@@ -72,6 +75,7 @@ WHERE (:since IS NULL OR F.DTULTALTER > TO_DATE(:since,'YYYY-MM-DD HH24:MI:SS'))
     },
     {  # PCEMPR — turnover e headcount. NUNCA senha/biometria; salário fora.
         "entity": "employee",
+        "label": "Funcionários (PCEMPR)",
         "every_minutes": 360,
         "incremental": True,
         "since_column": "DTULTALTER",
@@ -90,6 +94,7 @@ WHERE (:since IS NULL OR E.DTULTALTER > TO_DATE(:since,'YYYY-MM-DD HH24:MI:SS'))
     },
     {  # PCCLIENT (+ PCPRACA) — base de clientes ativos/novos/churn; watermark DTULTALTER
         "entity": "customer",
+        "label": "Clientes (PCCLIENT)",
         "every_minutes": 60,
         "incremental": True,
         "since_column": "DTULTALTER",
@@ -109,6 +114,7 @@ WHERE (:since IS NULL OR C.DTULTALTER > TO_DATE(:since,'YYYY-MM-DD HH24:MI:SS'))
     },
     {  # PCPRODUT + hierarquia — dimensão de mix/estoque; watermark DTALTERC5 (trigger)
         "entity": "product",
+        "label": "Produtos (PCPRODUT)",
         "every_minutes": 120,
         "incremental": True,
         "since_column": "DTALTERC5",
@@ -131,6 +137,7 @@ WHERE (:since IS NULL OR P.DTALTERC5 > TO_TIMESTAMP(:since,'YYYY-MM-DD HH24:MI:S
     },
     {  # PCNFSAID — o FATO do faturamento. Backfill gradual de 24 meses (2 por ciclo).
         "entity": "sales_invoice",
+        "label": "Notas de venda (PCNFSAID)",
         "every_minutes": 30,
         "incremental": True,
         "since_column": "DTSAIDA",
@@ -153,6 +160,7 @@ WHERE N.DTSAIDA >= ADD_MONTHS(TRUNC(SYSDATE), -:janela)
        # Só operações com valor de gestão (venda, devolução, bonificação, transferência,
        # perda e avaria); consumo interno/remessa/comodato ficam de fora.
         "entity": "sales_invoice_item",
+        "label": "Itens de nota (PCMOV)",
         "every_minutes": 60,
         "incremental": True,
         "since_column": "DTMOV",
@@ -174,6 +182,7 @@ WHERE M.DTCANCEL IS NULL
     },
     {  # PCPREST — contas a receber (inadimplência, DSO); watermark DTULTALTER
         "entity": "title_receivable",
+        "label": "Contas a receber (PCPREST)",
         "every_minutes": 30,
         "incremental": True,
         "since_column": "DTULTALTER",
@@ -201,6 +210,7 @@ WHERE P.DTEMISSAO >= ADD_MONTHS(TRUNC(SYSDATE,'MM'), -:janela)
     },
     {  # PCLANC (PCPAGAR não existe) + PCCONTA — contas a pagar / despesas
         "entity": "title_payable",
+        "label": "Contas a pagar (PCLANC)",
         "every_minutes": 30,
         "incremental": True,
         "since_column": "DTULTALTER",
@@ -229,6 +239,7 @@ WHERE L.DTEMISSAO >= ADD_MONTHS(TRUNC(SYSDATE,'MM'), -:janela)
     },
     {  # PCFINANC — fotografia diária: caixa, bancos, CR, CP, estoque, CMV. Janela 120 dias.
         "entity": "financial_snapshot",
+        "label": "Fotografia financeira diária (PCFINANC)",
         "every_minutes": 120,
         "incremental": True,
         "since_column": "DATA",
@@ -244,6 +255,7 @@ WHERE F.DATA >= ADD_MONTHS(TRUNC(SYSDATE), -12)
     },
     {  # PCBANCO (+ saldo PCESTCR) — pequena: recarga cheia
         "entity": "bank_account",
+        "label": "Contas bancárias (PCBANCO)",
         "every_minutes": 120,
         "sql": """
 SELECT B.CODBANCO, B.NOME, B.NUMBANCO, B.AGENCIA, B.CONTA, B.TIPOCXBCO, B.CODFILIAL,
@@ -254,6 +266,7 @@ FROM PCBANCO B
     {  # PCMOVCR — extrato de conta corrente: entradas (D) e saídas (C) reais de caixa.
        # Carga gradual até 12 meses; reprocessa 7 dias por ciclo (estornos somem via DTESTORNO).
         "entity": "cash_movement",
+        "label": "Extrato bancário (PCMOVCR)",
         "every_minutes": 60,
         "incremental": True,
         "since_column": "DATA",
@@ -275,6 +288,7 @@ WHERE M.DTESTORNO IS NULL
     {  # PCEST — saldo por produto×filial. Leitura CHEIA: a marca DTULTALTERSRVPRC
        # só é mexida pelo servidor de preços, não pela venda (congelava o saldo).
         "entity": "stock",
+        "label": "Estoque por filial (PCEST)",
         "every_minutes": 120,
         "batch": 2000,
         "sql": """
@@ -291,6 +305,7 @@ FROM PCEST E
     },
     {  # PCPEDC — carteira e conversão pedido→nota. Janela deslizante de 7 dias; 12 meses.
         "entity": "order",
+        "label": "Pedidos de venda (PCPEDC)",
         "every_minutes": 30,
         "incremental": True,
         "since_column": "DATA",
@@ -315,6 +330,7 @@ WHERE C.DATA >= ADD_MONTHS(TRUNC(SYSDATE), -:janela)
     },
     {  # PCNFENT — compras; agrega por NUMTRANSENT (PK real tem CODCONT)
         "entity": "purchase",
+        "label": "Notas de entrada (PCNFENT)",
         "every_minutes": 60,
         "incremental": True,
         "since_column": "DTLANCTO",
@@ -334,6 +350,7 @@ GROUP BY N.NUMTRANSENT
     },
     {  # PCCARREG — cargas/entregas (volume, peso, frete); watermark DTULTALTER
         "entity": "load",
+        "label": "Carregamentos (PCCARREG)",
         "every_minutes": 60,
         "incremental": True,
         "since_column": "DTULTALTER",

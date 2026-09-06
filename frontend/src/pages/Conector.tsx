@@ -77,6 +77,11 @@ const ENTITY_LABEL: Record<string, string> = {
   bank_account: "Contas bancárias", cash_movement: "Extrato bancário", stock: "Estoque por filial",
   order: "Pedidos de venda", purchase: "Notas de entrada (compras)", load: "Carregamentos",
   target: "Metas do ERP (PCMETA)", target_daily: "Metas diárias do ERP (PCMETARCA)",
+  order_block: "Bloqueios de pedido", fv_order: "Pedidos do força de vendas",
+  customer_credit: "Créditos de cliente", credit_auth: "Autorizações de crédito",
+  card_settlement: "Conciliação de cartão", pos_daily: "Redução Z do PDV",
+  purchase_order: "Pedidos de compra", supplier_credit: "Verbas de fornecedor", mdfe: "MDF-e",
+  wms_os: "OS do WMS", route_load: "Cargas roteirizadas (FusionTrak)", delivery_event: "Eventos de entrega (FusionTrak)",
 };
 
 const KIND_ICON: Record<string, string> = {
