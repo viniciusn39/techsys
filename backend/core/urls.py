@@ -19,6 +19,7 @@ urlpatterns = [
     path("api/", include("strategy.urls")),
     path("api/", include("indicators.urls")),
     path("api/", include("plans.urls")),
+    path("api/", include("support.urls")),
     path("api/ai/", include("ai.urls")),
     path("api/erp/", include("erp.urls")),
     path("api/coletor/", include(coletor_urls)),

@@ -17,6 +17,9 @@ import { Metas } from "./pages/Metas";
 import { Organograma } from "./pages/Organograma";
 import { PerfisAcesso } from "./pages/PerfisAcesso";
 import { Agenda } from "./pages/Agenda";
+import { Ajuda } from "./pages/Ajuda";
+import { Chamados } from "./pages/Chamados";
+import { SuporteChamados } from "./pages/SuporteChamados";
 import { Canvas } from "./pages/Canvas";
 import { Cultura } from "./pages/Cultura";
 import { PlanosAcao } from "./pages/PlanosAcao";
@@ -72,6 +75,8 @@ export default function App() {
         <Route path="/erp/painel" element={<TenantRoute><PainelErp /></TenantRoute>} />
         <Route path="/planos-acao" element={<TenantRoute><PlanosAcao /></TenantRoute>} />
         <Route path="/agenda" element={<TenantRoute><Agenda /></TenantRoute>} />
+        <Route path="/chamados" element={<TenantRoute><Chamados /></TenantRoute>} />
+        <Route path="/ajuda" element={<TenantRoute><Ajuda /></TenantRoute>} />
         <Route path="/cultura" element={<TenantRoute><Cultura /></TenantRoute>} />
         <Route path="/swot" element={<TenantRoute><Swot /></TenantRoute>} />
         <Route path="/canvas" element={<TenantRoute><Canvas /></TenantRoute>} />
@@ -87,6 +92,7 @@ export default function App() {
         <Route path="/root/integracoes" element={<RootRoute><Integracoes /></RootRoute>} />
         <Route path="/root/instalador" element={<RootRoute><Instalador /></RootRoute>} />
         <Route path="/root/catalogo" element={<RootRoute><CatalogoTecnico /></RootRoute>} />
+        <Route path="/root/chamados" element={<RootRoute><SuporteChamados /></RootRoute>} />
         <Route path="*" element={<Navigate to={homeForRole} />} />
       </Route>
     </Routes>

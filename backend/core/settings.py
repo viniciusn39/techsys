@@ -23,6 +23,7 @@ INSTALLED_APPS = [
     "indicators",
     "plans",
     "ai",
+    "support",
     "erp",
 ]
 
