@@ -259,6 +259,17 @@ def a_receber_vencido(tenant, ini, fim, filters=None):
     return _money(_sum(_receber(tenant, filters).filter(status="open", due_date__lt=fim), "amount") or ZERO)
 
 
+def clientes_com_titulo_vencido(tenant, ini, fim, filters=None):
+    """Clientes com pelo menos um título em aberto vencido (F_PCPREST_VENCIDA_BLOQUEIO)."""
+    return D(_receber(tenant, filters).filter(status="open", due_date__lt=fim, customer__isnull=False)
+             .values("customer_id").distinct().count())
+
+
+def clientes_com_titulo_vencido_pct(tenant, ini, fim, filters=None):
+    ativos = clientes_ativos(tenant, ini, fim, filters)
+    return _pct(clientes_com_titulo_vencido(tenant, ini, fim, filters), ativos)
+
+
 def inadimplencia_pct(tenant, ini, fim, filters=None):
     """Vencido há mais de 30 dias sobre o total em aberto."""
     aberto = _sum(_receber(tenant, filters).filter(status="open"), "amount")
@@ -1365,6 +1376,10 @@ CATALOG = [
        "Valor vendido ÷ quilos vendidos.", ["sales_invoice_item", "product"], preco_medio_kg),
     _m("custo_medio_kg", "Custo médio por kg", "R$", "menor_melhor", "media", "Financeiro",
        "Custo dos itens vendidos ÷ quilos vendidos.", ["sales_invoice_item", "product"], custo_medio_kg),
+    _m("clientes_com_titulo_vencido", "Clientes com título vencido", "clientes", "menor_melhor", "ultimo", "Financeiro",
+       "Clientes distintos com título a receber em aberto vencido no fim do período.", ["financial_title"], clientes_com_titulo_vencido),
+    _m("clientes_com_titulo_vencido_pct", "Clientes com título vencido (%)", "%", "menor_melhor", "ultimo", "Financeiro",
+       "Clientes com título vencido ÷ clientes ativos.", ["financial_title", "customer"], clientes_com_titulo_vencido_pct),
     # Financeiro (aging, prazos, liquidez, resultado)
     _m("a_receber_vencido_60_pct", "Carteira vencida há +60 dias", "%", "menor_melhor", "ultimo", "Financeiro",
        "Vencido há mais de 60 dias sobre o total em aberto.", ["title_receivable"], a_receber_vencido_60_pct),
