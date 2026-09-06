@@ -14,11 +14,9 @@ interface Item {
   polarity: string;
   aggregation: string;
   description: string;
-  rule: string;
-  erp_metric: string;
-  erp_target: string;
-  entities: string[];
-  requer: string[];
+  explanation: string;
+  importance: string;
+  meta_do_erp: boolean;
   status: "pronto" | "planejado";
   tags: string[];
   plugado: boolean;
@@ -69,7 +67,7 @@ export function CatalogoKpi({ show, onHide, onPlugged }: { show: boolean; onHide
     const q = busca.trim().toLowerCase();
     return (data?.itens ?? []).filter((i) => {
       if (setor === "diretoria" ? !i.tags.includes("diretoria") : i.sector !== setor) return false;
-      if (q && !`${i.code} ${i.name} ${i.description} ${i.rule}`.toLowerCase().includes(q)) return false;
+      if (q && !`${i.code} ${i.name} ${i.description} ${i.explanation} ${i.importance}`.toLowerCase().includes(q)) return false;
       return true;
     });
   }, [data, setor, busca]);
@@ -129,13 +127,13 @@ export function CatalogoKpi({ show, onHide, onPlugged }: { show: boolean; onHide
               </div>
               <div className="small text-muted-2 mt-3">
                 <div><span className="badge text-bg-success me-1">pronto</span>calculado do espelho do ERP, hoje.</div>
-                <div className="mt-1"><span className="badge text-bg-light border me-1">planejado</span>depende de tabela ainda fora da coleta.</div>
-                <div className="mt-1"><span className="badge text-bg-warning me-1">sem dados</span>a coleta dessa entidade ainda não chegou.</div>
+                <div className="mt-1"><span className="badge text-bg-light border me-1">planejado</span>em breve: depende de dados que o agente ainda não coleta.</div>
+                <div className="mt-1"><span className="badge text-bg-warning me-1">sem dados</span>os dados deste indicador ainda não chegaram do ERP.</div>
               </div>
             </div>
             <div className="col-md-9">
               <div className="d-flex flex-wrap gap-2 align-items-center mb-2">
-                <Form.Control size="sm" style={{ maxWidth: 280 }} placeholder="Buscar por nome, código ou tabela do ERP" value={busca} onChange={(e) => setBusca(e.target.value)} />
+                <Form.Control size="sm" style={{ maxWidth: 280 }} placeholder="Buscar por nome ou assunto" value={busca} onChange={(e) => setBusca(e.target.value)} />
                 <Button size="sm" variant="outline-secondary" onClick={marcarTodos} disabled={plugaveis.length === 0}>
                   Marcar todos os prontos ({plugaveis.length})
                 </Button>
@@ -173,11 +171,11 @@ export function CatalogoKpi({ show, onHide, onPlugged }: { show: boolean; onHide
                                 {i.plugado ? (
                                   <span className="badge text-bg-primary"><i className="bi bi-check2 me-1" />plugado</span>
                                 ) : i.status === "planejado" ? (
-                                  <span className="badge text-bg-light border" title={`Requer: ${i.requer.join(", ")}`}>planejado</span>
+                                  <span className="badge text-bg-light border" title="Em breve: depende de dados que o agente ainda não coleta">planejado</span>
                                 ) : i.dados_ok ? (
                                   <span className="badge text-bg-success">pronto</span>
                                 ) : (
-                                  <span className="badge text-bg-warning" title={`Aguardando coleta de: ${i.entities.join(", ")}`}>sem dados</span>
+                                  <span className="badge text-bg-warning" title="Os dados deste indicador ainda não chegaram do ERP">sem dados</span>
                                 )}
                               </td>
                               <td className="text-end">
@@ -193,10 +191,14 @@ export function CatalogoKpi({ show, onHide, onPlugged }: { show: boolean; onHide
                                 <td></td>
                                 <td colSpan={5} className="small">
                                   <div className="p-2 rounded" style={{ background: "var(--surface-sunken)", border: "1px solid var(--border)" }}>
-                                    <div><strong>Regra no {ERP_LABEL[data.erp] ?? data.erp}:</strong> {i.rule || "—"}</div>
-                                    {i.erp_metric && <div className="mt-1"><strong>Métrica do espelho:</strong> <code>{i.erp_metric}</code> · agregação {i.aggregation} · entidades: {i.entities.join(", ")}</div>}
-                                    {i.erp_target && <div className="mt-1"><strong>Meta puxada do ERP:</strong> <code>{i.erp_target}</code></div>}
-                                    {i.requer.length > 0 && <div className="mt-1"><strong>Depende de coletar:</strong> {i.requer.join(", ")}</div>}
+                                    {i.explanation && <div><i className="bi bi-calculator me-1 text-muted-2" /><strong>Como é calculado:</strong> {i.explanation}</div>}
+                                    {i.importance && <div className="mt-1"><i className="bi bi-lightbulb me-1 text-muted-2" /><strong>Por que importa:</strong> {i.importance}</div>}
+                                    <div className="mt-1 text-muted-2">
+                                      <i className="bi bi-arrow-repeat me-1" />
+                                      {i.status === "pronto" ? "Atualizado automaticamente a partir do ERP a cada 30 minutos." : "Disponível em breve, quando o agente passar a coletar os dados necessários."}
+                                      {i.meta_do_erp && " A meta vem do próprio ERP quando estiver cadastrada lá."}
+                                      {" "}{i.polarity === "menor_melhor" ? "Quanto menor, melhor." : "Quanto maior, melhor."}
+                                    </div>
                                   </div>
                                 </td>
                               </tr>

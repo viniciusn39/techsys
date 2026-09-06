@@ -710,7 +710,9 @@ class KpiTemplate(models.Model):
     polarity = models.CharField(max_length=20, default="maior_melhor")
     aggregation = models.CharField(max_length=20, default="soma")
     description = models.TextField(blank=True)        # o que mede, em linguagem de gestão
-    rule = models.TextField(blank=True)               # regra no WinThor: tabelas, colunas, PL/SQL
+    explanation = models.TextField(blank=True)        # como é calculado, sem termo técnico (vai para o cliente)
+    importance = models.TextField(blank=True)         # por que importa e o que fazer com o número (vai para o cliente)
+    rule = models.TextField(blank=True)               # regra no WinThor: tabelas, colunas, PL/SQL (só root)
     erp_metric = models.CharField(max_length=60, blank=True)
     erp_target = models.CharField(max_length=40, blank=True)
     default_filters = models.JSONField(default=dict, blank=True)

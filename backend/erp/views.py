@@ -562,15 +562,17 @@ class KpiCatalogoView(APIView):
         carregadas = {
             e for e, model in ENTITY_MODELS.items() if model.objects.filter(tenant=tenant).exists()
         }
+        # Camada do cliente: nada técnico (tabela, métrica, entidade) — só o que
+        # mede, como é calculado em linguagem de negócio e por que importa.
         itens = []
         for t in KpiTemplate.objects.filter(erp=erp, is_active=True):
             itens.append({
                 "code": t.code, "name": t.name, "sector": t.sector, "sector_label": t.get_sector_display(),
                 "perspective": t.perspective, "unit": t.unit, "decimals": t.decimals,
                 "polarity": t.polarity, "aggregation": t.aggregation,
-                "description": t.description, "rule": t.rule,
-                "erp_metric": t.erp_metric, "erp_target": t.erp_target, "default_filters": t.default_filters,
-                "entities": t.entities, "requer": t.requer, "status": t.status, "tags": t.tags,
+                "description": t.description, "explanation": t.explanation, "importance": t.importance,
+                "meta_do_erp": bool(t.erp_target),
+                "status": t.status, "tags": t.tags,
                 "plugado": t.code in plugados,
                 "dados_ok": bool(t.entities) and all(e in carregadas for e in t.entities),
             })
@@ -611,8 +613,13 @@ class KpiCatalogoView(APIView):
                 pulados.append(code)
                 continue
             if t.status != KpiTemplate.Status.PLANEJADO or request.data.get("incluir_planejados"):
+                descricao = t.description
+                if t.explanation:
+                    descricao += f"\n\nComo é calculado: {t.explanation}"
+                if t.importance:
+                    descricao += f"\n\nPor que importa: {t.importance}"
                 criados.append(Indicator.objects.create(
-                    tenant=tenant, code=t.code, name=t.name, description=t.description,
+                    tenant=tenant, code=t.code, name=t.name, description=descricao,
                     unit=t.unit, decimals=t.decimals, polarity=t.polarity, aggregation=t.aggregation,
                     org_unit=raiz, objective_id=objective_id,
                     erp_metric=t.erp_metric, erp_filters=dict(t.default_filters or {}), erp_target=t.erp_target,
@@ -677,6 +684,7 @@ class KpiCatalogoTecnicoView(APIView):
                 "code": t.code, "name": t.name, "sector": t.sector, "sector_label": t.get_sector_display(),
                 "perspective": t.perspective, "unit": t.unit, "decimals": t.decimals, "polarity": t.polarity,
                 "aggregation": t.aggregation, "description": t.description, "rule": t.rule,
+                "explanation": t.explanation, "importance": t.importance,
                 "status": t.status, "requer": t.requer, "tags": t.tags, "default_filters": t.default_filters,
                 "erp_metric": t.erp_metric, "metric_label": metric.label if metric else "",
                 "entities": list(metric.entities) if metric else [],

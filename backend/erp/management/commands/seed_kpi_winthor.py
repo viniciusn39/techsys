@@ -31,6 +31,7 @@ class Command(BaseCommand):
                 "polarity": item["polarity"] or (metric.polarity if metric else "maior_melhor"),
                 "aggregation": item["aggregation"] or (metric.aggregation if metric else "soma"),
                 "description": item["description"], "rule": item["rule"],
+                "explanation": item.get("explanation", ""), "importance": item.get("importance", ""),
                 "erp_metric": item["erp_metric"], "erp_target": item["erp_target"],
                 "default_filters": item["default_filters"],
                 "entities": list(metric.entities) if metric else [],

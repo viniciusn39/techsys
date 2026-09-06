@@ -25,6 +25,8 @@ interface Item {
   polarity: string;
   aggregation: string;
   description: string;
+  explanation: string;
+  importance: string;
   rule: string;
   status: "pronto" | "planejado";
   requer: string[];
@@ -167,6 +169,8 @@ export function CatalogoTecnico() {
                       <td colSpan={6}>
                         <div className="row g-3">
                           <div className="col-12">
+                            {i.explanation && <div className="small mb-1"><strong>Como é calculado (texto do cliente):</strong> {i.explanation}</div>}
+                            {i.importance && <div className="small mb-2"><strong>Por que importa (texto do cliente):</strong> {i.importance}</div>}
                             <div className="fw-semibold small mb-1"><i className="bi bi-book me-1" />Regra no WinThor</div>
                             <div className="small">{i.rule || "—"}</div>
                             {i.requer.length > 0 && <div className="small text-muted-2 mt-1">Depende de coletar: {i.requer.join(", ")}</div>}
