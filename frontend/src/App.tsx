@@ -1,3 +1,4 @@
+import React from "react";
 import { Navigate, Route, Routes, useLocation } from "react-router-dom";
 import { useAuth } from "./auth/AuthContext";
 import { AppLayout } from "./layout/AppLayout";
@@ -35,20 +36,38 @@ import { Usuarios } from "./pages/Usuarios";
  * (header X-Tenant-Id) — sem isso a API não devolve dado nenhum, então mandamos
  * ele para a gestão de empresas em vez de mostrar telas vazias.
  */
+/** Uma tela com erro de JavaScript não pode apagar o app inteiro: mostra o erro no lugar dela. */
+class PaginaComErro extends React.Component<{ children: React.ReactNode }, { erro: string }> {
+  state = { erro: "" };
+  static getDerivedStateFromError(e: any) { return { erro: String(e?.message || e) }; }
+  render() {
+    if (this.state.erro) {
+      return (
+        <div className="panel p-4">
+          <div className="fw-semibold mb-1"><i className="bi bi-bug me-1" />Esta tela encontrou um erro</div>
+          <div className="small text-muted-2 mb-3">{this.state.erro}</div>
+          <button className="btn btn-sm btn-outline-secondary" onClick={() => this.setState({ erro: "" })}>Tentar de novo</button>
+        </div>
+      );
+    }
+    return this.props.children;
+  }
+}
+
 function TenantRoute({ children }: { children: React.ReactNode }) {
   const { me } = useAuth();
   const location = useLocation();
   if (me?.role === "root" && !me.acting_tenant) {
     return <Navigate to="/root/tenants" replace state={{ from: location.pathname }} />;
   }
-  return <>{children}</>;
+  return <PaginaComErro>{children}</PaginaComErro>;
 }
 
 /** Rotas exclusivas do root global. */
 function RootRoute({ children }: { children: React.ReactNode }) {
   const { me } = useAuth();
   if (me?.role !== "root") return <Navigate to="/" replace />;
-  return <>{children}</>;
+  return <PaginaComErro>{children}</PaginaComErro>;
 }
 
 export default function App() {

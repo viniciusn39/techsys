@@ -54,6 +54,7 @@ export function Servidor() {
     return () => window.clearInterval(id);
   }, [auto, load]);
 
+  const cor = (i: number) => t.series[i % t.series.length] ?? t.ink;
   const serie = (campo: keyof Servidor["amostras"][number], nome: string, cor: string) => ({
     name: nome, type: "line" as const, showSymbol: false, smooth: 0.2, lineStyle: { width: 2, color: cor }, itemStyle: { color: cor },
     areaStyle: { color: areaWash(cor) }, data: (d?.amostras ?? []).map((a) => [a.at, a[campo] as number | null]),
@@ -64,7 +65,7 @@ export function Servidor() {
     tooltip: { trigger: "axis" as const, valueFormatter: (v: any) => (v === null || v === undefined ? "—" : `${Number(v).toFixed(1)}%`) },
     xAxis: { type: "time" as const },
     yAxis: { type: "value" as const, min: 0, max: 100, axisLabel: { formatter: "{value}%" } },
-    series: [serie("cpu_pct", "CPU", t.series[0]), serie("mem_pct", "Memória", t.series[1]), serie("disco_pct", "Disco", t.series[2])],
+    series: [serie("cpu_pct", "CPU", cor(0)), serie("mem_pct", "Memória", cor(1)), serie("disco_pct", "Disco", cor(2))],
   }), [d, t]);
   const optLoad = useMemo(() => ({
     grid: { left: 4, right: 12, top: 30, bottom: 4, containLabel: true },
@@ -72,7 +73,7 @@ export function Servidor() {
     tooltip: { trigger: "axis" as const },
     xAxis: { type: "time" as const },
     yAxis: { type: "value" as const, min: 0 },
-    series: [serie("load_m1", "Load (1 min)", t.series[3]), serie("db_conexoes", "Conexões no banco", t.series[4])],
+    series: [serie("load_m1", "Load (1 min)", cor(3)), serie("db_conexoes", "Conexões no banco", cor(4))],
   }), [d, t]);
   const optDb = useMemo(() => ({
     grid: { left: 4, right: 12, top: 30, bottom: 4, containLabel: true },
@@ -80,7 +81,7 @@ export function Servidor() {
     tooltip: { trigger: "axis" as const, valueFormatter: (v: any) => bytes(v) },
     xAxis: { type: "time" as const },
     yAxis: { type: "value" as const, min: 0, axisLabel: { formatter: (v: number) => bytes(v) } },
-    series: [serie("db_bytes", "Tamanho do banco", t.series[0])],
+    series: [serie("db_bytes", "Tamanho do banco", cor(0))],
   }), [d, t]);
   const optTabelas = useMemo(() => {
     const rows = [...(d?.postgres.tabelas ?? [])].slice(0, 15).reverse();
