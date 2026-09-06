@@ -668,6 +668,68 @@ class SalesTarget(ErpModel):
         indexes = [models.Index(fields=["tenant", "period"])]
 
 
+class KpiTemplate(models.Model):
+    """Modelo de KPI por ERP — o catálogo que a empresa "pluga" com um clique.
+
+    Global (não é por tenant): vale para todo cliente cujo conector é daquele
+    ERP. Cada modelo aponta para uma métrica do espelho (`erp_metric`) e,
+    opcionalmente, para uma fonte de meta (`erp_target`). `status` diz se o
+    dado já é calculável hoje ou se depende de uma entidade ainda não
+    coletada (`requer`). Semeado por `manage.py seed_kpi_winthor` a partir de
+    `erp/catalogo_winthor.py`; editável no admin.
+    """
+
+    class Setor(models.TextChoices):
+        VENDAS = "vendas", "Vendas"
+        CLIENTES = "clientes", "Clientes"
+        FINANCEIRO = "financeiro", "Financeiro"
+        ESTOQUE = "estoque", "Estoque"
+        COMPRAS = "compras", "Compras"
+        LOGISTICA = "logistica", "Logística"
+        FISCAL = "fiscal", "Fiscal"
+        RH = "rh", "Pessoas / RH"
+        DIRETORIA = "diretoria", "Diretoria"
+
+    class Perspectiva(models.TextChoices):
+        FINANCEIRA = "financeira", "Financeira"
+        CLIENTES = "clientes", "Clientes"
+        PROCESSOS = "processos", "Processos internos"
+        APRENDIZADO = "aprendizado", "Aprendizado e crescimento"
+
+    class Status(models.TextChoices):
+        PRONTO = "pronto", "Pronto (calculado do espelho)"
+        PLANEJADO = "planejado", "Planejado (depende de coleta adicional)"
+
+    erp = models.CharField(max_length=20, default=Connector.Erp.WINTHOR, db_index=True)
+    code = models.CharField(max_length=30)
+    name = models.CharField(max_length=200)
+    sector = models.CharField(max_length=20, choices=Setor.choices)
+    perspective = models.CharField(max_length=20, choices=Perspectiva.choices, default=Perspectiva.PROCESSOS)
+    unit = models.CharField(max_length=20, blank=True)
+    decimals = models.PositiveSmallIntegerField(default=2)
+    polarity = models.CharField(max_length=20, default="maior_melhor")
+    aggregation = models.CharField(max_length=20, default="soma")
+    description = models.TextField(blank=True)        # o que mede, em linguagem de gestão
+    rule = models.TextField(blank=True)               # regra no WinThor: tabelas, colunas, PL/SQL
+    erp_metric = models.CharField(max_length=60, blank=True)
+    erp_target = models.CharField(max_length=40, blank=True)
+    default_filters = models.JSONField(default=dict, blank=True)
+    entities = models.JSONField(default=list, blank=True)   # entidades do espelho que a métrica lê
+    requer = models.JSONField(default=list, blank=True)     # tabelas do ERP ainda não coletadas
+    status = models.CharField(max_length=12, choices=Status.choices, default=Status.PRONTO)
+    tags = models.JSONField(default=list, blank=True)
+    order = models.PositiveIntegerField(default=0)
+    is_active = models.BooleanField(default=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        ordering = ["sector", "order", "code"]
+        constraints = [models.UniqueConstraint(fields=["erp", "code"], name="uniq_kpi_template_erp_code")]
+
+    def __str__(self):
+        return f"[{self.erp}] {self.code} — {self.name}"
+
+
 class ErpRecord(ErpModel):
     """Qualquer tabela do ERP sem modelo dedicado: a linha crua em JSON."""
 

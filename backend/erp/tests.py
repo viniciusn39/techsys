@@ -287,6 +287,41 @@ class ColetorIngestTests(APITestCase):
         self.assertEqual(r.status_code, 400)
         self.assertEqual(self.client.get("/api/erp/targets/").json()[0]["key"], "vlvendaprev")
 
+    def test_catalogo_de_kpis_do_winthor_pluga_com_um_clique(self):
+        from django.core.management import call_command
+
+        from indicators.models import Indicator
+
+        call_command("seed_kpi_winthor", verbosity=0)
+        self.ingest("branch", [{"CODIGO": "1", "RAZAOSOCIAL": "Matriz"}])
+        self.ingest("sales_invoice", [{"NUMTRANSVENDA": "1", "NUMNOTA": "1", "CODFILIAL": "1", "DTSAIDA": date.today().isoformat(), "CONDVENDA": 1, "VLTOTAL": "100"}])
+        gestor = User.objects.create_user("g6@nb.com", "x", first_name="G", tenant=self.tenant, role=User.Role.GESTOR)
+        self.client.force_authenticate(gestor)
+
+        d = self.client.get("/api/erp/kpi-catalogo/").json()
+        self.assertEqual(d["erp"], "winthor")
+        por_codigo = {i["code"]: i for i in d["itens"]}
+        self.assertGreater(len(por_codigo), 100)
+        self.assertTrue(por_codigo["FAT"]["dados_ok"])           # notas já no espelho
+        self.assertFalse(por_codigo["ESTQ"]["dados_ok"])         # estoque ainda não chegou
+        self.assertEqual(por_codigo["FILA_BLOQ"]["status"], "planejado")
+        self.assertFalse(por_codigo["FAT"]["plugado"])
+
+        r = self.client.post("/api/erp/kpi-catalogo/", {"codes": ["FAT", "POSIT", "FILA_BLOQ", "fat"]}, format="json")
+        self.assertEqual(r.status_code, 201, r.content)
+        criados = {i["code"] for i in r.json()["created"]}
+        self.assertEqual(criados, {"FAT", "POSIT"})
+        self.assertIn("FILA_BLOQ", r.json()["skipped"])          # planejado não pluga
+        fat = Indicator.objects.get(tenant=self.tenant, code="FAT")
+        self.assertEqual((fat.erp_metric, fat.erp_target, fat.unit, fat.polarity), ("faturamento", "vlvendaprev", "R$", "maior_melhor"))
+        self.assertTrue(self.client.get("/api/erp/kpi-catalogo/").json()["itens"] and
+                        next(i for i in self.client.get("/api/erp/kpi-catalogo/").json()["itens"] if i["code"] == "FAT")["plugado"])
+
+        # Repetir não duplica.
+        r = self.client.post("/api/erp/kpi-catalogo/", {"codes": ["FAT"]}, format="json")
+        self.assertEqual((len(r.json()["created"]), r.json()["skipped"]), (0, ["FAT"]))
+        self.assertEqual(self.client.post("/api/erp/kpi-catalogo/", {"codes": ["NAO_EXISTE"]}, format="json").status_code, 400)
+
     def test_heartbeat_atualiza_health_e_last_seen(self):
         r = self.client.post("/api/coletor/heartbeat/", {"oracle_ok": True, "agent_version": "1.0.0"},
                              format="json", **self.headers)

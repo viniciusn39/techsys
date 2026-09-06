@@ -541,6 +541,93 @@ class MetricCatalogView(APIView):
         return Response(catalog_payload())
 
 
+class KpiCatalogoView(APIView):
+    """Catálogo de KPIs do ERP da empresa, com o que já está plugado e o que já tem dado."""
+
+    permission_classes = [IsGestorOrAbove]
+
+    def get(self, request):
+        from accounts.tenancy import get_request_tenant
+        from indicators.models import Indicator
+
+        from .models import KpiTemplate
+        from .sync import ENTITY_MODELS
+
+        tenant = get_request_tenant(request)
+        if tenant is None:
+            raise PermissionDenied("Nenhuma empresa selecionada.")
+        conector = Connector.objects.filter(tenant=tenant, is_active=True).first()
+        erp = conector.erp if conector else Connector.Erp.WINTHOR
+        plugados = set(Indicator.objects.filter(tenant=tenant).values_list("code", flat=True))
+        carregadas = {
+            e for e, model in ENTITY_MODELS.items() if model.objects.filter(tenant=tenant).exists()
+        }
+        itens = []
+        for t in KpiTemplate.objects.filter(erp=erp, is_active=True):
+            itens.append({
+                "code": t.code, "name": t.name, "sector": t.sector, "sector_label": t.get_sector_display(),
+                "perspective": t.perspective, "unit": t.unit, "decimals": t.decimals,
+                "polarity": t.polarity, "aggregation": t.aggregation,
+                "description": t.description, "rule": t.rule,
+                "erp_metric": t.erp_metric, "erp_target": t.erp_target, "default_filters": t.default_filters,
+                "entities": t.entities, "requer": t.requer, "status": t.status, "tags": t.tags,
+                "plugado": t.code in plugados,
+                "dados_ok": bool(t.entities) and all(e in carregadas for e in t.entities),
+            })
+        return Response({
+            "erp": erp, "setores": [{"key": k, "label": v} for k, v in KpiTemplate.Setor.choices],
+            "itens": itens,
+        })
+
+    def post(self, request):
+        """Pluga os KPIs escolhidos: cria os indicadores ligados ao ERP e dispara o cálculo."""
+        from accounts.models import OrgUnit
+        from accounts.tenancy import get_request_tenant
+        from indicators.models import Indicator
+        from indicators.serializers import IndicatorSerializer
+
+        from .models import KpiTemplate
+        from .tasks import calcular_indicadores_erp, sincronizar_metas_erp
+
+        tenant = get_request_tenant(request)
+        if tenant is None:
+            raise PermissionDenied("Nenhuma empresa selecionada.")
+        codes = list(dict.fromkeys(str(c).strip().upper() for c in (request.data.get("codes") or []) if str(c).strip()))
+        if not codes:
+            raise ValidationError({"codes": "Informe os códigos dos KPIs."})
+        conector = Connector.objects.filter(tenant=tenant, is_active=True).first()
+        erp = conector.erp if conector else Connector.Erp.WINTHOR
+        templates = {t.code: t for t in KpiTemplate.objects.filter(erp=erp, is_active=True, code__in=codes)}
+        desconhecidos = [c for c in codes if c not in templates]
+        if desconhecidos:
+            raise ValidationError({"codes": f"KPIs fora do catálogo: {', '.join(desconhecidos)}"})
+        existentes = set(Indicator.objects.filter(tenant=tenant, code__in=codes).values_list("code", flat=True))
+        raiz = OrgUnit.objects.filter(tenant=tenant, parent__isnull=True).first()
+        objective_id = request.data.get("objective") or None
+        criados, pulados = [], []
+        for code in codes:
+            t = templates[code]
+            if code in existentes:
+                pulados.append(code)
+                continue
+            if t.status != KpiTemplate.Status.PLANEJADO or request.data.get("incluir_planejados"):
+                criados.append(Indicator.objects.create(
+                    tenant=tenant, code=t.code, name=t.name, description=t.description,
+                    unit=t.unit, decimals=t.decimals, polarity=t.polarity, aggregation=t.aggregation,
+                    org_unit=raiz, objective_id=objective_id,
+                    erp_metric=t.erp_metric, erp_filters=dict(t.default_filters or {}), erp_target=t.erp_target,
+                ))
+            else:
+                pulados.append(code)
+        if criados:
+            sincronizar_metas_erp.delay(tenant_id=tenant.id, meses=12)
+            calcular_indicadores_erp.delay(tenant_id=tenant.id, meses=12)
+        return Response({
+            "created": IndicatorSerializer(criados, many=True, context={"request": request, "tenant": tenant}).data,
+            "skipped": pulados,
+        }, status=201)
+
+
 class TargetCatalogView(APIView):
     """Fontes de meta do ERP (PCMETA, cadastro do RCA) que um indicador pode usar."""
 

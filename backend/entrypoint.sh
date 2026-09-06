@@ -2,6 +2,7 @@
 set -e
 
 python manage.py migrate --noinput
+python manage.py seed_kpi_winthor
 
 if [ "${DEBUG:-1}" = "1" ]; then
   exec python manage.py runserver 0.0.0.0:8000

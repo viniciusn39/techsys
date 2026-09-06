@@ -11,6 +11,7 @@ import {
   StatusPill,
 } from "../components/ui";
 import { api } from "../api/client";
+import { CatalogoKpi } from "../components/CatalogoKpi";
 import { useTheme } from "../hooks/useTheme";
 import type { Indicator, Objective, OrgUnit, UserRow } from "../types";
 import { fmtNumber, fmtPct, fmtPeriod } from "../utils/format";
@@ -52,6 +53,7 @@ export function Indicadores() {
   const [loading, setLoading] = useState(true);
   const [editing, setEditing] = useState<Partial<Indicator> | null>(null);
   const [launching, setLaunching] = useState(false);
+  const [showCatalogo, setShowCatalogo] = useState(false);
   const [launchPeriod, setLaunchPeriod] = useState(currentPeriod());
   const [launchValues, setLaunchValues] = useState<Record<number, string>>({});
   const [loadingDefaults, setLoadingDefaults] = useState(false);
@@ -192,6 +194,9 @@ export function Indicadores() {
           <option value="sem_lancamento">Sem lançamento</option>
         </Form.Select>
         <div className="ms-auto d-flex gap-2">
+          <Button size="sm" variant="primary" onClick={() => setShowCatalogo(true)}>
+            <i className="bi bi-plug me-1" />Catálogo do ERP
+          </Button>
           <Button size="sm" variant="outline-secondary" onClick={loadDefaults} disabled={loadingDefaults}>
             <i className="bi bi-collection me-1" />
             {loadingDefaults ? "Carregando..." : "Catálogo padrão"}
@@ -231,6 +236,7 @@ export function Indicadores() {
             action={
               rows.length ? undefined : (
                 <div className="d-flex gap-2 justify-content-center">
+                  <Button size="sm" onClick={() => setShowCatalogo(true)}><i className="bi bi-plug me-1" />Catálogo do ERP</Button>
                   <Button size="sm" variant="outline-secondary" onClick={loadDefaults} disabled={loadingDefaults}>
                     <i className="bi bi-collection me-1" />Carregar catálogo padrão
                   </Button>
@@ -461,6 +467,15 @@ export function Indicadores() {
           <Button onClick={save} disabled={!editing?.code || !editing?.name}>Salvar</Button>
         </Modal.Footer>
       </Modal>
+
+      <CatalogoKpi
+        show={showCatalogo}
+        onHide={() => setShowCatalogo(false)}
+        onPlugged={(n) => {
+          setNotice(`${n} indicador(es) plugados ao ERP. Valores e metas chegam em instantes; ajuste área, objetivo e filial se precisar.`);
+          load();
+        }}
+      />
 
       {/* --- Modal de lançamento em lote --- */}
       <Modal show={launching} onHide={() => setLaunching(false)} size="lg" centered>
