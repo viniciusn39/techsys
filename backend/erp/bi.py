@@ -282,6 +282,43 @@ def conferencia(tenant, carregadas=None):
     return out
 
 
+CACHE_TTL = 30 * 60  # o beat recalcula os indicadores a cada 30 min e aquece o painel na sequência
+PADROES_AQUECIMENTO = ((12, None, None), (6, None, None), (1, None, None))
+
+
+def chave_cache(tenant_id, meses, branch, ate):
+    return f"painel_erp:{tenant_id}:{meses}:{branch or ''}:{ate.isoformat() if ate else ''}"
+
+
+def painel_cacheado(tenant, meses=12, branch=None, ate=None, refresh=False):
+    """O painel varre milhões de linhas (40 s numa distribuidora): serve do cache e
+    recalcula só quando o cache expira, o usuário pede (`refresh`) ou o beat aquece."""
+    from django.core.cache import cache
+
+    chave = chave_cache(tenant.id, meses, branch, ate)
+    if not refresh:
+        try:
+            pronto = cache.get(chave)
+        except Exception:  # noqa: BLE001 — Redis fora não pode derrubar a tela
+            pronto = None
+        if pronto is not None:
+            pronto["do_cache"] = True
+            return pronto
+    dados = painel(tenant, meses=meses, branch=branch, ate=ate)
+    dados["do_cache"] = False
+    try:
+        cache.set(chave, dados, CACHE_TTL)
+    except Exception:  # noqa: BLE001
+        pass
+    return dados
+
+
+def aquecer(tenant):
+    """Recalcula e guarda as combinações que a tela abre por padrão."""
+    for meses, branch, ate in PADROES_AQUECIMENTO:
+        painel_cacheado(tenant, meses=meses, branch=branch, ate=ate, refresh=True)
+
+
 def painel(tenant, meses=12, branch=None, ate=None):
     """`ate` = mês de referência escolhido (date); None = último mês com faturamento."""
     filters = {"branch": branch} if branch else {}

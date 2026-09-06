@@ -124,7 +124,24 @@ def calcular_indicadores_erp(tenant_id=None, indicator_id=None, meses=None):
             )
             gravados += 1
     logger.info("calcular_indicadores_erp: %s valores gravados", gravados)
+    # Indicadores novos em disco → o painel do ERP (cacheado) precisa ser refeito.
+    for tid in sorted({i.tenant_id for i in qs}):
+        aquecer_painel_erp.delay(tid)
     return gravados
+
+
+@shared_task
+def aquecer_painel_erp(tenant_id):
+    """Recalcula o painel do ERP para o cache, fora do caminho do usuário."""
+    from accounts.models import Tenant
+
+    from .bi import aquecer
+
+    tenant = Tenant.objects.filter(pk=tenant_id).first()
+    if tenant is None:
+        return 0
+    aquecer(tenant)
+    return 1
 
 
 @shared_task

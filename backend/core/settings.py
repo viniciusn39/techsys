@@ -119,6 +119,15 @@ CORS_ALLOW_HEADERS = [
 REDIS_URL = os.environ.get("REDIS_URL", "redis://localhost:6379/0")
 CELERY_BROKER_URL = REDIS_URL
 CELERY_RESULT_BACKEND = REDIS_URL
+
+# Cache de leitura (painel do ERP e outras telas caras) no mesmo Redis, banco 1.
+CACHES = {
+    "default": {
+        "BACKEND": "django.core.cache.backends.redis.RedisCache",
+        "LOCATION": REDIS_URL.rsplit("/", 1)[0] + "/1",
+        "TIMEOUT": 1800,
+    }
+}
 CELERY_TIMEZONE = TIME_ZONE
 CELERY_BEAT_SCHEDULE = {
     "recalcular-farois-diario": {

@@ -787,7 +787,7 @@ class PainelErpView(APIView):
     def get(self, request):
         from accounts.tenancy import get_request_tenant
 
-        from .bi import painel
+        from .bi import painel_cacheado as painel
 
         tenant = get_request_tenant(request)
         if tenant is None:
@@ -806,7 +806,8 @@ class PainelErpView(APIView):
                 ate = date.fromisoformat(raw if len(raw) > 7 else f"{raw}-01").replace(day=1)
             except ValueError:
                 raise ValidationError({"ate": "Use AAAA-MM."})
-        return Response(painel(tenant, meses=meses, branch=branch, ate=ate))
+        refresh = str(request.query_params.get("refresh", "")).lower() in ("1", "true", "sim")
+        return Response(painel(tenant, meses=meses, branch=branch, ate=ate, refresh=refresh))
 
 
 class MetricPreviewView(APIView):

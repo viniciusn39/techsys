@@ -44,6 +44,7 @@ interface Conferencia {
 
 interface Painel {
   gerado_em: string;
+  do_cache?: boolean;
   meses: number;
   filial: string | null;
   filiais: { code: string; name: string }[];
@@ -117,12 +118,13 @@ export function PainelErp() {
   const [busy, setBusy] = useState(false);
   const [aba, setAba] = useState<"vendedores" | "clientes" | "departamentos" | "produtos">("vendedores");
 
-  const load = useCallback(async () => {
+  const load = useCallback(async (refresh = false) => {
     setLoading(true);
     try {
       const params = new URLSearchParams({ meses: String(meses) });
       if (branch) params.set("branch", branch);
       if (ate) params.set("ate", ate);
+      if (refresh) params.set("refresh", "1");
       setData(await api.get<Painel>(`/api/erp/painel/?${params}`));
       setError("");
     } catch (e: any) {
@@ -337,8 +339,8 @@ export function PainelErp() {
         {ate && (
           <Button size="sm" variant="link" className="p-0" onClick={() => setAte("")}>último mês com dados</Button>
         )}
-        <Button size="sm" variant="outline-secondary" onClick={load} disabled={loading}>
-          <i className={`bi bi-arrow-clockwise me-1 ${loading ? "spin" : ""}`} />Atualizar
+        <Button size="sm" variant="outline-secondary" onClick={() => load(true)} disabled={loading} title="Recalcula agora a partir do espelho (leva alguns segundos)">
+          <i className={`bi bi-arrow-clockwise me-1 ${loading ? "spin" : ""}`} />Recalcular
         </Button>
         <span className="text-muted-2 small ms-auto">
           {meses === 1 ? <>Mês: <strong>{mesRef}</strong></> : <>{meses} meses até <strong>{mesRef}</strong></>} · gerado {new Date(data.gerado_em).toLocaleTimeString("pt-BR")}
