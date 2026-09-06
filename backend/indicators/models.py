@@ -134,4 +134,8 @@ class IndicatorValue(models.Model):
         target = self.indicator.targets.filter(period=self.period).first()
         meta = meta_proporcional(self.indicator, self.period, target.target_value if target else None, self.source)
         self.achievement_pct, self.status = compute_achievement(self.indicator, self.value, meta)
+        # update_or_create passa update_fields só com os campos do defaults; o farol
+        # recalculado aqui tem de entrar no UPDATE, senão fica o de antes.
+        if kwargs.get("update_fields") is not None:
+            kwargs["update_fields"] = set(kwargs["update_fields"]) | {"achievement_pct", "status"}
         super().save(*args, **kwargs)

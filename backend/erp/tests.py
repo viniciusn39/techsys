@@ -538,6 +538,17 @@ class MetricasTests(APITestCase):
         self.client.force_authenticate(root)
         self.assertTrue(self.client.get(f"/api/indicators/{ind.id}/contexto/", HTTP_X_TENANT_ID=str(self.tenant.id)).json()["sobre"]["regra_tecnica"])
 
+    def test_task_regrava_farol_ao_atualizar_valor_existente(self):
+        # update_or_create manda update_fields só com value/source/note: o farol novo tem de persistir.
+        from indicators.models import IndicatorTarget
+
+        ind = Indicator.objects.create(tenant=self.tenant, code="FAT", name="Faturamento", erp_metric="faturamento")
+        IndicatorValue.objects.create(indicator=ind, period=date(2026, 8, 1), value=Decimal("1"), source="agent")
+        IndicatorTarget.objects.create(indicator=ind, period=date(2026, 8, 1), target_value=Decimal("1800"))
+        calcular_indicadores_erp(tenant_id=self.tenant.id, meses=12)
+        v = IndicatorValue.objects.get(indicator=ind, period=date(2026, 8, 1))
+        self.assertEqual((v.value, v.achievement_pct, v.status), (Decimal("1800.0000"), Decimal("100.00"), "verde"))
+
     def test_toda_metrica_declara_entidades_do_plano(self):
         # Entidade com nome errado faz a task pular o indicador em silêncio.
         from erp.metrics import CATALOG
