@@ -55,8 +55,8 @@ export function QuebraPeriodo({ indicatorId, unit, decimals, erp }: {
 }) {
   const { isDark } = useTheme();
   const t = vizTokens(isDark);
-  const [gran, setGran] = useState<Gran>(erp ? "dia" : "mes");
-  const [n, setN] = useState<number>(erp ? 31 : 12);
+  const [gran, setGran] = useState<Gran>("mes");
+  const [n, setN] = useState<number>(12);
   const [ate, setAte] = useState(hojeIso());
   const [data, setData] = useState<Quebra | null>(null);
   const [loading, setLoading] = useState(false);
