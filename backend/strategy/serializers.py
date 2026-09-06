@@ -1,6 +1,6 @@
 from rest_framework import serializers
 
-from .models import CanvasItem, Goal, Meeting, Perspective, Stakeholder, StrategicMap, StrategicObjective, SwotItem
+from .models import CanvasItem, Goal, Meeting, Perspective, Stakeholder, StrategicMap, StrategicObjective, SwotItem, SwotStrategy
 
 
 class PerspectiveSerializer(serializers.ModelSerializer):
@@ -144,6 +144,16 @@ class SwotItemSerializer(_MapaDoTenant, serializers.ModelSerializer):
         if not 1 <= int(v) <= 5:
             raise serializers.ValidationError("Impacto de 1 a 5.")
         return v
+
+
+class SwotStrategySerializer(_MapaDoTenant, serializers.ModelSerializer):
+    kind_label = serializers.CharField(source="get_kind_display", read_only=True)
+    objective_name = serializers.CharField(source="objective.name", read_only=True, default="")
+
+    class Meta:
+        model = SwotStrategy
+        fields = ["id", "map", "kind", "kind_label", "text", "objective", "objective_name", "order"]
+        extra_kwargs = {"map": {"required": False}}
 
 
 class CanvasItemSerializer(_MapaDoTenant, serializers.ModelSerializer):

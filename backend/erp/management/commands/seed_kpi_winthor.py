@@ -46,3 +46,18 @@ class Command(BaseCommand):
             atualizados += not created
         desativados = KpiTemplate.objects.filter(erp="winthor").exclude(code__in=vistos).update(is_active=False)
         self.stdout.write(f"KPIs WinThor: {criados} criados, {atualizados} atualizados, {desativados} desativados.")
+
+        # Indicadores plugados antes do setor existir: herdam o setor do catálogo pelo código.
+        from accounts.models import Tenant, seed_access_profiles
+        from indicators.models import Indicator
+
+        setor_por_codigo = {item["code"]: item["sector"] for item in CATALOGO}
+        preenchidos = 0
+        for ind in Indicator.objects.filter(sector="").only("id", "code"):
+            setor = setor_por_codigo.get(ind.code)
+            if setor:
+                Indicator.objects.filter(pk=ind.pk).update(sector=setor)
+                preenchidos += 1
+        perfis = sum(seed_access_profiles(t) for t in Tenant.objects.all())
+        self.stdout.write(f"setores preenchidos: {preenchidos} · perfis de acesso criados: {perfis}")
+

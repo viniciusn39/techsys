@@ -211,3 +211,43 @@ class TenantIsolationTests(APITestCase):
         self.client.force_authenticate(colab)
         resp = self.client.post("/api/indicators/", {"code": "N1", "name": "Novo"})
         self.assertEqual(resp.status_code, 403)
+
+
+class PerfisDeAcessoTests(APITestCase):
+    def setUp(self):
+        from .models import seed_access_profiles
+
+        self.tenant = Tenant.objects.create(name="Acme", slug="acme-rbac")
+        seed_access_profiles(self.tenant)
+        self.admin = User.objects.create_user("adm@rbac.com", "x", first_name="Adm", tenant=self.tenant, role=User.Role.ADMIN)
+        from .models import AccessProfile
+
+        self.comercial = AccessProfile.objects.get(tenant=self.tenant, key="comercial")
+        self.vendedor = User.objects.create_user("v@rbac.com", "x", first_name="Vend", tenant=self.tenant, role=User.Role.GESTOR, access_profile=self.comercial)
+        from indicators.models import Indicator
+
+        Indicator.objects.create(tenant=self.tenant, code="FAT", name="Faturamento", sector="vendas")
+        Indicator.objects.create(tenant=self.tenant, code="INAD", name="Inadimplência", sector="financeiro")
+        Indicator.objects.create(tenant=self.tenant, code="NPS", name="NPS")  # manual, sem setor
+
+    def test_perfis_padrao_e_filtro_por_setor(self):
+        self.client.force_authenticate(self.vendedor)
+        codes = {i["code"] for i in self.client.get("/api/indicators/").json()}
+        self.assertEqual(codes, {"FAT", "NPS"})                       # financeiro fica fora; manual entra
+        self.assertEqual(self.client.get("/api/indicators/").status_code, 200)
+        me = self.client.get("/api/auth/me/").json()
+        self.assertEqual(me["sectors"], ["vendas", "clientes", "forca_vendas"])
+        self.assertIn("indicadores", me["modules"])
+        self.assertNotIn("painel_erp", me["modules"])
+        self.assertEqual(me["access_profile_name"], "Comercial")
+        # admin vê tudo e não é limitado
+        self.client.force_authenticate(self.admin)
+        self.assertEqual(len(self.client.get("/api/indicators/").json()), 3)
+        self.assertIsNone(self.client.get("/api/auth/me/").json()["modules"])
+        perfis = self.client.get("/api/access-profiles/").json()
+        self.assertEqual({p["key"] for p in perfis}, {"diretoria", "comercial", "financeiro", "logistica", "suprimentos", "pessoas"})
+        # perfil padrão não pode ser excluído; setor inválido é rejeitado
+        self.assertEqual(self.client.delete(f"/api/access-profiles/{self.comercial.id}/").status_code, 403)
+        self.assertEqual(self.client.patch(f"/api/access-profiles/{self.comercial.id}/", {"sectors": ["marketing"]}, format="json").status_code, 400)
+        r = self.client.post("/api/access-profiles/", {"name": "Lojas", "key": "lojas", "sectors": ["vendas"], "modules": ["dashboard", "indicadores"]}, format="json")
+        self.assertEqual(r.status_code, 201, r.content)

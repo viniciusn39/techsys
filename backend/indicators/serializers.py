@@ -38,7 +38,7 @@ class IndicatorSerializer(serializers.ModelSerializer):
     class Meta:
         model = Indicator
         fields = [
-            "id", "code", "name", "description", "unit", "decimals", "frequency",
+            "id", "code", "name", "description", "sector", "unit", "decimals", "frequency",
             "polarity", "aggregation", "org_unit", "org_unit_name", "owner",
             "owner_name", "objective", "objective_name", "data_source",
             "erp_metric", "erp_metric_label", "erp_filters",

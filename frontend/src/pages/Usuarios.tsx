@@ -14,6 +14,7 @@ const ROLE_META: Record<string, { label: string; icon: string; hint: string }> =
 export function Usuarios() {
   const [rows, setRows] = useState<UserRow[] | null>(null);
   const [units, setUnits] = useState<OrgUnit[]>([]);
+  const [perfis, setPerfis] = useState<{ id: number; name: string; sectors_labels?: string[] }[]>([]);
   const [editing, setEditing] = useState<Partial<UserRow & { password?: string }> | null>(null);
   const [error, setError] = useState("");
 
@@ -23,6 +24,7 @@ export function Usuarios() {
 
   useEffect(() => {
     load();
+    api.get<any>("/api/access-profiles/").then((d) => setPerfis(d.results ?? d)).catch(() => {});
     api.get("/api/org-units/").then(setUnits).catch(() => {});
   }, [load]);
 
@@ -162,6 +164,14 @@ export function Usuarios() {
                 <option value="">—</option>
                 {units.map((u) => <option key={u.id} value={u.id}>{u.name}</option>)}
               </Form.Select>
+            </div>
+            <div className="col-md-6">
+              <Form.Label>Perfil de acesso (setor)</Form.Label>
+              <Form.Select value={editing?.access_profile ?? ""} onChange={(e) => setEditing({ ...editing!, access_profile: e.target.value ? Number(e.target.value) : null })} disabled={editing?.role === "admin"}>
+                <option value="">Sem restrição (vê tudo do papel)</option>
+                {perfis.map((p) => <option key={p.id} value={p.id}>{p.name}{p.sectors_labels?.length ? ` · ${p.sectors_labels.join(", ")}` : " · todos os setores"}</option>)}
+              </Form.Select>
+              <div className="form-text">Admin vê tudo; gestor e colaborador veem só os indicadores dos setores do perfil e os módulos liberados.</div>
             </div>
             <div className="col-md-6">
               <Form.Label>{editing?.id ? "Nova senha (opcional)" : "Senha"}</Form.Label>

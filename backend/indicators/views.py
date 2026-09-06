@@ -52,9 +52,14 @@ class IndicatorViewSet(TenantScopedViewSet):
     queryset = Indicator.objects.select_related("org_unit", "owner", "objective")
     serializer_class = IndicatorSerializer
     permission_classes = [IsGestorOrAbove]
-    filterset_fields = ["org_unit", "objective", "owner", "is_active", "frequency"]
+    filterset_fields = ["org_unit", "objective", "owner", "is_active", "frequency", "sector"]
     search_fields = ["code", "name"]
     pagination_class = None
+
+    def get_queryset(self):
+        from accounts.access import filtrar_indicadores
+
+        return filtrar_indicadores(self.request.user, super().get_queryset())
 
     def get_serializer_context(self):
         ctx = super().get_serializer_context()
@@ -375,7 +380,9 @@ class DashboardSummaryView(APIView):
         period = parse_period(period) if period else date.today().replace(day=1)
         org_unit = request.query_params.get("org_unit")
 
-        indicators = Indicator.objects.filter(tenant=tenant, is_active=True)
+        from accounts.access import filtrar_indicadores
+
+        indicators = filtrar_indicadores(request.user, Indicator.objects.filter(tenant=tenant, is_active=True))
         if org_unit:
             indicators = indicators.filter(org_unit=org_unit)
 

@@ -150,7 +150,7 @@ class Command(BaseCommand):
             if t.importance:
                 descricao += f"\n\nPor que importa: {t.importance}"
             Indicator.objects.create(
-                tenant=self.tenant, code=t.code, name=t.name, description=descricao,
+                tenant=self.tenant, code=t.code, name=t.name, description=descricao, sector=t.sector,
                 unit=t.unit, decimals=t.decimals, polarity=t.polarity, aggregation=t.aggregation,
                 org_unit=raiz, objective_id=int(obj) if obj else None,
                 erp_metric=t.erp_metric, erp_filters=dict(t.default_filters or {}), erp_target=t.erp_target,

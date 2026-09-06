@@ -114,6 +114,8 @@ export function Swot() {
         {itens.length === 0 && <div className="mt-3"><EmptyState icon="bi-grid-3x3-gap" title="Comece pelas forças" hint="Liste o que a empresa faz bem hoje; depois fraquezas, oportunidades e ameaças." /></div>}
       </Panel>
 
+      <MatrizSwot itens={itens} objetivos={objetivos} />
+
       <Modal show={!!editing} onHide={() => setEditing(null)}>
         <Modal.Header closeButton><Modal.Title>{editing?.id ? "Editar item" : "Novo item"} · {QUADRANTES.find((q) => q.key === editing?.quadrant)?.label}</Modal.Title></Modal.Header>
         <Modal.Body>
@@ -157,5 +159,111 @@ export function Swot() {
         </Modal.Footer>
       </Modal>
     </div>
+  );
+}
+
+
+interface Estrategia { id: number; kind: "SO" | "WO" | "ST" | "WT"; text: string; objective: number | null; objective_name: string }
+
+const CRUZAMENTOS: Record<Estrategia["kind"], { titulo: string; hint: string }> = {
+  SO: { titulo: "Ofensiva", hint: "Usar as forças para aproveitar as oportunidades" },
+  WO: { titulo: "Reforço", hint: "Corrigir fraquezas para não perder oportunidades" },
+  ST: { titulo: "Defesa", hint: "Usar as forças para neutralizar ameaças" },
+  WT: { titulo: "Sobrevivência", hint: "Reduzir fraquezas expostas às ameaças" },
+};
+
+/** Matriz SWOT cruzada: forças/fraquezas × oportunidades/ameaças, com as estratégias de cada célula. */
+function MatrizSwot({ itens, objetivos }: { itens: Item[]; objetivos: Objetivo[] }) {
+  const [lista, setLista] = useState<Estrategia[]>([]);
+  const [novo, setNovo] = useState<{ kind: Estrategia["kind"]; text: string } | null>(null);
+  const [editando, setEditando] = useState<Estrategia | null>(null);
+
+  const load = useCallback(() => { api.get<Estrategia[]>("/api/swot-estrategias/").then(setLista).catch(() => setLista([])); }, []);
+  useEffect(() => { load(); }, [load]);
+
+  const top = (q: Item["quadrant"]) => itens.filter((i) => i.quadrant === q).sort((a, b) => b.impact - a.impact).slice(0, 4);
+  const salvarNovo = async () => {
+    if (novo?.text.trim()) await api.post("/api/swot-estrategias/", { kind: novo.kind, text: novo.text.trim() });
+    setNovo(null); load();
+  };
+  const salvarEdicao = async () => {
+    if (!editando) return;
+    await api.patch(`/api/swot-estrategias/${editando.id}/`, { text: editando.text, objective: editando.objective });
+    setEditando(null); load();
+  };
+  const remover = async (id: number) => { await api.del(`/api/swot-estrategias/${id}/`); load(); };
+
+  const Celula = ({ kind }: { kind: Estrategia["kind"] }) => {
+    const c = CRUZAMENTOS[kind];
+    const es = lista.filter((e) => e.kind === kind);
+    return (
+      <div className="p-3 h-100" style={{ background: "var(--surface-sunken)", borderRadius: 10, border: "1px solid var(--border)" }}>
+        <div className="d-flex align-items-center gap-2 mb-1">
+          <span className="badge rounded-pill" style={{ background: "var(--brand-soft)", color: "var(--brand)" }}>{kind}</span>
+          <span className="fw-semibold small">{c.titulo}</span>
+          <button className="btn btn-sm btn-link p-0 ms-auto no-print" title="Adicionar estratégia" onClick={() => setNovo({ kind, text: "" })}><i className="bi bi-plus-lg" /></button>
+        </div>
+        <div className="small text-muted-2 mb-2">{c.hint}</div>
+        <ul className="ps-3 mb-0 small">
+          {es.map((e) => (
+            <li key={e.id} className="mb-1" role="button" onClick={() => setEditando(e)}>
+              {e.text}{e.objective_name && <span className="text-muted-2"> · {e.objective_name}</span>}
+              <button className="btn btn-sm btn-link text-danger p-0 ms-1 no-print" onClick={(ev) => { ev.stopPropagation(); remover(e.id); }}><i className="bi bi-x" /></button>
+            </li>
+          ))}
+        </ul>
+        {novo?.kind === kind && (
+          <input autoFocus className="form-control form-control-sm mt-2" placeholder="Estratégia e Enter" value={novo.text}
+            onChange={(e) => setNovo({ kind, text: e.target.value })} onBlur={salvarNovo}
+            onKeyDown={(e) => { if (e.key === "Enter") salvarNovo(); if (e.key === "Escape") setNovo(null); }} />
+        )}
+        {es.length === 0 && novo?.kind !== kind && <div className="small text-muted-2 fst-italic">Nenhuma estratégia ainda.</div>}
+      </div>
+    );
+  };
+
+  const Fatores = ({ q, titulo }: { q: Item["quadrant"]; titulo: string }) => (
+    <div className="p-2 h-100">
+      <div className="fw-semibold small mb-1">{titulo}</div>
+      <ul className="ps-3 mb-0 small text-muted-2">{top(q).map((i) => <li key={i.id}>{i.text}</li>)}{top(q).length === 0 && <li>—</li>}</ul>
+    </div>
+  );
+
+  return (
+    <Panel title="Matriz SWOT cruzada" subtitle="Cada célula responde: o que fazemos com esta combinação? Os fatores de maior impacto aparecem nas bordas; as estratégias viram objetivos e planos de ação.">
+      <div style={{ display: "grid", gridTemplateColumns: "minmax(160px, 1fr) 2fr 2fr", gap: 8 }}>
+        <div />
+        <Fatores q="O" titulo="Oportunidades (externo)" />
+        <Fatores q="T" titulo="Ameaças (externo)" />
+        <Fatores q="S" titulo="Forças (interno)" />
+        <Celula kind="SO" />
+        <Celula kind="ST" />
+        <Fatores q="W" titulo="Fraquezas (interno)" />
+        <Celula kind="WO" />
+        <Celula kind="WT" />
+      </div>
+
+      <Modal show={!!editando} onHide={() => setEditando(null)}>
+        <Modal.Header closeButton><Modal.Title>Estratégia · {editando && CRUZAMENTOS[editando.kind].titulo}</Modal.Title></Modal.Header>
+        <Modal.Body>
+          {editando && (
+            <div className="d-grid gap-3">
+              <Form.Control as="textarea" rows={2} autoFocus value={editando.text} onChange={(e) => setEditando({ ...editando, text: e.target.value })} />
+              <Form.Group>
+                <Form.Label>Objetivo do mapa que realiza esta estratégia</Form.Label>
+                <Form.Select value={editando.objective ?? ""} onChange={(e) => setEditando({ ...editando, objective: e.target.value ? Number(e.target.value) : null })}>
+                  <option value="">—</option>
+                  {objetivos.map((o) => <option key={o.id} value={o.id}>{o.name}</option>)}
+                </Form.Select>
+              </Form.Group>
+            </div>
+          )}
+        </Modal.Body>
+        <Modal.Footer>
+          <Button variant="outline-secondary" onClick={() => setEditando(null)}>Cancelar</Button>
+          <Button onClick={salvarEdicao}>Salvar</Button>
+        </Modal.Footer>
+      </Modal>
+    </Panel>
   );
 }

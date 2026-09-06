@@ -19,6 +19,9 @@ export interface Me {
   cargo: string;
   tenant: Tenant | null;
   acting_tenant: Tenant | null;
+  modules?: string[] | null;
+  sectors?: string[] | null;
+  access_profile_name?: string;
 }
 
 export interface UserRow {
@@ -30,6 +33,8 @@ export interface UserRow {
   cargo: string;
   org_unit: number | null;
   org_unit_name?: string;
+  access_profile?: number | null;
+  access_profile_name?: string;
   is_active: boolean;
 }
 

@@ -139,6 +139,30 @@ class SwotItem(TenantOwnedModel):
         return f"[{self.quadrant}] {self.text}"
 
 
+class SwotStrategy(TenantOwnedModel):
+    """Cruzamento da matriz SWOT: o que fazer com cada combinação de fatores."""
+
+    class Kind(models.TextChoices):
+        SO = "SO", "Forças × Oportunidades (ofensiva)"
+        WO = "WO", "Fraquezas × Oportunidades (reforço)"
+        ST = "ST", "Forças × Ameaças (defesa)"
+        WT = "WT", "Fraquezas × Ameaças (sobrevivência)"
+
+    map = models.ForeignKey(StrategicMap, on_delete=models.CASCADE, related_name="swot_strategies")
+    kind = models.CharField(max_length=2, choices=Kind.choices)
+    text = models.CharField("estratégia", max_length=300)
+    objective = models.ForeignKey(
+        StrategicObjective, on_delete=models.SET_NULL, null=True, blank=True, related_name="swot_strategies",
+    )
+    order = models.PositiveIntegerField(default=0)
+
+    class Meta:
+        ordering = ["kind", "order", "id"]
+
+    def __str__(self):
+        return f"[{self.kind}] {self.text}"
+
+
 class CanvasItem(TenantOwnedModel):
     """Post-it de um bloco do Business Model Canvas do mapa."""
 

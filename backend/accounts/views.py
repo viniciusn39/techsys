@@ -4,9 +4,9 @@ from rest_framework.exceptions import PermissionDenied
 from rest_framework.response import Response
 from rest_framework.views import APIView
 
-from .models import OrgUnit, Tenant, User
+from .models import MODULOS, SETORES, AccessProfile, OrgUnit, Tenant, User, seed_access_profiles
 from .permissions import IsRoot, IsTenantAdmin
-from .serializers import MeSerializer, OrgUnitSerializer, TenantSerializer, UserSerializer
+from .serializers import AccessProfileSerializer, MeSerializer, OrgUnitSerializer, TenantSerializer, UserSerializer
 from .tenancy import TenantScopedViewSet, get_request_tenant
 
 
@@ -77,3 +77,38 @@ class OrgUnitViewSet(TenantScopedViewSet):
             ]
 
         return Response(build(None))
+
+
+class AccessProfileViewSet(TenantScopedViewSet):
+    """Perfis de acesso por setor da empresa (admin edita; todos podem listar para escolher)."""
+
+    queryset = AccessProfile.objects.all()
+    serializer_class = AccessProfileSerializer
+    permission_classes = [IsTenantAdmin]
+    pagination_class = None
+
+    def get_serializer_context(self):
+        ctx = super().get_serializer_context()
+        ctx["tenant"] = self.get_tenant()
+        return ctx
+
+    def perform_destroy(self, instance):
+        if instance.is_system:
+            raise PermissionDenied("Perfil padrão não pode ser excluído; ajuste os setores e módulos.")
+        instance.users.update(access_profile=None)
+        instance.delete()
+
+    @action(detail=False, methods=["get"])
+    def opcoes(self, request):
+        return Response({
+            "setores": [{"key": k, "label": v} for k, v in SETORES],
+            "modulos": [{"key": k, "label": v} for k, v in MODULOS],
+        })
+
+    @action(detail=False, methods=["post"])
+    def padrao(self, request):
+        """Recria os perfis padrão que faltarem."""
+        tenant = self.get_tenant()
+        if tenant is None:
+            raise PermissionDenied("Nenhuma empresa selecionada.")
+        return Response({"criados": seed_access_profiles(tenant)})

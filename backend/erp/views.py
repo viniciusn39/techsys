@@ -619,7 +619,7 @@ class KpiCatalogoView(APIView):
                 if t.importance:
                     descricao += f"\n\nPor que importa: {t.importance}"
                 criados.append(Indicator.objects.create(
-                    tenant=tenant, code=t.code, name=t.name, description=descricao,
+                    tenant=tenant, code=t.code, name=t.name, description=descricao, sector=t.sector,
                     unit=t.unit, decimals=t.decimals, polarity=t.polarity, aggregation=t.aggregation,
                     org_unit=raiz, objective_id=objective_id,
                     erp_metric=t.erp_metric, erp_filters=dict(t.default_filters or {}), erp_target=t.erp_target,

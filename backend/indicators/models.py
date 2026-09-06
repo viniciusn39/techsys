@@ -41,6 +41,8 @@ class Indicator(TenantOwnedModel):
     code = models.CharField("código", max_length=30)
     name = models.CharField("nome", max_length=200)
     description = models.TextField(blank=True)
+    # Setor do indicador (mesmas chaves do catálogo do ERP) — base do acesso por setor.
+    sector = models.CharField("setor", max_length=20, blank=True, db_index=True)
     unit = models.CharField("unidade", max_length=20, blank=True)
     decimals = models.PositiveSmallIntegerField(default=2)
     frequency = models.CharField(max_length=20, choices=Frequency.choices, default=Frequency.MENSAL)

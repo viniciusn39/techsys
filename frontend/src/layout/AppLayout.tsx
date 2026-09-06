@@ -12,6 +12,8 @@ interface MenuItem {
   title: string;
   sub?: string;
   roles: string[];
+  /** Chave do módulo no perfil de acesso (RBAC por setor). Sem chave = sempre visível ao papel. */
+  module?: string;
 }
 
 /** Itens que só fazem sentido dentro de uma empresa. */
@@ -19,38 +21,39 @@ const TENANT_SECTIONS: { label: string; items: MenuItem[] }[] = [
   {
     label: "Desempenho",
     items: [
-      { to: "/", icon: "bi-grid-1x2", label: "Dashboard", title: "Dashboard", sub: "Visão executiva dos resultados", roles: ["root", "admin", "gestor", "colaborador"] },
-      { to: "/mapa-estrategico", icon: "bi-diagram-3", label: "Mapa Estratégico", title: "Mapa Estratégico", sub: "Objetivos por perspectiva BSC", roles: ["root", "admin", "gestor", "colaborador"] },
-      { to: "/metas", icon: "bi-bullseye", label: "Metas", title: "Desdobramento de Metas", sub: "Empresa → Área → Time → Pessoa", roles: ["root", "admin", "gestor", "colaborador"] },
-      { to: "/indicadores", icon: "bi-graph-up-arrow", label: "Indicadores", title: "Indicadores", sub: "KPIs, metas e farol", roles: ["root", "admin", "gestor", "colaborador"] },
-      { to: "/erp/painel", icon: "bi-bar-chart-line", label: "Painel do ERP", title: "Painel do ERP", sub: "Dados do ERP e conferência dos indicadores", roles: ["root", "admin", "gestor"] },
+      { to: "/", module: "dashboard", icon: "bi-grid-1x2", label: "Dashboard", title: "Dashboard", sub: "Visão executiva dos resultados", roles: ["root", "admin", "gestor", "colaborador"] },
+      { to: "/mapa-estrategico", module: "mapa", icon: "bi-diagram-3", label: "Mapa Estratégico", title: "Mapa Estratégico", sub: "Objetivos por perspectiva BSC", roles: ["root", "admin", "gestor", "colaborador"] },
+      { to: "/metas", module: "metas", icon: "bi-bullseye", label: "Metas", title: "Desdobramento de Metas", sub: "Empresa → Área → Time → Pessoa", roles: ["root", "admin", "gestor", "colaborador"] },
+      { to: "/indicadores", module: "indicadores", icon: "bi-graph-up-arrow", label: "Indicadores", title: "Indicadores", sub: "KPIs, metas e farol", roles: ["root", "admin", "gestor", "colaborador"] },
+      { to: "/erp/painel", module: "painel_erp", icon: "bi-bar-chart-line", label: "Painel do ERP", title: "Painel do ERP", sub: "Dados do ERP e conferência dos indicadores", roles: ["root", "admin", "gestor"] },
     ],
   },
   {
     label: "Planejamento",
     items: [
-      { to: "/cultura", icon: "bi-gem", label: "Cultura e identidade", title: "Cultura e identidade", sub: "Propósito, missão, visão e valores", roles: ["root", "admin", "gestor", "colaborador"] },
-      { to: "/swot", icon: "bi-grid-3x3-gap", label: "Análise SWOT", title: "Análise SWOT", sub: "Forças, fraquezas, oportunidades e ameaças", roles: ["root", "admin", "gestor", "colaborador"] },
-      { to: "/canvas", icon: "bi-columns-gap", label: "Canvas", title: "Business Model Canvas", sub: "Como a empresa cria, entrega e captura valor", roles: ["root", "admin", "gestor", "colaborador"] },
-      { to: "/stakeholders", icon: "bi-people-fill", label: "Stakeholders", title: "Stakeholders", sub: "Partes interessadas e matriz influência × interesse", roles: ["root", "admin", "gestor"] },
-      { to: "/relatorio", icon: "bi-file-earmark-text", label: "Relatório", title: "Relatório do planejamento", sub: "Identidade, SWOT, canvas, mapa, indicadores e metas para imprimir", roles: ["root", "admin", "gestor", "colaborador"] },
+      { to: "/cultura", module: "cultura", icon: "bi-gem", label: "Cultura e identidade", title: "Cultura e identidade", sub: "Propósito, missão, visão e valores", roles: ["root", "admin", "gestor", "colaborador"] },
+      { to: "/swot", module: "swot", icon: "bi-grid-3x3-gap", label: "Análise SWOT", title: "Análise SWOT", sub: "Forças, fraquezas, oportunidades e ameaças", roles: ["root", "admin", "gestor", "colaborador"] },
+      { to: "/canvas", module: "canvas", icon: "bi-columns-gap", label: "Canvas", title: "Business Model Canvas", sub: "Como a empresa cria, entrega e captura valor", roles: ["root", "admin", "gestor", "colaborador"] },
+      { to: "/stakeholders", module: "stakeholders", icon: "bi-people-fill", label: "Stakeholders", title: "Stakeholders", sub: "Partes interessadas e matriz influência × interesse", roles: ["root", "admin", "gestor"] },
+      { to: "/relatorio", module: "relatorio", icon: "bi-file-earmark-text", label: "Relatório", title: "Relatório do planejamento", sub: "Identidade, SWOT, canvas, mapa, indicadores e metas para imprimir", roles: ["root", "admin", "gestor", "colaborador"] },
     ],
   },
   {
     label: "Execução",
     items: [
-      { to: "/planos-acao", icon: "bi-kanban", label: "Planos de Ação", title: "Planos de Ação", sub: "5W2H, PDCA e Kanban", roles: ["root", "admin", "gestor", "colaborador"] },
-      { to: "/agenda", icon: "bi-calendar3", label: "Agenda de gestão", title: "Agenda de gestão", sub: "Reuniões de resultados, pauta, ata e decisões", roles: ["root", "admin", "gestor", "colaborador"] },
-      { to: "/desvios", icon: "bi-exclamation-triangle", label: "Desvios", title: "Tratamento de Desvios", sub: "Faróis vermelhos e causa raiz", roles: ["root", "admin", "gestor", "colaborador"] },
-      { to: "/ia/chat", icon: "bi-stars", label: "Assistente IA", title: "Assistente de Resultados", sub: "Converse sobre os seus indicadores", roles: ["root", "admin", "gestor", "colaborador"] },
+      { to: "/planos-acao", module: "planos", icon: "bi-kanban", label: "Planos de Ação", title: "Planos de Ação", sub: "5W2H, PDCA e Kanban", roles: ["root", "admin", "gestor", "colaborador"] },
+      { to: "/agenda", module: "agenda", icon: "bi-calendar3", label: "Agenda de gestão", title: "Agenda de gestão", sub: "Reuniões de resultados, pauta, ata e decisões", roles: ["root", "admin", "gestor", "colaborador"] },
+      { to: "/desvios", module: "desvios", icon: "bi-exclamation-triangle", label: "Desvios", title: "Tratamento de Desvios", sub: "Faróis vermelhos e causa raiz", roles: ["root", "admin", "gestor", "colaborador"] },
+      { to: "/ia/chat", module: "ia", icon: "bi-stars", label: "Assistente IA", title: "Assistente de Resultados", sub: "Converse sobre os seus indicadores", roles: ["root", "admin", "gestor", "colaborador"] },
     ],
   },
   {
     label: "Administração da empresa",
     items: [
-      { to: "/admin/usuarios", icon: "bi-people", label: "Usuários", title: "Usuários", sub: "Acessos e papéis", roles: ["root", "admin"] },
-      { to: "/admin/organograma", icon: "bi-diagram-2", label: "Organograma", title: "Organograma", sub: "Estrutura da empresa", roles: ["root", "admin"] },
-      { to: "/admin/conector", icon: "bi-robot", label: "Conector ERP", title: "Conector ERP", sub: "Agente de coleta e sincronização dos dados", roles: ["root", "admin"] },
+      { to: "/admin/usuarios", module: "usuarios", icon: "bi-people", label: "Usuários", title: "Usuários", sub: "Acessos e papéis", roles: ["root", "admin"] },
+      { to: "/admin/organograma", module: "organograma", icon: "bi-diagram-2", label: "Organograma", title: "Organograma", sub: "Estrutura da empresa", roles: ["root", "admin"] },
+      { to: "/admin/conector", module: "conector", icon: "bi-robot", label: "Conector ERP", title: "Conector ERP", sub: "Agente de coleta e sincronização dos dados", roles: ["root", "admin"] },
+      { to: "/admin/perfis", module: "usuarios", icon: "bi-shield-lock", label: "Perfis de acesso", title: "Perfis de acesso", sub: "O que cada setor enxerga: indicadores e módulos", roles: ["root", "admin"] },
     ],
   },
 ];
@@ -137,7 +140,7 @@ export function AppLayout() {
 
         <nav className="sidebar-nav">
           {sections.map((section) => {
-            const items = section.items.filter((i) => i.roles.includes(me.role));
+            const items = section.items.filter((i) => i.roles.includes(me.role) && (!i.module || !me.modules || me.modules.includes(i.module)));
             if (items.length === 0) return null;
             return (
               <div key={section.label}>

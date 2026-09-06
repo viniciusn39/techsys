@@ -8,7 +8,7 @@ from accounts.permissions import IsGestorOrAbove, IsTenantAdmin
 from accounts.tenancy import TenantScopedViewSet, get_request_tenant
 from indicators.models import Indicator
 
-from .models import CanvasItem, Goal, Meeting, Perspective, Stakeholder, StrategicMap, StrategicObjective, SwotItem
+from .models import CanvasItem, Goal, Meeting, Perspective, Stakeholder, StrategicMap, StrategicObjective, SwotItem, SwotStrategy
 from .provisioning import create_default_perspectives
 from .serializers import (
     CanvasItemSerializer,
@@ -16,6 +16,7 @@ from .serializers import (
     MeetingSerializer,
     StakeholderSerializer,
     SwotItemSerializer,
+    SwotStrategySerializer,
     PerspectiveSerializer,
     StrategicMapNestedSerializer,
     StrategicMapSerializer,
@@ -327,6 +328,11 @@ class _ItemDoMapaViewSet(TenantScopedViewSet):
 class SwotItemViewSet(_ItemDoMapaViewSet):
     queryset = SwotItem.objects.select_related("objective")
     serializer_class = SwotItemSerializer
+
+
+class SwotStrategyViewSet(_ItemDoMapaViewSet):
+    queryset = SwotStrategy.objects.select_related("objective")
+    serializer_class = SwotStrategySerializer
 
 
 class CanvasItemViewSet(_ItemDoMapaViewSet):

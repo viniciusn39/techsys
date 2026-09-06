@@ -15,6 +15,7 @@ import { Login } from "./pages/Login";
 import { MapaEstrategico } from "./pages/MapaEstrategico";
 import { Metas } from "./pages/Metas";
 import { Organograma } from "./pages/Organograma";
+import { PerfisAcesso } from "./pages/PerfisAcesso";
 import { Agenda } from "./pages/Agenda";
 import { Canvas } from "./pages/Canvas";
 import { Cultura } from "./pages/Cultura";
@@ -80,6 +81,7 @@ export default function App() {
         <Route path="/ia/chat" element={<TenantRoute><ChatIA /></TenantRoute>} />
         <Route path="/admin/usuarios" element={<TenantRoute><Usuarios /></TenantRoute>} />
         <Route path="/admin/organograma" element={<TenantRoute><Organograma /></TenantRoute>} />
+        <Route path="/admin/perfis" element={<TenantRoute><PerfisAcesso /></TenantRoute>} />
         <Route path="/admin/conector" element={<TenantRoute><Conector /></TenantRoute>} />
         <Route path="/root/tenants" element={<RootRoute><Tenants /></RootRoute>} />
         <Route path="/root/integracoes" element={<RootRoute><Integracoes /></RootRoute>} />
