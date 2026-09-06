@@ -148,6 +148,143 @@ class IndicatorViewSet(TenantScopedViewSet):
             raise ValidationError({"n": "Inteiro."})
         return Response(breakdown(indicator, gran, ate, n))
 
+    @action(detail=True, methods=["get"])
+    def contexto(self, request, pk=None):
+        """Tudo sobre o indicador numa chamada: o que é e por que importa (texto do
+        catálogo), de onde vem o dado (métrica, tabelas do ERP, última carga,
+        cobertura), regra da meta e do farol, onde entra na estratégia e o
+        resumo do histórico (média, melhor/pior mês, tendência, ano anterior)."""
+        from calendar import monthrange
+        from datetime import timedelta
+        from decimal import Decimal
+        from statistics import mean
+
+        from erp.metrics import get_metric, primeiro_mes_completo
+        from erp.models import Branch, Connector, EntitySyncState, KpiTemplate
+        from erp.targets import get_target_source
+        from erp.winthor import WINTHOR_QUERIES
+        from plans.models import ActionPlan, Deviation
+        from strategy.models import Goal
+
+        ind = self.get_object()
+        tenant = ind.tenant
+        hoje = date.today()
+        e_root = getattr(request.user, "role", "") == "root"
+
+        # --- catálogo (texto de negócio; regra técnica só para root)
+        tpl = None
+        if ind.erp_metric:
+            tpl = KpiTemplate.objects.filter(code=ind.code, is_active=True).first() \
+                or KpiTemplate.objects.filter(erp_metric=ind.erp_metric, is_active=True).first()
+        sobre = {
+            "descricao": (ind.description or "").split("\n\nComo é calculado:")[0].strip(),
+            "como_calcula": tpl.explanation if tpl else "",
+            "por_que_importa": tpl.importance if tpl else "",
+            "regra_tecnica": tpl.rule if (tpl and e_root) else "",
+            "origem_inteligencia": tpl.get_origin_display() if tpl else "",
+            "exige_sistema": tpl.requires_system if tpl else "",
+        }
+
+        # --- fonte do dado
+        metric = get_metric(ind.erp_metric) if ind.erp_metric else None
+        rotulos = {q["entity"]: q.get("label", q["entity"]) for q in WINTHOR_QUERIES}
+        conector = Connector.objects.filter(tenant=tenant, is_active=True).first()
+        estados = {s.entity: s for s in EntitySyncState.objects.filter(connector=conector)} if conector else {}
+        entidades = []
+        for e in (metric.entities if metric else []):
+            st = estados.get(e)
+            cob = primeiro_mes_completo(tenant.id, e)
+            entidades.append({
+                "entity": e, "label": rotulos.get(e, e),
+                "ultima_carga": st.last_ingest_at if st else None,
+                "linhas": st.rows_received if st else 0,
+                "cobertura_desde": cob,
+            })
+        filtros = dict(ind.erp_filters or {})
+        if filtros.get("branch"):
+            codes = filtros["branch"] if isinstance(filtros["branch"], list) else [c.strip() for c in str(filtros["branch"]).split(",")]
+            nomes = {b.code: (b.trade_name or b.name) for b in Branch.objects.filter(tenant=tenant, code__in=[str(c) for c in codes])}
+            filtros["filiais"] = [{"code": str(c), "name": nomes.get(str(c), "")} for c in codes]
+        fonte = {
+            "tipo": "erp" if ind.erp_metric else "manual",
+            "metrica": metric.label if metric else "",
+            "descricao_metrica": metric.description if metric else "",
+            "fotografia": bool(getattr(metric.compute, "fotografia", False)) if metric else False,
+            "entidades": entidades,
+            "filtros": filtros,
+            "agente_online": bool(conector and conector.online) if ind.erp_metric else None,
+        }
+
+        # --- meta e farol
+        src = get_target_source(ind.erp_target) if ind.erp_target else None
+        metas_ano = ind.targets.filter(period__year=hoje.year).count()
+        meta = {
+            "origem": "erp" if src else ("manual" if metas_ano else "sem_meta"),
+            "fonte_erp": src.label if src else "",
+            "meses_com_meta": metas_ano,
+            "limiar_amarelo_pct": ind.yellow_threshold_pct,
+            "polaridade": ind.polarity, "agregacao": ind.aggregation,
+            "frequencia": ind.frequency, "unidade": ind.unit, "decimais": ind.decimals,
+            "meta_proporcional": bool(ind.erp_metric) and ind.aggregation == Indicator.Aggregation.SOMA,
+        }
+
+        # --- estratégia
+        obj = ind.objective
+        estrategia = {
+            "objetivo": {"id": obj.id, "name": obj.name, "perspectiva": obj.perspective.name, "mapa": obj.perspective.map.name} if obj else None,
+            "metas_desdobradas": [
+                {"id": g.id, "name": g.name, "level": g.level, "org_unit": getattr(g.org_unit, "name", "")}
+                for g in Goal.objects.filter(indicator=ind).exclude(status=Goal.Status.CANCELADO)
+            ],
+            "org_unit": getattr(ind.org_unit, "name", ""),
+            "owner": ind.owner.get_full_name() if ind.owner else "",
+            "desvios_abertos": Deviation.objects.filter(indicator=ind).exclude(status=Deviation.Status.CONCLUIDO).count(),
+            "planos": ActionPlan.objects.filter(indicator=ind).exclude(status=ActionPlan.Status.CANCELADO).count(),
+        }
+
+        # --- histórico (últimos 12 meses fechados + mês corrente)
+        ini12 = (hoje.replace(day=1) - timedelta(days=1)).replace(day=1)
+        for _ in range(11):
+            ini12 = (ini12 - timedelta(days=1)).replace(day=1)
+        vals = list(ind.values.filter(period__gte=ini12).order_by("period"))
+        fechados = [v for v in vals if v.period < hoje.replace(day=1) and v.value is not None]
+        q = Decimal(1).scaleb(-int(ind.decimals))
+
+        def melhor_pior(lst):
+            if not lst:
+                return None, None
+            ordenado = sorted(lst, key=lambda v: v.value)
+            pior, melhor = (ordenado[0], ordenado[-1]) if ind.polarity == Indicator.Polarity.MAIOR_MELHOR else (ordenado[-1], ordenado[0])
+            return ({"period": melhor.period, "value": melhor.value}, {"period": pior.period, "value": pior.value})
+
+        melhor, pior = melhor_pior(fechados)
+        ult3 = [Decimal(v.value) for v in fechados[-3:]]
+        ant3 = [Decimal(v.value) for v in fechados[-6:-3]]
+        tendencia = None
+        if len(ult3) == 3 and len(ant3) == 3 and mean(ant3):
+            tendencia = ((mean(ult3) - mean(ant3)) / abs(mean(ant3)) * 100).quantize(Decimal("0.1"))
+        mes_ref = fechados[-1].period if fechados else None
+        ano_ant = None
+        if mes_ref:
+            alvo = mes_ref.replace(year=mes_ref.year - 1)
+            va = ind.values.filter(period=alvo).first()
+            if va and va.value is not None and va.value:
+                ano_ant = {"period": alvo, "value": va.value,
+                           "variacao_pct": ((Decimal(fechados[-1].value) - Decimal(va.value)) / abs(Decimal(va.value)) * 100).quantize(Decimal("0.1"))}
+        atingidos = sum(1 for v in fechados if v.status == IndicatorValue.Status.VERDE)
+        com_meta = sum(1 for v in fechados if v.status != IndicatorValue.Status.SEM_META)
+        historico = {
+            "meses_fechados": len(fechados),
+            "media": Decimal(mean([Decimal(v.value) for v in fechados])).quantize(q) if fechados else None,
+            "melhor": melhor, "pior": pior,
+            "tendencia_3m_pct": tendencia,
+            "ano_anterior": ano_ant,
+            "meses_meta_atingida": atingidos, "meses_com_meta": com_meta,
+            "ultimo_fechado": {"period": mes_ref, "value": fechados[-1].value, "status": fechados[-1].status} if fechados else None,
+            "dias_medidos_mes": min(hoje.day, monthrange(hoje.year, hoje.month)[1]) if ind.erp_metric else None,
+        }
+        return Response({"sobre": sobre, "fonte": fonte, "meta": meta, "estrategia": estrategia, "historico": historico})
+
     @action(detail=True, methods=["get"], url_path="por-filial")
     def por_filial(self, request, pk=None):
         """Valor e meta do indicador em cada filial no intervalo (?de=AAAA-MM-DD&ate=AAAA-MM-DD; padrão: mês corrente)."""

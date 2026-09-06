@@ -13,6 +13,7 @@ import {
 import { EChart } from "../components/EChart";
 import { QuebraFilial } from "../components/QuebraFilial";
 import { QuebraPeriodo } from "../components/QuebraPeriodo";
+import { SobreIndicador } from "../components/SobreIndicador";
 import {
   ChartLegend,
   ChartSkeleton,
@@ -312,6 +313,10 @@ export function IndicadorDetalhe() {
             <EChart option={gaugeOption} height={104} />
           </div>
         </div>
+      </div>
+
+      <div className="mt-3">
+        <SobreIndicador indicatorId={ind.id} unit={ind.unit} decimals={dec} polarity={ind.polarity} />
       </div>
 
       <div className="row g-3 mt-0">

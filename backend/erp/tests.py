@@ -515,6 +515,29 @@ class MetricasTests(APITestCase):
         self.assertEqual(metas[9], Decimal("1207.50"))   # mediana(1000,1100,1200,5000)=1150 × 1,05
         self.assertIn("FAT", out.getvalue())
 
+    def test_contexto_do_indicador(self):
+        from django.core.management import call_command
+
+        call_command("seed_kpi_winthor", verbosity=0)
+        ind = Indicator.objects.create(tenant=self.tenant, code="FAT", name="Faturamento", erp_metric="faturamento",
+                                       erp_filters={"branch": "1"})
+        for m, v in ((5, 1000), (6, 1200), (7, 1100)):
+            IndicatorValue.objects.create(indicator=ind, period=date(2026, m, 1), value=Decimal(v))
+        gestor = User.objects.create_user("g3@nb.com", "x", first_name="G", tenant=self.tenant, role=User.Role.GESTOR)
+        self.client.force_authenticate(gestor)
+        d = self.client.get(f"/api/indicators/{ind.id}/contexto/").json()
+        self.assertEqual(d["fonte"]["tipo"], "erp")
+        self.assertEqual(d["fonte"]["entidades"][0]["entity"], "sales_invoice")
+        self.assertEqual(d["fonte"]["filtros"]["filiais"], [{"code": "1", "name": "CD"}])
+        self.assertTrue(d["sobre"]["como_calcula"])
+        self.assertEqual(d["sobre"]["regra_tecnica"], "")            # gestor não vê a regra técnica
+        self.assertEqual(d["historico"]["meses_fechados"], 3)
+        self.assertEqual(Decimal(str(d["historico"]["melhor"]["value"])), Decimal("1200"))
+        self.assertEqual(d["meta"]["origem"], "sem_meta")
+        root = User.objects.create_user("r3@t.com", "x", first_name="R", role=User.Role.ROOT)
+        self.client.force_authenticate(root)
+        self.assertTrue(self.client.get(f"/api/indicators/{ind.id}/contexto/", HTTP_X_TENANT_ID=str(self.tenant.id)).json()["sobre"]["regra_tecnica"])
+
     def test_toda_metrica_declara_entidades_do_plano(self):
         # Entidade com nome errado faz a task pular o indicador em silêncio.
         from erp.metrics import CATALOG
