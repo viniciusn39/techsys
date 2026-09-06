@@ -64,9 +64,35 @@ def meta_proporcional(indicator, period, target, source="manual"):
     if period.year != hoje.year or period.month != hoje.month:
         return target
     dias_mes = monthrange(hoje.year, hoje.month)[1]
-    if hoje.day >= dias_mes:
+    dias = dias_medidos(indicator, hoje)
+    if dias >= dias_mes:
         return target
-    return Decimal(target) * hoje.day / dias_mes
+    return Decimal(target) * dias / dias_mes
+
+
+def dias_medidos(indicator, hoje=None):
+    """Até que dia do mês corrente o espelho tem dado para este indicador.
+
+    O ERP e o agente atrasam (nota de sexta chega no domingo); comparar 4 dias
+    de venda com 6 dias de meta pinta vermelho sem motivo. Usa a última data do
+    fato principal da métrica; sem fato datado, o dia de hoje.
+    """
+    from datetime import date as _date
+
+    hoje = hoje or _date.today()
+    if not indicator.erp_metric:
+        return hoje.day
+    from erp.metrics import get_metric, ultimo_dia_medido
+
+    metric = get_metric(indicator.erp_metric)
+    for entity in (metric.entities if metric else []):
+        fim = ultimo_dia_medido(indicator.tenant_id, entity)
+        if fim is None:
+            continue
+        if fim.year == hoje.year and fim.month == hoje.month:
+            return min(fim.day, hoje.day)
+        return 1 if fim < hoje.replace(day=1) else hoje.day
+    return hoje.day
 
 
 def compute_ytd(indicator, year, until_period=None):

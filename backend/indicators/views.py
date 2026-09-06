@@ -166,6 +166,8 @@ class IndicatorViewSet(TenantScopedViewSet):
         from plans.models import ActionPlan, Deviation
         from strategy.models import Goal
 
+        from .services import dias_medidos
+
         ind = self.get_object()
         tenant = ind.tenant
         hoje = date.today()
@@ -197,7 +199,7 @@ class IndicatorViewSet(TenantScopedViewSet):
             entidades.append({
                 "entity": e, "label": rotulos.get(e, e),
                 "ultima_carga": st.last_ingest_at if st else None,
-                "linhas": st.rows_received if st else 0,
+                "linhas": st.total_imported if st else 0,
                 "cobertura_desde": cob,
             })
         filtros = dict(ind.erp_filters or {})
@@ -281,7 +283,7 @@ class IndicatorViewSet(TenantScopedViewSet):
             "ano_anterior": ano_ant,
             "meses_meta_atingida": atingidos, "meses_com_meta": com_meta,
             "ultimo_fechado": {"period": mes_ref, "value": fechados[-1].value, "status": fechados[-1].status} if fechados else None,
-            "dias_medidos_mes": min(hoje.day, monthrange(hoje.year, hoje.month)[1]) if ind.erp_metric else None,
+            "dias_medidos_mes": dias_medidos(ind, hoje) if ind.erp_metric else None,
         }
         return Response({"sobre": sobre, "fonte": fonte, "meta": meta, "estrategia": estrategia, "historico": historico})
 

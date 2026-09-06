@@ -57,12 +57,36 @@ def calcular_indicadores_erp(tenant_id=None, indicator_id=None, meses=None):
     from .metrics import primeiro_mes_completo
 
     cobertura = {}
+    janelas = {}
+
+    def janela_do_agente(tenant_id, entity):
+        """Meses já carregados pelo histórico gradual (heartbeat do agente). Enquanto a
+        janela não chega ao alvo, o mês mais antigo dela está pela metade."""
+        if tenant_id not in janelas:
+            from .models import Connector
+
+            c = Connector.objects.filter(tenant_id=tenant_id, is_active=True).first()
+            janelas[tenant_id] = ((c.health or {}).get("progresso") or {}).get("entidades") or {} if c else {}
+        info = janelas[tenant_id].get(entity) or {}
+        try:
+            return int(info.get("janela") or 0)
+        except (TypeError, ValueError):
+            return 0
 
     def mes_coberto(tenant_id, entities, periodo):
         for e in entities:
             key = (tenant_id, e)
             if key not in cobertura:
-                cobertura[key] = primeiro_mes_completo(tenant_id, e)
+                inicio = primeiro_mes_completo(tenant_id, e)
+                janela = janela_do_agente(tenant_id, e)
+                if janela:
+                    # ADD_MONTHS(hoje, -janela): o mês desse dia está parcial; o seguinte é o 1º inteiro
+                    y, m = hoje.year, hoje.month - janela
+                    while m <= 0:
+                        y, m = y - 1, m + 12
+                    limite = date(y, m + 1, 1) if m < 12 else date(y + 1, 1, 1)
+                    inicio = max(inicio, limite) if inicio else limite
+                cobertura[key] = inicio
             if cobertura[key] is not None and periodo < cobertura[key]:
                 return False
         return True

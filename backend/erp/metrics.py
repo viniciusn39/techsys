@@ -1506,6 +1506,25 @@ _DATA_DO_FATO = {
 }
 
 
+def ultimo_dia_medido(tenant_id, entity):
+    """Última data do fato no espelho (o dia até onde o mês corrente foi de fato medido)."""
+    from django.db.models import Max
+
+    par = _DATA_DO_FATO.get(entity)
+    if par is None:
+        return None
+    model, campo = par
+    extra = {}
+    if entity == "title_receivable":
+        extra = {"kind": FinancialTitle.Kind.RECEIVABLE}
+    elif entity == "title_payable":
+        extra = {"kind": FinancialTitle.Kind.PAYABLE}
+    fim = model.objects.filter(tenant_id=tenant_id, **extra).aggregate(m=Max(campo))["m"]
+    if fim is not None and hasattr(fim, "date"):
+        fim = fim.date()
+    return fim
+
+
 def primeiro_mes_completo(tenant_id, entity):
     """Dia 1 do primeiro mês inteiramente coberto pelo fato no espelho (None = cadastro, sempre ok)."""
     from django.db.models import Min
