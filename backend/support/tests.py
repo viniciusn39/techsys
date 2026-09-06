@@ -57,3 +57,20 @@ class ChamadosTests(APITestCase):
         r = self.client.post("/api/tickets/", {"title": "B", "description": "b"}, format="json")
         self.assertEqual(r.json()["number"], 1)
         self.assertEqual([t["title"] for t in self.client.get("/api/tickets/").json()], ["B"])
+
+
+class ServidorTests(APITestCase):
+    def test_so_root_le_o_servidor(self):
+        tenant = Tenant.objects.create(name="Acme", slug="acme-srv")
+        adm = User.objects.create_user("a@srv.com", "x", first_name="A", tenant=tenant, role=User.Role.ADMIN)
+        root = User.objects.create_user("r@srv.com", "x", first_name="R", role=User.Role.ROOT)
+        self.client.force_authenticate(adm)
+        self.assertEqual(self.client.get("/api/root/servidor/").status_code, 403)
+        self.client.force_authenticate(root)
+        from support.tasks import amostrar_servidor
+
+        amostrar_servidor()
+        d = self.client.get("/api/root/servidor/?horas=1").json()
+        self.assertIn("tamanho", d["postgres"])
+        self.assertGreaterEqual(len(d["amostras"]), 1)
+        self.assertIn("empresas", d["aplicacao"])

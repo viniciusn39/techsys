@@ -77,3 +77,20 @@ class TicketMessage(models.Model):
 
     def __str__(self):
         return f"{self.ticket_id}: {self.body[:40]}"
+
+
+class ServerSample(models.Model):
+    """Amostra do servidor da plataforma (a cada 5 min) para o histórico da tela do root."""
+
+    at = models.DateTimeField(auto_now_add=True, db_index=True)
+    cpu_pct = models.FloatField(null=True)
+    mem_pct = models.FloatField(null=True)
+    mem_usada = models.BigIntegerField(null=True)
+    disco_pct = models.FloatField(null=True)
+    disco_usado = models.BigIntegerField(null=True)
+    load_m1 = models.FloatField(null=True)
+    db_bytes = models.BigIntegerField(null=True)
+    db_conexoes = models.IntegerField(null=True)
+
+    class Meta:
+        ordering = ["-at"]

@@ -5,6 +5,7 @@ from rest_framework.decorators import action
 from rest_framework.exceptions import PermissionDenied, ValidationError
 from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
+from rest_framework.views import APIView
 
 from accounts.models import User
 from accounts.tenancy import get_request_tenant
@@ -139,3 +140,40 @@ class TicketViewSet(viewsets.ModelViewSet):
             ]
             out["atendentes"] = [{"id": u.id, "name": u.get_full_name() or u.email} for u in User.objects.filter(role=User.Role.ROOT, is_active=True)]
         return Response(out)
+
+
+class ServidorView(APIView):
+    """Só root: monitoramento, performance e armazenamento do servidor da plataforma."""
+
+    permission_classes = [IsAuthenticated]
+
+    def get(self, request):
+        from datetime import timedelta
+
+        from django.utils import timezone
+
+        from accounts.permissions import IsRoot
+
+        if not IsRoot().has_permission(request, self):
+            raise PermissionDenied("Só o root.")
+        from . import monitor
+        from .models import ServerSample
+
+        horas = int(request.query_params.get("horas") or 24)
+        amostras = ServerSample.objects.filter(at__gte=timezone.now() - timedelta(hours=horas)).order_by("at")
+        return Response({
+            "agora": timezone.now(),
+            "host": {
+                "cpu_pct": monitor.cpu_percent(), "memoria": monitor.memoria(), "disco": monitor.disco(),
+                "load": monitor.load(), "uptime": monitor.uptime(),
+            },
+            "postgres": monitor.postgres(),
+            "redis": monitor.redis_info(),
+            "celery": monitor.celery_info(),
+            "aplicacao": monitor.aplicacao(),
+            "amostras": [
+                {"at": s.at, "cpu_pct": s.cpu_pct, "mem_pct": s.mem_pct, "disco_pct": s.disco_pct, "load_m1": s.load_m1,
+                 "db_bytes": s.db_bytes, "db_conexoes": s.db_conexoes}
+                for s in amostras
+            ],
+        })

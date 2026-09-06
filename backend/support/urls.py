@@ -1,9 +1,9 @@
 from django.urls import include, path
 from rest_framework.routers import DefaultRouter
 
-from .views import TicketViewSet
+from .views import ServidorView, TicketViewSet
 
 router = DefaultRouter()
 router.register("tickets", TicketViewSet)
 
-urlpatterns = [path("", include(router.urls))]
+urlpatterns = [path("root/servidor/", ServidorView.as_view()), path("", include(router.urls))]

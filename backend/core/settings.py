@@ -157,6 +157,11 @@ CELERY_BEAT_SCHEDULE = {
         "task": "erp.tasks.sincronizar_metas_erp",
         "schedule": 60 * 60 * 6,
     },
+    # Amostra do servidor (CPU, memória, disco, banco) para a tela do root: a cada 5 min.
+    "amostrar-servidor": {
+        "task": "support.tasks.amostrar_servidor",
+        "schedule": 60 * 5,
+    },
     "purgar-logs-coletor": {
         "task": "erp.tasks.purgar_logs_antigos",
         "schedule": 60 * 60 * 24,

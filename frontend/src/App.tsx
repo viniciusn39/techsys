@@ -19,6 +19,7 @@ import { PerfisAcesso } from "./pages/PerfisAcesso";
 import { Agenda } from "./pages/Agenda";
 import { Ajuda } from "./pages/Ajuda";
 import { Chamados } from "./pages/Chamados";
+import { Servidor } from "./pages/Servidor";
 import { SuporteChamados } from "./pages/SuporteChamados";
 import { Canvas } from "./pages/Canvas";
 import { Cultura } from "./pages/Cultura";
@@ -93,6 +94,7 @@ export default function App() {
         <Route path="/root/instalador" element={<RootRoute><Instalador /></RootRoute>} />
         <Route path="/root/catalogo" element={<RootRoute><CatalogoTecnico /></RootRoute>} />
         <Route path="/root/chamados" element={<RootRoute><SuporteChamados /></RootRoute>} />
+        <Route path="/root/servidor" element={<RootRoute><Servidor /></RootRoute>} />
         <Route path="*" element={<Navigate to={homeForRole} />} />
       </Route>
     </Routes>

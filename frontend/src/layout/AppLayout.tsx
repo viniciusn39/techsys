@@ -74,6 +74,7 @@ const ROOT_SECTION: { label: string; items: MenuItem[] } = {
     { to: "/root/integracoes", icon: "bi-plug", label: "Integrações", title: "Integrações", sub: "Provedor de IA e fontes de dados", roles: ["root"] },
     { to: "/root/catalogo", icon: "bi-braces-asterisk", label: "Catálogo técnico", title: "Catálogo técnico de KPIs", sub: "Regra, SQL executado no ERP e fórmula de cada indicador", roles: ["root"] },
     { to: "/root/chamados", icon: "bi-headset", label: "Chamados (suporte)", title: "Fila de suporte e consultoria", sub: "Chamados de todos os clientes", roles: ["root"] },
+    { to: "/root/servidor", icon: "bi-hdd-network", label: "Servidor", title: "Servidor da plataforma", sub: "Monitoramento, performance e armazenamento", roles: ["root"] },
   ],
 };
 
