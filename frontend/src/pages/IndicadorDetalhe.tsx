@@ -253,16 +253,7 @@ export function IndicadorDetalhe() {
         <Link to="/indicadores" className="btn btn-sm btn-outline-secondary">
           <i className="bi bi-arrow-left me-1" />Indicadores
         </Link>
-        <span className="badge rounded-pill" style={{ background: "var(--brand-soft)", color: "var(--brand)" }}>
-          {ind.code}
-        </span>
-        <span className="fw-semibold">{ind.name}</span>
-        <span className="badge rounded-pill text-bg-light border">
-          <i className={`bi ${ind.polarity === "menor_melhor" ? "bi-arrow-down" : "bi-arrow-up"} me-1`} />
-          {ind.polarity === "menor_melhor" ? "Menor é melhor" : "Maior é melhor"}
-        </span>
-        {ind.org_unit_name && <span className="text-muted-2 small"><i className="bi bi-diagram-2 me-1" />{ind.org_unit_name}</span>}
-        {ind.owner_name && <span className="text-muted-2 small"><i className="bi bi-person me-1" />{ind.owner_name}</span>}
+        <span className="text-muted-2 small">Indicador</span>
         <Form.Select
           size="sm"
           className="ms-auto"
@@ -272,6 +263,35 @@ export function IndicadorDetalhe() {
         >
           {[year - 1, year, year + 1].map((y) => <option key={y} value={y}>{y}</option>)}
         </Form.Select>
+      </div>
+
+      {/* Cabeçalho: o nome do indicador em destaque, com o que o identifica. */}
+      <div className="d-flex flex-wrap align-items-start gap-3 mb-3 pb-3" style={{ borderBottom: "1px solid var(--border)" }}>
+        <div
+          className="d-flex align-items-center justify-content-center rounded-3 flex-shrink-0"
+          style={{ width: 52, height: 52, background: "var(--brand-soft)", color: "var(--brand)", fontSize: "1.4rem" }}
+        >
+          <i className={`bi ${ind.erp_metric ? "bi-robot" : "bi-pencil-square"}`} />
+        </div>
+        <div className="flex-grow-1">
+          <div className="d-flex flex-wrap align-items-center gap-2">
+            <span className="badge rounded-pill" style={{ background: "var(--brand-soft)", color: "var(--brand)", fontSize: "0.8rem" }}>
+              {ind.code}
+            </span>
+            <StatusPill status={last?.status ?? null} />
+          </div>
+          <h1 className="h3 fw-bold mb-1 mt-1">{ind.name}</h1>
+          <div className="d-flex flex-wrap align-items-center gap-2 small text-muted-2">
+            <span>
+              <i className={`bi ${ind.polarity === "menor_melhor" ? "bi-arrow-down" : "bi-arrow-up"} me-1`} />
+              {ind.polarity === "menor_melhor" ? "Menor é melhor" : "Maior é melhor"}
+            </span>
+            <span>· {ind.unit || "sem unidade"}</span>
+            {ind.org_unit_name && <span>· <i className="bi bi-diagram-2 me-1" />{ind.org_unit_name}</span>}
+            {ind.owner_name && <span>· <i className="bi bi-person me-1" />{ind.owner_name}</span>}
+            <span>· {ind.erp_metric ? <><i className="bi bi-robot me-1" />calculado do ERP</> : <><i className="bi bi-pencil-square me-1" />lançamento manual</>}</span>
+          </div>
+        </div>
       </div>
 
       {savedMsg && (
