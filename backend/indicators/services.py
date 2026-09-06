@@ -44,6 +44,31 @@ def compute_achievement(indicator, value, target):
     return pct, status
 
 
+def meta_proporcional(indicator, period, target, source="manual"):
+    """Meta do mês corrente proporcional aos dias já medidos.
+
+    Um indicador de soma calculado do ERP no dia 6 traz 6 dias de faturamento;
+    comparar com a meta do mês inteiro dava 20 % (vermelho) em tudo — e um
+    custo de 6 dias contra o teto do mês dava 500 % (verde). Só vale para
+    soma, valor vindo do ERP e o mês em curso; manual e meses fechados usam a
+    meta cheia.
+    """
+    from calendar import monthrange
+    from datetime import date
+
+    from .models import Indicator
+
+    if target is None or indicator.aggregation != Indicator.Aggregation.SOMA or source != "agent":
+        return target
+    hoje = date.today()
+    if period.year != hoje.year or period.month != hoje.month:
+        return target
+    dias_mes = monthrange(hoje.year, hoje.month)[1]
+    if hoje.day >= dias_mes:
+        return target
+    return Decimal(target) * hoje.day / dias_mes
+
+
 def compute_ytd(indicator, year, until_period=None):
     """Acumulado do ano (real e meta) conforme a agregação do indicador."""
     from .models import Indicator
@@ -55,7 +80,9 @@ def compute_ytd(indicator, year, until_period=None):
         targets_qs = targets_qs.filter(period__lte=until_period)
 
     values = [v.value for v in values_qs.order_by("period")]
-    targets = [t.target_value for t in targets_qs.order_by("period")]
+    fonte = {v.period: v.source for v in values_qs}
+    targets = [meta_proporcional(indicator, t.period, t.target_value, fonte.get(t.period, "manual"))
+               for t in targets_qs.order_by("period")]
 
     def agg(items):
         if not items:

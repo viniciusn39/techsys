@@ -129,8 +129,9 @@ class IndicatorValue(models.Model):
     def save(self, *args, **kwargs):
         from .services import compute_achievement
 
+        from .services import meta_proporcional
+
         target = self.indicator.targets.filter(period=self.period).first()
-        self.achievement_pct, self.status = compute_achievement(
-            self.indicator, self.value, target.target_value if target else None
-        )
+        meta = meta_proporcional(self.indicator, self.period, target.target_value if target else None, self.source)
+        self.achievement_pct, self.status = compute_achievement(self.indicator, self.value, meta)
         super().save(*args, **kwargs)

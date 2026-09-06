@@ -75,7 +75,8 @@ export function Dashboard() {
       xAxis: {
         type: "value" as const,
         axisLabel: { formatter: "{value}%" },
-        max: (v: { max: number }) => Math.max(120, Math.ceil(v.max / 10) * 10),
+        // Teto em 150 %: um custo muito abaixo do teto (1.000 %) não pode esmagar as outras barras.
+        max: (v: { max: number }) => Math.max(120, Math.min(150, Math.ceil(v.max / 10) * 10)),
       },
       yAxis: {
         type: "category" as const,
@@ -96,7 +97,8 @@ export function Dashboard() {
         {
           type: "bar" as const,
           data: rows.map((r) => ({
-            value: Number(r.achievement_pct),
+            value: Math.min(Number(r.achievement_pct), 150),
+            real: Number(r.achievement_pct),
             itemStyle: {
               color: t.status[statusKey(r.status)],
               borderRadius: BAR_RADIUS_H,
@@ -106,7 +108,7 @@ export function Dashboard() {
           label: {
             show: true,
             position: "right" as const,
-            formatter: (p: any) => `${fmtNumber(p.value, 0)}%`,
+            formatter: (p: any) => `${fmtNumber(p.data?.real ?? p.value, 0)}%${(p.data?.real ?? 0) > 150 ? " ▸" : ""}`,
             color: t.inkSecondary,
             fontSize: 11,
           },
