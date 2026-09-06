@@ -39,7 +39,7 @@ import time
 import traceback
 import urllib.request
 
-VERSION = "1.0.7"  # BUMP ao publicar: os agentes instalados se auto-atualizam
+VERSION = "1.0.8"  # BUMP ao publicar: os agentes instalados se auto-atualizam
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 BASE_DIR = os.path.dirname(os.path.abspath(sys.executable)) if getattr(sys, "frozen", False) else HERE
@@ -849,16 +849,20 @@ def run_sync(platform_api, oracle, plan, state, machine=""):
                         if pausa_s and lidos > len(lote):
                             STOP.wait(pausa_s)
                         res = None
-                        for tentativa in range(4):
+                        # Um deploy da plataforma tira o servidor do ar por 1–2 min; desistir
+                        # em 22 s jogava fora um passe de 13 h (a marca só avança no fim).
+                        # Insiste por ~10 min antes de recomeçar a entidade.
+                        esperas = (2, 5, 15, 30, 60, 60, 60, 60, 60, 60, 60, 60, 60)
+                        for tentativa in range(len(esperas) + 1):
                             try:
                                 res = platform_api.ingest(entity, lote)
                                 break
                             except Exception as exc:  # noqa: BLE001
-                                if tentativa < 3 and _erro_transitorio(exc):
-                                    espera_s = (2, 5, 15)[tentativa]
-                                    _log("[sync] %s: plataforma indisponível (%s) — nova tentativa em %ss"
-                                         % (entity, str(exc)[:80], espera_s))
-                                    time.sleep(espera_s)
+                                if tentativa < len(esperas) and _erro_transitorio(exc) and not STOP.is_set():
+                                    espera_s = esperas[tentativa]
+                                    _log("[sync] %s: plataforma indisponível (%s) — nova tentativa em %ss (%d/%d)"
+                                         % (entity, str(exc)[:80], espera_s, tentativa + 1, len(esperas)))
+                                    STOP.wait(espera_s)
                                     continue
                                 interrompido = exc
                                 break
