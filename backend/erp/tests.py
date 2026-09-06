@@ -257,7 +257,7 @@ class ColetorIngestTests(APITestCase):
         fat_cd = Indicator.objects.create(tenant=self.tenant, code="FAT_CD", name="Fat CD", erp_metric="faturamento", erp_target="vlvendaprev", erp_filters={"branch": "10"})
         rca = Indicator.objects.create(tenant=self.tenant, code="FAT_RCA", name="Fat", erp_target="rca_vlvendaprev")
         margem = Indicator.objects.create(tenant=self.tenant, code="MARGEM", name="Margem", erp_target="margemprev")
-        IndicatorValue.objects.create(indicator=fat, period=mes, value="900", source="agent")
+        IndicatorValue.objects.create(indicator=fat, period=mes, value="900", source="manual")  # manual: sem meta proporcional
 
         # 4 metas do mês corrente (+ a do cadastro do RCA nos meses futuros do ano, que é constante)
         self.assertGreaterEqual(sincronizar_metas_erp(tenant_id=self.tenant.id, meses=1), 4)
