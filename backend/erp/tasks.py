@@ -51,6 +51,22 @@ def calcular_indicadores_erp(tenant_id=None, indicator_id=None, meses=None):
             tem_dados[key] = bool(model) and model.objects.filter(tenant_id=tenant_id).exists()
         return tem_dados[key]
 
+    # Primeiro mês COMPLETO de cada fato no espelho. A carga gradual começa no
+    # meio de um mês: abril com 6 dias de itens dava CMV de R$ 1,6 mi e farol
+    # vermelho falso. Mês antes da cobertura não é calculado (e valor antigo sai).
+    from .metrics import primeiro_mes_completo
+
+    cobertura = {}
+
+    def mes_coberto(tenant_id, entities, periodo):
+        for e in entities:
+            key = (tenant_id, e)
+            if key not in cobertura:
+                cobertura[key] = primeiro_mes_completo(tenant_id, e)
+            if cobertura[key] is not None and periodo < cobertura[key]:
+                return False
+        return True
+
     gravados = 0
     for indicator in qs.select_related("tenant"):
         metric = get_metric(indicator.erp_metric)
@@ -59,12 +75,20 @@ def calcular_indicadores_erp(tenant_id=None, indicator_id=None, meses=None):
         if not all(entidade_carregada(indicator.tenant_id, e) for e in metric.entities):
             continue
         for periodo in periodos:
-            try:
-                valor = compute_metric(indicator.erp_metric, indicator.tenant, periodo, indicator.erp_filters)
-            except Exception as exc:  # noqa: BLE001 — um KPI não derruba os demais
-                logger.warning("métrica %s do indicador %s falhou: %s", indicator.erp_metric, indicator.code, exc)
-                continue
+            valor = None
+            if mes_coberto(indicator.tenant_id, metric.entities, periodo):
+                try:
+                    valor = compute_metric(indicator.erp_metric, indicator.tenant, periodo, indicator.erp_filters)
+                except Exception as exc:  # noqa: BLE001 — um KPI não derruba os demais
+                    logger.warning("métrica %s do indicador %s falhou: %s", indicator.erp_metric, indicator.code, exc)
+                    continue
             if valor is None:
+                # O ERP deixou de ter valor para este mês (fotografia em mês passado,
+                # mês fora da cobertura): o valor antigo calculado do ERP sai junto
+                # com o desvio que ele tenha gerado. Lançamento manual fica.
+                IndicatorValue.objects.filter(
+                    indicator=indicator, period=periodo, source=IndicatorValue.Source.AGENT,
+                ).delete()
                 continue
             IndicatorValue.objects.update_or_create(
                 indicator=indicator, period=periodo,

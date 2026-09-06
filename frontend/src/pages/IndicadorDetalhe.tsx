@@ -11,6 +11,7 @@ import {
   vizTokens,
 } from "../charts/theme";
 import { EChart } from "../components/EChart";
+import { QuebraFilial } from "../components/QuebraFilial";
 import { QuebraPeriodo } from "../components/QuebraPeriodo";
 import {
   ChartLegend,
@@ -337,6 +338,12 @@ export function IndicadorDetalhe() {
       <div className="mt-3">
         <QuebraPeriodo indicatorId={ind.id} unit={ind.unit} decimals={dec} erp={!!ind.erp_metric} />
       </div>
+
+      {ind.erp_metric && (
+        <div className="mt-3">
+          <QuebraFilial indicatorId={ind.id} unit={ind.unit} decimals={dec} />
+        </div>
+      )}
 
       <div className="mt-3">
         <Tabs defaultActiveKey="lancamentos" className="mb-3">

@@ -466,7 +466,7 @@ class MetricasTests(APITestCase):
         ]):
             SalesInvoice.objects.create(
                 tenant=self.tenant, external_id=str(i), branch=branch, customer=cli,
-                issued_at=date(2026, 8, 3), total=Decimal(total), sale_type=cond, canceled_at=cancel,
+                issued_at=date(2026, 8, 1), total=Decimal(total), sale_type=cond, canceled_at=cancel,
             )
         FinancialTitle.objects.create(tenant=self.tenant, external_id="a", kind="receivable",
                                       amount=Decimal(100), due_date=date(2026, 6, 1), status="open")
@@ -486,6 +486,34 @@ class MetricasTests(APITestCase):
     def test_inadimplencia_vencido_mais_de_30_dias(self):
         # 100 vencido em junho sobre 400 em aberto (medido em agosto)
         self.assertEqual(compute_metric("inadimplencia_pct", self.tenant, date(2026, 8, 1)), Decimal("25.00"))
+
+    def test_quebra_por_filial_e_calibracao_de_metas(self):
+        from io import StringIO
+
+        from django.core.management import call_command
+        from indicators.breakdown import por_filial
+        from indicators.models import IndicatorTarget
+
+        Branch.objects.create(tenant=self.tenant, external_id="99", code="99", name="TODAS FILIAIS")
+        ind = Indicator.objects.create(tenant=self.tenant, code="FAT", name="Faturamento", erp_metric="faturamento")
+        q = por_filial(ind, date(2026, 8, 1), date(2026, 8, 31))
+        self.assertTrue(q["disponivel"])
+        self.assertEqual([(f["code"], f["value"]) for f in q["filiais"]], [("1", Decimal("1500.00")), ("2", Decimal("300.00"))])
+        self.assertEqual(q["total"], Decimal("1800.00"))
+        self.assertEqual(q["filiais"][0]["share_pct"], Decimal("83.3"))
+        # filtro do indicador restringe a quebra
+        loja = Indicator.objects.create(tenant=self.tenant, code="FAT_LOJA", name="Lojas", erp_metric="faturamento", erp_filters={"branch": "2"})
+        self.assertEqual([f["code"] for f in por_filial(loja, date(2026, 8, 1), date(2026, 8, 31))["filiais"]], ["2"])
+
+        # calibração: mediana dos meses completos × (1 + 5 %)
+        for m, v in ((3, 1000), (4, 1200), (5, 1100), (6, 5000)):
+            IndicatorValue.objects.create(indicator=ind, period=date(2026, m, 1), value=Decimal(v))
+        out = StringIO()
+        call_command("calibrar_metas", tenant=self.tenant.slug, meses=6, melhoria=5, ano=2026, sobrescrever=True, stdout=out)
+        metas = {t.period.month: t.target_value for t in IndicatorTarget.objects.filter(indicator=ind)}
+        self.assertEqual(len(metas), 12)
+        self.assertEqual(metas[9], Decimal("1207.50"))   # mediana(1000,1100,1200,5000)=1150 × 1,05
+        self.assertIn("FAT", out.getvalue())
 
     def test_mes_futuro_nao_calcula(self):
         self.assertIsNone(compute_metric("faturamento", self.tenant, date(2099, 1, 1)))

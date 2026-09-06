@@ -139,6 +139,57 @@ def valor_do_bucket(indicator, valores, gran, ini, fim, hoje):
     return _agrega(indicator, [valores.get(m) for m in _meses_no_intervalo(ini, fim)])
 
 
+def por_filial(indicator, ini, fim):
+    """Valor (e meta do ERP, quando existe) do indicador em cada filial no intervalo.
+
+    Só para indicador calculado do ERP: a métrica é recalculada com o filtro
+    de filial. Se o indicador já tem filtro de filial (FAT_LOJA = 11,12), a
+    quebra fica dentro dele. A filial virtual "TODAS FILIAIS" (99) fica de fora.
+    """
+    from erp.metrics import get_metric
+    from erp.models import Branch
+    from erp.targets import meta_do_erp_intervalo
+
+    hoje = date.today()
+    metric = get_metric(indicator.erp_metric) if indicator.erp_metric else None
+    if metric is None:
+        return {"disponivel": False, "ini": ini, "fim": fim, "filiais": [], "total": None}
+    fim_calc = min(fim, hoje)
+    filtros = dict(indicator.erp_filters or {})
+    restrito = filtros.get("branch")
+    if isinstance(restrito, str):
+        restrito = [c.strip() for c in restrito.split(",") if c.strip()]
+    qs = Branch.objects.filter(tenant=indicator.tenant, is_active=True).exclude(code="99").exclude(name__icontains="TODAS FILIAIS")
+    if restrito:
+        qs = qs.filter(code__in=[str(c) for c in restrito])
+
+    q = Decimal(1).scaleb(-indicator.decimals)
+    total = metric.compute(indicator.tenant, ini, fim_calc, filtros) if ini <= hoje else None
+    linhas = []
+    for b in qs.order_by("code"):
+        f = {**filtros, "branch": b.code}
+        valor = metric.compute(indicator.tenant, ini, fim_calc, f) if ini <= hoje else None
+        if valor is None:
+            continue
+        meta = meta_do_erp_intervalo(indicator.erp_target, indicator.tenant, ini, fim, f) if indicator.erp_target else None
+        pct, status = compute_achievement(indicator, valor, meta) if meta is not None else (None, None)
+        share = None
+        if total and indicator.aggregation == Indicator.Aggregation.SOMA:
+            share = (Decimal(valor) / Decimal(total) * 100).quantize(Decimal("0.1"))
+        linhas.append({
+            "code": b.code, "name": b.trade_name or b.name,
+            "value": Decimal(valor).quantize(q), "target": Decimal(meta).quantize(q) if meta is not None else None,
+            "achievement_pct": pct, "status": status, "share_pct": share,
+        })
+    linhas.sort(key=lambda r: r["value"], reverse=True)
+    return {
+        "disponivel": True, "ini": ini, "fim": fim, "parcial": ini <= hoje < fim,
+        "total": Decimal(total).quantize(q) if total is not None else None,
+        "soma": indicator.aggregation == Indicator.Aggregation.SOMA,
+        "filiais": linhas,
+    }
+
+
 def breakdown(indicator, gran, ate=None, n=None):
     if gran not in GRANULARIDADES:
         raise ValueError("granularidade inválida")

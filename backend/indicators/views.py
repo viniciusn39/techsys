@@ -148,6 +148,24 @@ class IndicatorViewSet(TenantScopedViewSet):
             raise ValidationError({"n": "Inteiro."})
         return Response(breakdown(indicator, gran, ate, n))
 
+    @action(detail=True, methods=["get"], url_path="por-filial")
+    def por_filial(self, request, pk=None):
+        """Valor e meta do indicador em cada filial no intervalo (?de=AAAA-MM-DD&ate=AAAA-MM-DD; padrão: mês corrente)."""
+        from calendar import monthrange
+
+        from .breakdown import por_filial
+
+        indicator = self.get_object()
+        hoje = date.today()
+        try:
+            de = date.fromisoformat(request.query_params["de"]) if request.query_params.get("de") else hoje.replace(day=1)
+            ate = date.fromisoformat(request.query_params["ate"]) if request.query_params.get("ate") else hoje.replace(day=monthrange(hoje.year, hoje.month)[1])
+        except ValueError:
+            raise ValidationError({"de": "Use AAAA-MM-DD."})
+        if de > ate:
+            raise ValidationError({"de": "Início depois do fim."})
+        return Response(por_filial(indicator, de, ate))
+
     @action(detail=True, methods=["post"], url_path="values")
     def set_value(self, request, pk=None):
         indicator = self.get_object()

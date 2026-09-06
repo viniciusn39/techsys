@@ -103,6 +103,48 @@ def _sum(qs, expr):
     return D(v) if v is not None else None
 
 
+def _ate(fim):
+    """Data de corte "como estava em": nunca no futuro. O mês corrente é medido até hoje."""
+    hoje = date.today()
+    return fim if fim < hoje else hoje
+
+
+def _periodo_corrente(fim):
+    """Período que inclui o presente. Métricas de fotografia (saldo do espelho hoje)
+    só valem aqui — para um mês passado não existe "estoque de março" no espelho."""
+    return fim >= date.today().replace(day=1)
+
+
+def fotografia(fn):
+    """Marca uma métrica de fotografia: fora do período corrente devolve None em vez
+    de repetir o saldo de hoje em todos os meses do gráfico."""
+    import functools
+
+    @functools.wraps(fn)
+    def wrapper(tenant, ini, fim, filters=None):
+        if not _periodo_corrente(fim):
+            return None
+        return fn(tenant, ini, fim, filters)
+
+    wrapper.fotografia = True
+    return wrapper
+
+
+def _aberto_em(qs, fim):
+    """Títulos em aberto COMO ESTAVAM na data `fim`: emitidos até lá e ainda não pagos nela.
+    Usar o status atual em mês passado esconde tudo que foi pago depois (a carteira
+    vencida de janeiro parecia 20× menor que a de agosto só porque janeiro já foi cobrado)."""
+    corte = _ate(fim)
+    return (qs.exclude(status="canceled")
+            .filter(Q(issue_date__isnull=True) | Q(issue_date__lte=corte))
+            .filter(Q(paid_at__isnull=True) | Q(paid_at__gt=corte)))
+
+
+def _sem_consolidada(qs):
+    """Tira a filial virtual "TODAS FILIAIS" (99 no WinThor): é soma, não caixa real."""
+    return qs.exclude(branch__name__icontains="TODAS FILIAIS").exclude(branch__code="99")
+
+
 def _pct(num, den):
     if num is None or not den:
         return None
@@ -146,13 +188,14 @@ def positivacao(tenant, ini, fim, filters=None):
 
 
 def clientes_ativos(tenant, ini, fim, filters=None):
-    """Clientes com compra nos últimos 90 dias (contados até o fim do período)."""
-    return D(
-        Customer.objects.filter(
-            tenant=tenant, blocked=False,
-            last_purchase_at__gte=fim - timedelta(days=90), last_purchase_at__lte=fim,
-        ).count()
-    )
+    """Clientes distintos com nota faturada nos 90 dias até o fim do período.
+
+    Pelas notas, não por PCCLIENT.DTULTCOMP: a data da última compra é um
+    campo de hoje, e em mês passado contava só quem parou de comprar naquele mês.
+    """
+    corte = _ate(fim)
+    qs = notas_do_periodo(tenant, corte - timedelta(days=90), corte, filters).filter(customer__isnull=False)
+    return D(qs.values("customer_id").distinct().count())
 
 
 def novos_clientes(tenant, ini, fim, filters=None):
@@ -232,8 +275,9 @@ def mix_skus(tenant, ini, fim, filters=None):
     return D(_itens_venda(tenant, ini, fim, filters).values("product").distinct().count())
 
 
+@fotografia
 def carteira_pedidos(tenant, ini, fim, filters=None):
-    """Valor em pedidos pendentes (não faturados nem cancelados) no fim do período."""
+    """Valor em pedidos pendentes (não faturados nem cancelados) hoje."""
     qs = Order.objects.filter(tenant=tenant, status=Order.Status.PENDING, order_date__lte=fim).filter(_branch_q(filters))
     return _money(_sum(qs, "total") or ZERO)
 
@@ -262,16 +306,16 @@ def _pagar(tenant, filters):
 
 
 def a_receber_aberto(tenant, ini, fim, filters=None):
-    return _money(_sum(_receber(tenant, filters).filter(status="open"), "amount") or ZERO)
+    return _money(_sum(_aberto_em(_receber(tenant, filters), fim), "amount") or ZERO)
 
 
 def a_receber_vencido(tenant, ini, fim, filters=None):
-    return _money(_sum(_receber(tenant, filters).filter(status="open", due_date__lt=fim), "amount") or ZERO)
+    return _money(_sum(_aberto_em(_receber(tenant, filters), fim).filter(due_date__lt=_ate(fim)), "amount") or ZERO)
 
 
 def clientes_com_titulo_vencido(tenant, ini, fim, filters=None):
     """Clientes com pelo menos um título em aberto vencido (F_PCPREST_VENCIDA_BLOQUEIO)."""
-    return D(_receber(tenant, filters).filter(status="open", due_date__lt=fim, customer__isnull=False)
+    return D(_aberto_em(_receber(tenant, filters), fim).filter(due_date__lt=_ate(fim), customer__isnull=False)
              .values("customer_id").distinct().count())
 
 
@@ -281,9 +325,10 @@ def clientes_com_titulo_vencido_pct(tenant, ini, fim, filters=None):
 
 
 def inadimplencia_pct(tenant, ini, fim, filters=None):
-    """Vencido há mais de 30 dias sobre o total em aberto."""
-    aberto = _sum(_receber(tenant, filters).filter(status="open"), "amount")
-    vencido = _sum(_receber(tenant, filters).filter(status="open", due_date__lt=fim - timedelta(days=30)), "amount") or ZERO
+    """Vencido há mais de 30 dias sobre o total em aberto, como estava no fim do período."""
+    qs = _aberto_em(_receber(tenant, filters), fim)
+    aberto = _sum(qs, "amount")
+    vencido = _sum(qs.filter(due_date__lt=_ate(fim) - timedelta(days=30)), "amount") or ZERO
     return _pct(vencido, aberto)
 
 
@@ -303,11 +348,11 @@ def prazo_medio_recebimento(tenant, ini, fim, filters=None):
 
 
 def a_pagar_aberto(tenant, ini, fim, filters=None):
-    return _money(_sum(_pagar(tenant, filters).filter(status="open"), "amount") or ZERO)
+    return _money(_sum(_aberto_em(_pagar(tenant, filters), fim), "amount") or ZERO)
 
 
 def a_pagar_vencido(tenant, ini, fim, filters=None):
-    return _money(_sum(_pagar(tenant, filters).filter(status="open", due_date__lt=fim), "amount") or ZERO)
+    return _money(_sum(_aberto_em(_pagar(tenant, filters), fim).filter(due_date__lt=_ate(fim)), "amount") or ZERO)
 
 
 def despesas_pagas(tenant, ini, fim, filters=None):
@@ -320,19 +365,22 @@ def despesas_competencia(tenant, ini, fim, filters=None):
 
 
 def folha_pct_faturamento(tenant, ini, fim, filters=None):
-    """Salários (TIPOSERVICO 30) sobre o faturamento."""
-    folha = _sum(_pagar(tenant, filters).exclude(status="canceled").filter(tax_type="30", accrual_date__range=(ini, fim)), "amount")
+    """Salários sobre o faturamento: PCLANC com TIPOSERVICO 30 ou conta (PCCONTA) de salário."""
+    qs = _pagar(tenant, filters).exclude(status="canceled").filter(accrual_date__range=(ini, fim))
+    folha = _sum(qs.filter(Q(tax_type="30") | Q(account__icontains="salar") | Q(account__icontains="folha")), "amount")
     return _pct(folha, faturamento(tenant, ini, fim, filters))
 
 
 def saldo_caixa(tenant, ini, fim, filters=None):
     """Caixa + bancos + aplicações na última fotografia do período (PCFINANC); fallback PCBANCO."""
-    snaps = FinancialSnapshot.objects.filter(tenant=tenant, date__lte=fim).filter(_branch_q(filters))
+    snaps = _sem_consolidada(FinancialSnapshot.objects.filter(tenant=tenant, date__lte=_ate(fim)).filter(_branch_q(filters)))
     ultimo = snaps.order_by("-date").values_list("date", flat=True).first()
     if ultimo:
         agg = snaps.filter(date=ultimo).aggregate(b=Sum("bank_balance"), c=Sum("cash_balance"), a=Sum("investments"))
         return _money(D(agg["b"] or 0) + D(agg["c"] or 0) + D(agg["a"] or 0))
-    saldo = _sum(BankAccount.objects.filter(tenant=tenant).filter(_branch_q(filters)), "balance")
+    if not _periodo_corrente(fim):
+        return None
+    saldo = _sum(_sem_consolidada(BankAccount.objects.filter(tenant=tenant).filter(_branch_q(filters))), "balance")
     return _money(saldo) if saldo is not None else None
 
 
@@ -367,23 +415,26 @@ def ruptura_pct(tenant, ini, fim, filters=None):
     return _pct(zerados, n)
 
 
+@fotografia
 def cobertura_estoque_dias(tenant, ini, fim, filters=None):
-    """Dias de estoque: saldo disponível / giro diário (PCEST.QTGIRODIA), ponderado por custo."""
-    qs = _estoque(tenant, filters).filter(daily_turnover__gt=0, avg_cost__isnull=False, quantity__gt=0)
-    valor, dias_valor = ZERO, ZERO
-    for s in qs.only("quantity", "reserved", "blocked", "daily_turnover", "avg_cost"):
-        disp = (s.quantity or ZERO) - (s.reserved or ZERO) - (s.blocked or ZERO)
-        if disp <= 0:
-            continue
-        v = disp * (s.avg_cost or ZERO)
-        valor += v
-        dias_valor += v * (disp / s.daily_turnover)
-    return (dias_valor / valor).quantize(D("0.1")) if valor else None
+    """Dias de estoque: estoque a custo ÷ CMV médio diário dos últimos 90 dias.
+
+    A ponderação por PCEST.QTGIRODIA item a item dava 18 mil dias: itens de giro
+    quase zero dominam a média. A régua financeira (estoque ÷ CMV/dia) é a que a
+    diretoria usa.
+    """
+    est = estoque_valor(tenant, ini, fim, filters)
+    corte = _ate(fim)
+    custo90 = cmv(tenant, corte - timedelta(days=89), corte, filters)
+    if not est or not custo90:
+        return None
+    return (est / (custo90 / 90)).quantize(D("0.1"))
 
 
+@fotografia
 def giro_estoque(tenant, ini, fim, filters=None):
-    """CMV do período / estoque médio (aprox. pelo saldo atual)."""
-    custo = cmv(tenant, ini, fim, filters)
+    """CMV do período / estoque atual a custo."""
+    custo = cmv(tenant, ini, _ate(fim), filters)
     est = estoque_valor(tenant, ini, fim, filters)
     return (custo / est).quantize(D("0.01")) if custo is not None and est else None
 
@@ -411,7 +462,12 @@ def cargas_expedidas(tenant, ini, fim, filters=None):
 
 
 def frete_pct_faturamento(tenant, ini, fim, filters=None):
+    """Frete das cargas (PCCARREG.VLFRETE) sobre o faturamento; se o cliente não
+    preenche o frete na carga, usa as contas de frete do contas a pagar (PCLANC)."""
     frete = _sum(_cargas(tenant, ini, fim, filters), "freight")
+    if not frete:
+        qs = _pagar(tenant, filters).exclude(status="canceled").filter(accrual_date__range=(ini, fim), account__icontains="frete")
+        frete = _sum(qs, "amount")
     return _pct(frete, faturamento(tenant, ini, fim, filters))
 
 
@@ -702,9 +758,10 @@ def custo_medio_kg(tenant, ini, fim, filters=None):
 # --- Financeiro: aging, prazos, liquidez --------------------------------------
 
 def a_receber_vencido_60_pct(tenant, ini, fim, filters=None):
-    """Vencido há mais de 60 dias sobre o total em aberto (carteira envelhecida)."""
-    aberto = _sum(_receber(tenant, filters).filter(status="open"), "amount")
-    venc = _sum(_receber(tenant, filters).filter(status="open", due_date__lt=fim - timedelta(days=60)), "amount") or ZERO
+    """Vencido há mais de 60 dias sobre o total em aberto (carteira envelhecida), como estava no fim do período."""
+    qs = _aberto_em(_receber(tenant, filters), fim)
+    aberto = _sum(qs, "amount")
+    venc = _sum(qs.filter(due_date__lt=_ate(fim) - timedelta(days=60)), "amount") or ZERO
     return _pct(venc, aberto)
 
 
@@ -750,7 +807,8 @@ def a_pagar_proximos_30_dias(tenant, ini, fim, filters=None):
 
 
 def a_receber_proximos_30_dias(tenant, ini, fim, filters=None):
-    return _money(_sum(_receber(tenant, filters).filter(status="open", due_date__range=(fim, fim + timedelta(days=30))), "amount") or ZERO)
+    corte = _ate(fim)
+    return _money(_sum(_aberto_em(_receber(tenant, filters), fim).filter(due_date__range=(corte, corte + timedelta(days=30))), "amount") or ZERO)
 
 
 def liquidez_cr_cp(tenant, ini, fim, filters=None):
@@ -795,7 +853,7 @@ def saidas_caixa(tenant, ini, fim, filters=None):
 
 
 def _ultima_foto(tenant, fim, filters):
-    snaps = FinancialSnapshot.objects.filter(tenant=tenant, date__lte=fim).filter(_branch_q(filters))
+    snaps = _sem_consolidada(FinancialSnapshot.objects.filter(tenant=tenant, date__lte=_ate(fim)).filter(_branch_q(filters)))
     ultimo = snaps.order_by("-date").values_list("date", flat=True).first()
     return snaps.filter(date=ultimo) if ultimo else None
 
@@ -1433,6 +1491,58 @@ def usuarios_de_desligados(tenant, ini, fim, filters=None):
     """Funcionários com DTDEMISSAO e ainda com USUARIOBD (login do WinThor)."""
     qs = Employee.objects.filter(tenant=tenant, dismissal_date__isnull=False, dismissal_date__lte=fim, has_db_user=True)
     return D(qs.filter(_branch_q(filters)).count())
+
+
+# Campo de data de cada fato: define desde quando o espelho cobre um mês inteiro.
+_DATA_DO_FATO = {
+    "sales_invoice": (SalesInvoice, "issued_at"), "sales_invoice_item": (SalesInvoiceItem, "moved_at"),
+    "title_receivable": (FinancialTitle, "issue_date"), "title_payable": (FinancialTitle, "issue_date"),
+    "order": (Order, "order_date"), "purchase": (PurchaseInvoice, "entry_date"),
+    "load": (DeliveryLoad, "departure_date"), "cash_movement": (CashMovement, "moved_at"),
+    "financial_snapshot": (FinancialSnapshot, "date"), "card_settlement": (CardSettlement, "date"),
+    "pos_daily": (PosDaily, "date"), "purchase_order": (PurchaseOrder, "issue_date"),
+    "supplier_credit": (SupplierCredit, "issue_date"), "customer_credit": (CustomerCredit, "launched_at"),
+    "credit_auth": (CreditAuthorization, "date"),
+}
+
+
+def primeiro_mes_completo(tenant_id, entity):
+    """Dia 1 do primeiro mês inteiramente coberto pelo fato no espelho (None = cadastro, sempre ok)."""
+    from django.db.models import Min
+
+    par = _DATA_DO_FATO.get(entity)
+    if par is None:
+        return None
+    model, campo = par
+    extra = {}
+    if entity == "title_receivable":
+        extra = {"kind": FinancialTitle.Kind.RECEIVABLE}
+    elif entity == "title_payable":
+        extra = {"kind": FinancialTitle.Kind.PAYABLE}
+    inicio = model.objects.filter(tenant_id=tenant_id, **extra).aggregate(m=Min(campo))["m"]
+    if inicio is None:
+        return None
+    if hasattr(inicio, "date"):
+        inicio = inicio.date()
+    if inicio.day == 1:
+        return inicio
+    return (inicio.replace(day=28) + timedelta(days=4)).replace(day=1)
+
+
+# Métricas de fotografia: leem o saldo de HOJE do espelho (estoque, cadastro,
+# fila, pedidos pendentes). Em mês passado devolvem None — antes repetiam o
+# número de hoje em todos os meses e o gráfico virava uma linha reta.
+_FOTOGRAFIAS = (
+    "estoque_valor", "ruptura_pct", "venda_perdida_qtd", "capital_parado", "capital_parado_pct",
+    "itens_sem_giro_pct", "excesso_estoque", "abaixo_minimo_pct", "skus_com_estoque", "estoque_bloqueado",
+    "itens_sem_inventario_pct", "clientes_inativos_90_pct", "clientes_bloqueados_pct", "base_clientes",
+    "credito_disponivel_carteira", "clientes_sem_credito_pct", "fila_bloqueio_valor", "pedidos_fv_pendentes",
+    "rcas_flex_negativo", "pagar_sem_dupla_autorizacao", "adiantamentos_fornecedor_aberto", "cargas_em_rota",
+    "wms_os_pendentes",
+)
+for _nome in _FOTOGRAFIAS:
+    if _nome in globals() and not getattr(globals()[_nome], "fotografia", False):
+        globals()[_nome] = fotografia(globals()[_nome])
 
 
 def _m(key, label, unit, polarity, aggregation, group, description, entities, fn, decimals=2):
