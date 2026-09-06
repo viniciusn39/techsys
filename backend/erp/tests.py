@@ -515,6 +515,15 @@ class MetricasTests(APITestCase):
         self.assertEqual(metas[9], Decimal("1207.50"))   # mediana(1000,1100,1200,5000)=1150 × 1,05
         self.assertIn("FAT", out.getvalue())
 
+    def test_toda_metrica_declara_entidades_do_plano(self):
+        # Entidade com nome errado faz a task pular o indicador em silêncio.
+        from erp.metrics import CATALOG
+
+        conhecidas = set(DEFAULT_SYNC)
+        for m in CATALOG:
+            for e in m.entities:
+                self.assertIn(e, conhecidas, f"métrica {m.key} lê entidade desconhecida '{e}'")
+
     def test_mes_futuro_nao_calcula(self):
         self.assertIsNone(compute_metric("faturamento", self.tenant, date(2099, 1, 1)))
 

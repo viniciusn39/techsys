@@ -121,7 +121,7 @@ WHERE (:since IS NULL OR C.DTULTALTER > TO_DATE(:since,'YYYY-MM-DD HH24:MI:SS'))
         "sql": """
 SELECT P.CODPROD, P.DESCRICAO, P.CODAUXILIAR, P.UNIDADE, P.EMBALAGEM,
        M.MARCA, D.DESCRICAO AS DEPARTAMENTO, S.DESCRICAO AS SECAO,
-       CAT.CATEGORIA, P.CODFORNEC, P.CLASSE,
+       CAT.CATEGORIA, P.CODFORNEC, P.CLASSE, P.PESOLIQ,
        E.CUSTOREAL, T.PVENDA,
        CASE WHEN P.DTEXCLUSAO IS NULL THEN 1 ELSE 0 END AS IS_ACTIVE,
        TO_CHAR(P.DTALTERC5,'YYYY-MM-DD HH24:MI:SS') AS DTALTERC5
@@ -710,7 +710,7 @@ DEFAULT_SYNC = {
         "unit": "UNIDADE", "packaging": "EMBALAGEM", "brand": "MARCA",
         "department": "DEPARTAMENTO", "section": "SECAO", "category": "CATEGORIA",
         "supplier": "CODFORNEC", "abc_class": "CLASSE", "cost_price": "CUSTOREAL",
-        "price": "PVENDA", "is_active": "IS_ACTIVE",
+        "price": "PVENDA", "net_weight": "PESOLIQ", "is_active": "IS_ACTIVE",
     }},
     "sales_invoice": {"fields": {
         "external_id": "NUMTRANSVENDA", "number": "NUMNOTA", "series": "SERIE",

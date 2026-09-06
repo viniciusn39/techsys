@@ -1680,9 +1680,9 @@ CATALOG = [
     _m("custo_medio_kg", "Custo médio por kg", "R$", "menor_melhor", "media", "Financeiro",
        "Custo dos itens vendidos ÷ quilos vendidos.", ["sales_invoice_item", "product"], custo_medio_kg),
     _m("clientes_com_titulo_vencido", "Clientes com título vencido", "clientes", "menor_melhor", "ultimo", "Financeiro",
-       "Clientes distintos com título a receber em aberto vencido no fim do período.", ["financial_title"], clientes_com_titulo_vencido),
+       "Clientes distintos com título a receber em aberto vencido no fim do período.", ["title_receivable"], clientes_com_titulo_vencido),
     _m("clientes_com_titulo_vencido_pct", "Clientes com título vencido (%)", "%", "menor_melhor", "ultimo", "Financeiro",
-       "Clientes com título vencido ÷ clientes ativos.", ["financial_title", "customer"], clientes_com_titulo_vencido_pct),
+       "Clientes com título vencido ÷ clientes ativos.", ["title_receivable", "customer"], clientes_com_titulo_vencido_pct),
     # Varredura completa do WinThor: tabelas novas do espelho
     _m("fila_bloqueio_valor", "Pedidos bloqueados aguardando liberação", "R$", "menor_melhor", "ultimo", "Vendas",
        "Valor dos pedidos com bloqueio STATUS = B ainda presente no ERP.", ["order_block", "order"], fila_bloqueio_valor),
