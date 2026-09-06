@@ -65,11 +65,15 @@ export function CatalogoKpi({ show, onHide, onPlugged }: { show: boolean; onHide
 
   const visiveis = useMemo(() => {
     const q = busca.trim().toLowerCase();
-    return (data?.itens ?? []).filter((i) => {
-      if (setor === "diretoria" ? !i.tags.includes("diretoria") : i.sector !== setor) return false;
-      if (q && !`${i.code} ${i.name} ${i.description} ${i.explanation} ${i.importance}`.toLowerCase().includes(q)) return false;
-      return true;
-    });
+    const ordem = (i: Item) => (i.plugado ? 0 : i.status === "pronto" ? 1 : 2);
+    return (data?.itens ?? [])
+      .filter((i) => {
+        if (setor === "diretoria" ? !i.tags.includes("diretoria") : i.sector !== setor) return false;
+        if (q && !`${i.code} ${i.name} ${i.description} ${i.explanation} ${i.importance}`.toLowerCase().includes(q)) return false;
+        return true;
+      })
+      // Plugados primeiro, depois os prontos para plugar, por fim os planejados.
+      .sort((a, b) => ordem(a) - ordem(b) || a.name.localeCompare(b.name, "pt-BR"));
   }, [data, setor, busca]);
 
   const plugaveis = visiveis.filter((i) => !i.plugado && i.status === "pronto");
