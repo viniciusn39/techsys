@@ -51,6 +51,7 @@ const ROOT_SECTION: { label: string; items: MenuItem[] } = {
     { to: "/root/tenants", icon: "bi-buildings", label: "Empresas", title: "Empresas", sub: "Gestão de tenants", roles: ["root"] },
     { to: "/root/instalador", icon: "bi-robot", label: "Instalador do agente", title: "Instalador do agente", sub: "Escolha o cliente, pegue a chave e o script pronto", roles: ["root"] },
     { to: "/root/integracoes", icon: "bi-plug", label: "Integrações", title: "Integrações", sub: "Provedor de IA e fontes de dados", roles: ["root"] },
+    { to: "/root/catalogo", icon: "bi-braces-asterisk", label: "Catálogo técnico", title: "Catálogo técnico de KPIs", sub: "Regra, SQL executado no ERP e fórmula de cada indicador", roles: ["root"] },
   ],
 };
 

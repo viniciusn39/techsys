@@ -628,6 +628,72 @@ class KpiCatalogoView(APIView):
         }, status=201)
 
 
+class KpiCatalogoTecnicoView(APIView):
+    """Só root: o catálogo com o SQL que roda no WinThor e a fórmula sobre o espelho.
+
+    Para cada KPI: as consultas do plano de coleta das entidades que a métrica
+    lê (o SQL literal que o agente executa no Oracle do cliente), o código da
+    métrica (a fórmula aplicada ao espelho) e a fonte da meta. Serve para
+    auditar "de onde vem este número" sem abrir o repositório.
+    """
+
+    permission_classes = [IsRoot]
+
+    def get(self, request):
+        import inspect
+
+        from . import metrics as m
+        from . import regras, targets
+        from .models import KpiTemplate
+
+        def fonte(fn):
+            try:
+                return inspect.getsource(fn)
+            except (OSError, TypeError):
+                return ""
+
+        erp = request.query_params.get("erp") or Connector.Erp.WINTHOR
+        plano = {q["entity"]: q for q in WINTHOR_QUERIES}
+        consultas = {
+            e: {
+                "entity": e, "label": q.get("label", e), "sql": q["sql"].strip(),
+                "incremental": bool(q.get("incremental")), "since_column": q.get("since_column"),
+                "backfill_meses": q.get("backfill_meses"), "every_minutes": q.get("every_minutes"),
+                "fields": (DEFAULT_SYNC.get(e) or {}).get("fields", {}),
+            }
+            for e, q in plano.items()
+        }
+        bases = {
+            nome: fonte(getattr(m, nome))
+            for nome in ("_branch_q", "notas_do_periodo", "_itens_venda", "_receber", "_pagar", "_estoque", "_cargas", "_compras", "_notas_todas", "_ultima_foto", "month_bounds", "compute_metric")
+            if hasattr(m, nome)
+        }
+        bases["regras"] = fonte(regras)
+        itens = []
+        for t in KpiTemplate.objects.filter(erp=erp, is_active=True):
+            metric = m.get_metric(t.erp_metric) if t.erp_metric else None
+            src = targets.get_target_source(t.erp_target) if t.erp_target else None
+            itens.append({
+                "code": t.code, "name": t.name, "sector": t.sector, "sector_label": t.get_sector_display(),
+                "perspective": t.perspective, "unit": t.unit, "decimals": t.decimals, "polarity": t.polarity,
+                "aggregation": t.aggregation, "description": t.description, "rule": t.rule,
+                "status": t.status, "requer": t.requer, "tags": t.tags, "default_filters": t.default_filters,
+                "erp_metric": t.erp_metric, "metric_label": metric.label if metric else "",
+                "entities": list(metric.entities) if metric else [],
+                "formula": fonte(metric.compute) if metric else "",
+                "erp_target": t.erp_target, "target_label": src.label if src else "",
+                "target_formula": fonte(src.compute) if src else "",
+                "target_entities": list(src.entities) if src else [],
+            })
+        return Response({
+            "erp": erp,
+            "setores": [{"key": k, "label": v} for k, v in KpiTemplate.Setor.choices],
+            "consultas": consultas,
+            "bases": bases,
+            "itens": itens,
+        })
+
+
 class TargetCatalogView(APIView):
     """Fontes de meta do ERP (PCMETA, cadastro do RCA) que um indicador pode usar."""
 

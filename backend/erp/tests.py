@@ -322,6 +322,22 @@ class ColetorIngestTests(APITestCase):
         self.assertEqual((len(r.json()["created"]), r.json()["skipped"]), (0, ["FAT"]))
         self.assertEqual(self.client.post("/api/erp/kpi-catalogo/", {"codes": ["NAO_EXISTE"]}, format="json").status_code, 400)
 
+    def test_catalogo_tecnico_so_root_com_sql_e_formula(self):
+        from django.core.management import call_command
+
+        call_command("seed_kpi_winthor", verbosity=0)
+        admin = User.objects.create_user("adm9@nb.com", "x", first_name="A", tenant=self.tenant, role=User.Role.ADMIN)
+        root = User.objects.create_user("root9@t.com", "x", first_name="R", role=User.Role.ROOT)
+        self.client.force_authenticate(admin)
+        self.assertEqual(self.client.get("/api/erp/kpi-catalogo/tecnico/").status_code, 403)
+        self.client.force_authenticate(root)
+        d = self.client.get("/api/erp/kpi-catalogo/tecnico/").json()
+        fat = next(i for i in d["itens"] if i["code"] == "FAT")
+        self.assertIn("def faturamento", fat["formula"])
+        self.assertIn("def vlvendaprev", fat["target_formula"])
+        self.assertIn("FROM PCNFSAID", d["consultas"]["sales_invoice"]["sql"])
+        self.assertIn("filtro_notas_faturadas", d["bases"]["regras"])
+
     def test_heartbeat_atualiza_health_e_last_seen(self):
         r = self.client.post("/api/coletor/heartbeat/", {"oracle_ok": True, "agent_version": "1.0.0"},
                              format="json", **self.headers)

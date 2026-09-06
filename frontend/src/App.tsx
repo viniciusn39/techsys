@@ -4,6 +4,7 @@ import { AppLayout } from "./layout/AppLayout";
 import { ChatIA } from "./pages/ChatIA";
 import { Conector } from "./pages/Conector";
 import { PainelErp } from "./pages/PainelErp";
+import { CatalogoTecnico } from "./pages/CatalogoTecnico";
 import { Dashboard } from "./pages/Dashboard";
 import { Desvios } from "./pages/Desvios";
 import { IndicadorDetalhe } from "./pages/IndicadorDetalhe";
@@ -71,6 +72,7 @@ export default function App() {
         <Route path="/root/tenants" element={<RootRoute><Tenants /></RootRoute>} />
         <Route path="/root/integracoes" element={<RootRoute><Integracoes /></RootRoute>} />
         <Route path="/root/instalador" element={<RootRoute><Instalador /></RootRoute>} />
+        <Route path="/root/catalogo" element={<RootRoute><CatalogoTecnico /></RootRoute>} />
         <Route path="*" element={<Navigate to={homeForRole} />} />
       </Route>
     </Routes>
