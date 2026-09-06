@@ -20,6 +20,22 @@ services:
   db:
     image: postgres:16-alpine
     restart: unless-stopped
+    # Servidor com ~6 GB: o padrão (shared_buffers 128 MB) dava 64 % de acerto de
+    # cache num banco de 5 GB. 1 GB de buffers + planner ciente do cache do SO.
+    command:
+      - postgres
+      - -c
+      - shared_buffers=1GB
+      - -c
+      - effective_cache_size=3GB
+      - -c
+      - work_mem=32MB
+      - -c
+      - maintenance_work_mem=256MB
+      - -c
+      - random_page_cost=1.1
+      - -c
+      - max_connections=100
     environment:
       POSTGRES_DB: "${POSTGRES_DB:-techsys_gestao}"
       POSTGRES_USER: "${POSTGRES_USER:-techsys}"
