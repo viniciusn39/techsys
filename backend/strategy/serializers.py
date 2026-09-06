@@ -1,6 +1,6 @@
 from rest_framework import serializers
 
-from .models import Goal, Perspective, StrategicMap, StrategicObjective
+from .models import CanvasItem, Goal, Meeting, Perspective, Stakeholder, StrategicMap, StrategicObjective, SwotItem
 
 
 class PerspectiveSerializer(serializers.ModelSerializer):
@@ -70,7 +70,7 @@ class StrategicMapSerializer(serializers.ModelSerializer):
     class Meta:
         model = StrategicMap
         fields = [
-            "id", "name", "year_start", "year_end", "mission", "vision",
+            "id", "name", "year_start", "year_end", "purpose", "mission", "vision",
             "values_text", "is_active",
         ]
 
@@ -119,3 +119,85 @@ class GoalSerializer(serializers.ModelSerializer):
 
     def validate_org_unit(self, value):
         return self._check_same_tenant(value, "Unidade de outra empresa.")
+
+
+# ---------------------------------------------------------------- diagnóstico e identidade
+
+class _MapaDoTenant:
+    def validate_map(self, value):
+        tenant = self.context.get("tenant")
+        if tenant and value.tenant_id != tenant.id:
+            raise serializers.ValidationError("Mapa de outra empresa.")
+        return value
+
+
+class SwotItemSerializer(_MapaDoTenant, serializers.ModelSerializer):
+    quadrant_label = serializers.CharField(source="get_quadrant_display", read_only=True)
+    objective_name = serializers.CharField(source="objective.name", read_only=True, default="")
+
+    class Meta:
+        model = SwotItem
+        fields = ["id", "map", "quadrant", "quadrant_label", "text", "detail", "impact", "objective", "objective_name", "order"]
+        extra_kwargs = {"map": {"required": False}}
+
+    def validate_impact(self, v):
+        if not 1 <= int(v) <= 5:
+            raise serializers.ValidationError("Impacto de 1 a 5.")
+        return v
+
+
+class CanvasItemSerializer(_MapaDoTenant, serializers.ModelSerializer):
+    block_label = serializers.CharField(source="get_block_display", read_only=True)
+
+    class Meta:
+        model = CanvasItem
+        fields = ["id", "map", "block", "block_label", "text", "order"]
+        extra_kwargs = {"map": {"required": False}}
+
+
+class StakeholderSerializer(serializers.ModelSerializer):
+    strategy = serializers.CharField(read_only=True)
+    org_unit_name = serializers.CharField(source="org_unit.name", read_only=True, default="")
+    user_name = serializers.CharField(source="user.get_full_name", read_only=True, default="")
+
+    class Meta:
+        model = Stakeholder
+        fields = [
+            "id", "name", "kind", "organization", "role", "email", "phone", "influence", "interest",
+            "expectations", "user", "user_name", "org_unit", "org_unit_name", "is_active", "strategy",
+        ]
+
+    def _faixa(self, v):
+        if not 1 <= int(v) <= 5:
+            raise serializers.ValidationError("De 1 a 5.")
+        return v
+
+    validate_influence = _faixa
+    validate_interest = _faixa
+
+
+class MeetingSerializer(serializers.ModelSerializer):
+    kind_label = serializers.CharField(source="get_kind_display", read_only=True)
+    status_label = serializers.CharField(source="get_status_display", read_only=True)
+    organizer_name = serializers.CharField(source="organizer.get_full_name", read_only=True, default="")
+    org_unit_name = serializers.CharField(source="org_unit.name", read_only=True, default="")
+    participant_names = serializers.SerializerMethodField()
+    stakeholder_names = serializers.SerializerMethodField()
+    indicator_codes = serializers.SerializerMethodField()
+
+    class Meta:
+        model = Meeting
+        fields = [
+            "id", "title", "kind", "kind_label", "status", "status_label", "starts_at", "ends_at", "location",
+            "org_unit", "org_unit_name", "organizer", "organizer_name", "participants", "participant_names",
+            "stakeholders", "stakeholder_names", "indicators", "indicator_codes", "agenda", "minutes", "decisions",
+        ]
+
+    def get_participant_names(self, obj):
+        return [u.get_full_name() or u.email for u in obj.participants.all()]
+
+    def get_stakeholder_names(self, obj):
+        return [s.name for s in obj.stakeholders.all()]
+
+    def get_indicator_codes(self, obj):
+        return [i.code for i in obj.indicators.all()]

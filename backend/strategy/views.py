@@ -8,10 +8,14 @@ from accounts.permissions import IsGestorOrAbove, IsTenantAdmin
 from accounts.tenancy import TenantScopedViewSet, get_request_tenant
 from indicators.models import Indicator
 
-from .models import Goal, Perspective, StrategicMap, StrategicObjective
+from .models import CanvasItem, Goal, Meeting, Perspective, Stakeholder, StrategicMap, StrategicObjective, SwotItem
 from .provisioning import create_default_perspectives
 from .serializers import (
+    CanvasItemSerializer,
     GoalSerializer,
+    MeetingSerializer,
+    StakeholderSerializer,
+    SwotItemSerializer,
     PerspectiveSerializer,
     StrategicMapNestedSerializer,
     StrategicMapSerializer,
@@ -284,3 +288,79 @@ class GoalViewSet(TenantScopedViewSet):
                 for g in roots
             ]
         )
+
+
+# ---------------------------------------------------------------- diagnóstico e identidade
+
+class _ItemDoMapaViewSet(TenantScopedViewSet):
+    """Itens ligados ao mapa estratégico ativo (SWOT, Canvas). `?map=` escolhe outro mapa."""
+
+    permission_classes = [IsGestorOrAbove]
+    pagination_class = None
+
+    def get_serializer_context(self):
+        ctx = super().get_serializer_context()
+        ctx["tenant"] = self.get_tenant()
+        return ctx
+
+    def mapa_alvo(self):
+        tenant = self.get_tenant()
+        map_id = self.request.query_params.get("map") or self.request.data.get("map")
+        qs = StrategicMap.objects.filter(tenant=tenant)
+        return qs.filter(pk=map_id).first() if map_id else qs.filter(is_active=True).first()
+
+    def get_queryset(self):
+        qs = super().get_queryset()
+        smap = self.mapa_alvo()
+        return qs.filter(map=smap) if smap else qs.none()
+
+    def perform_create(self, serializer):
+        tenant = self.get_tenant()
+        if tenant is None:
+            raise PermissionDenied("Nenhuma empresa selecionada.")
+        smap = self.mapa_alvo()
+        if smap is None:
+            raise ValidationError({"map": "Crie o mapa estratégico antes."})
+        serializer.save(tenant=tenant, map=smap)
+
+
+class SwotItemViewSet(_ItemDoMapaViewSet):
+    queryset = SwotItem.objects.select_related("objective")
+    serializer_class = SwotItemSerializer
+
+
+class CanvasItemViewSet(_ItemDoMapaViewSet):
+    queryset = CanvasItem.objects.all()
+    serializer_class = CanvasItemSerializer
+
+
+class StakeholderViewSet(TenantScopedViewSet):
+    queryset = Stakeholder.objects.select_related("org_unit", "user")
+    serializer_class = StakeholderSerializer
+    permission_classes = [IsGestorOrAbove]
+    pagination_class = None
+
+
+class MeetingViewSet(TenantScopedViewSet):
+    queryset = Meeting.objects.select_related("organizer", "org_unit").prefetch_related("participants", "stakeholders", "indicators")
+    serializer_class = MeetingSerializer
+    permission_classes = [IsGestorOrAbove]
+    pagination_class = None
+
+    def get_queryset(self):
+        qs = super().get_queryset()
+        de, ate = self.request.query_params.get("de"), self.request.query_params.get("ate")
+        if de:
+            qs = qs.filter(starts_at__date__gte=de)
+        if ate:
+            qs = qs.filter(starts_at__date__lte=ate)
+        status_ = self.request.query_params.get("status")
+        if status_:
+            qs = qs.filter(status=status_)
+        return qs
+
+    def perform_create(self, serializer):
+        tenant = self.get_tenant()
+        if tenant is None:
+            raise PermissionDenied("Nenhuma empresa selecionada.")
+        serializer.save(tenant=tenant, organizer=serializer.validated_data.get("organizer") or self.request.user)

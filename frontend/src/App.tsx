@@ -15,7 +15,13 @@ import { Login } from "./pages/Login";
 import { MapaEstrategico } from "./pages/MapaEstrategico";
 import { Metas } from "./pages/Metas";
 import { Organograma } from "./pages/Organograma";
+import { Agenda } from "./pages/Agenda";
+import { Canvas } from "./pages/Canvas";
+import { Cultura } from "./pages/Cultura";
 import { PlanosAcao } from "./pages/PlanosAcao";
+import { Relatorio } from "./pages/Relatorio";
+import { Stakeholders } from "./pages/Stakeholders";
+import { Swot } from "./pages/Swot";
 import { Tenants } from "./pages/Tenants";
 import { Usuarios } from "./pages/Usuarios";
 
@@ -64,6 +70,12 @@ export default function App() {
         <Route path="/indicadores/:id" element={<TenantRoute><IndicadorDetalhe /></TenantRoute>} />
         <Route path="/erp/painel" element={<TenantRoute><PainelErp /></TenantRoute>} />
         <Route path="/planos-acao" element={<TenantRoute><PlanosAcao /></TenantRoute>} />
+        <Route path="/agenda" element={<TenantRoute><Agenda /></TenantRoute>} />
+        <Route path="/cultura" element={<TenantRoute><Cultura /></TenantRoute>} />
+        <Route path="/swot" element={<TenantRoute><Swot /></TenantRoute>} />
+        <Route path="/canvas" element={<TenantRoute><Canvas /></TenantRoute>} />
+        <Route path="/stakeholders" element={<TenantRoute><Stakeholders /></TenantRoute>} />
+        <Route path="/relatorio" element={<TenantRoute><Relatorio /></TenantRoute>} />
         <Route path="/desvios" element={<TenantRoute><Desvios /></TenantRoute>} />
         <Route path="/ia/chat" element={<TenantRoute><ChatIA /></TenantRoute>} />
         <Route path="/admin/usuarios" element={<TenantRoute><Usuarios /></TenantRoute>} />

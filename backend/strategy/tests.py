@@ -143,3 +143,50 @@ class MapaEstrategicoTests(APITestCase):
         self.assertEqual(
             StrategicObjective.objects.filter(tenant=self.tenant, name="Crescer receita").count(), 1
         )
+
+
+class DiagnosticoEIdentidadeTests(APITestCase):
+    def setUp(self):
+        self.tenant = Tenant.objects.create(name="Acme", slug="acme2")
+        self.other = Tenant.objects.create(name="Outra", slug="outra2")
+        self.gestor = User.objects.create_user("g@acme.com", "x", first_name="G", tenant=self.tenant, role=User.Role.GESTOR)
+        self.map = StrategicMap.objects.create(tenant=self.tenant, name="Mapa", year_start=2026, year_end=2028)
+        persp = Perspective.objects.create(map=self.map, name="Financeira")
+        self.obj = StrategicObjective.objects.create(tenant=self.tenant, perspective=persp, name="Crescer")
+        self.client.force_authenticate(self.gestor)
+
+    def test_swot_e_canvas_ficam_no_mapa_ativo(self):
+        r = self.client.post("/api/swot/", {"quadrant": "S", "text": "Frota própria", "impact": 5, "objective": self.obj.id}, format="json")
+        self.assertEqual(r.status_code, 201, r.content)
+        self.assertEqual(r.json()["objective_name"], "Crescer")
+        self.assertEqual(self.client.post("/api/swot/", {"quadrant": "S", "text": "x", "impact": 9}, format="json").status_code, 400)
+        r = self.client.post("/api/canvas/", {"block": "proposta", "text": "Carne fresca em 24 h"}, format="json")
+        self.assertEqual(r.status_code, 201)
+        self.assertEqual(len(self.client.get("/api/swot/").json()), 1)
+        self.assertEqual(self.client.get("/api/canvas/").json()[0]["block_label"], "Proposta de valor")
+        # outro tenant não enxerga
+        outro = User.objects.create_user("o@outra.com", "x", first_name="O", tenant=self.other, role=User.Role.GESTOR)
+        self.client.force_authenticate(outro)
+        self.assertEqual(self.client.get("/api/swot/").json(), [])
+
+    def test_stakeholder_estrategia_e_reuniao(self):
+        r = self.client.post("/api/stakeholders/", {"name": "Sócio", "kind": "interno", "influence": 5, "interest": 5}, format="json")
+        self.assertEqual(r.status_code, 201, r.content)
+        self.assertEqual(r.json()["strategy"], "gerenciar de perto")
+        sid = r.json()["id"]
+        r = self.client.post("/api/meetings/", {
+            "title": "Reunião de resultados", "kind": "resultados", "starts_at": "2026-09-10T09:00:00Z",
+            "participants": [self.gestor.id], "stakeholders": [sid], "agenda": "Faturamento",
+        }, format="json")
+        self.assertEqual(r.status_code, 201, r.content)
+        self.assertEqual(r.json()["organizer_name"], "G")
+        self.assertEqual(r.json()["stakeholder_names"], ["Sócio"])
+        self.assertEqual(len(self.client.get("/api/meetings/?de=2026-09-01&ate=2026-09-30").json()), 1)
+        self.assertEqual(len(self.client.get("/api/meetings/?de=2026-10-01").json()), 0)
+
+    def test_proposito_no_mapa(self):
+        admin = User.objects.create_user("a@acme.com", "x", first_name="A", tenant=self.tenant, role=User.Role.ADMIN)
+        self.client.force_authenticate(admin)
+        r = self.client.patch(f"/api/strategic-maps/{self.map.id}/", {"purpose": "Alimentar bem"}, format="json")
+        self.assertEqual(r.status_code, 200, r.content)
+        self.assertEqual(self.client.get("/api/strategic-maps/active/").json()["purpose"], "Alimentar bem")

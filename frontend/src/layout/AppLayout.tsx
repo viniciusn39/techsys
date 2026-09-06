@@ -27,9 +27,20 @@ const TENANT_SECTIONS: { label: string; items: MenuItem[] }[] = [
     ],
   },
   {
+    label: "Planejamento",
+    items: [
+      { to: "/cultura", icon: "bi-gem", label: "Cultura e identidade", title: "Cultura e identidade", sub: "Propósito, missão, visão e valores", roles: ["root", "admin", "gestor", "colaborador"] },
+      { to: "/swot", icon: "bi-grid-3x3-gap", label: "Análise SWOT", title: "Análise SWOT", sub: "Forças, fraquezas, oportunidades e ameaças", roles: ["root", "admin", "gestor", "colaborador"] },
+      { to: "/canvas", icon: "bi-columns-gap", label: "Canvas", title: "Business Model Canvas", sub: "Como a empresa cria, entrega e captura valor", roles: ["root", "admin", "gestor", "colaborador"] },
+      { to: "/stakeholders", icon: "bi-people-fill", label: "Stakeholders", title: "Stakeholders", sub: "Partes interessadas e matriz influência × interesse", roles: ["root", "admin", "gestor"] },
+      { to: "/relatorio", icon: "bi-file-earmark-text", label: "Relatório", title: "Relatório do planejamento", sub: "Identidade, SWOT, canvas, mapa, indicadores e metas para imprimir", roles: ["root", "admin", "gestor", "colaborador"] },
+    ],
+  },
+  {
     label: "Execução",
     items: [
       { to: "/planos-acao", icon: "bi-kanban", label: "Planos de Ação", title: "Planos de Ação", sub: "5W2H, PDCA e Kanban", roles: ["root", "admin", "gestor", "colaborador"] },
+      { to: "/agenda", icon: "bi-calendar3", label: "Agenda de gestão", title: "Agenda de gestão", sub: "Reuniões de resultados, pauta, ata e decisões", roles: ["root", "admin", "gestor", "colaborador"] },
       { to: "/desvios", icon: "bi-exclamation-triangle", label: "Desvios", title: "Tratamento de Desvios", sub: "Faróis vermelhos e causa raiz", roles: ["root", "admin", "gestor", "colaborador"] },
       { to: "/ia/chat", icon: "bi-stars", label: "Assistente IA", title: "Assistente de Resultados", sub: "Converse sobre os seus indicadores", roles: ["root", "admin", "gestor", "colaborador"] },
     ],
