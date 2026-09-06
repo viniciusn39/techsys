@@ -93,10 +93,21 @@ class ActionItem(models.Model):
     class Status(models.TextChoices):
         A_FAZER = "a_fazer", "A fazer"
         FAZENDO = "fazendo", "Fazendo"
+        BLOQUEADO = "bloqueado", "Bloqueado"
         FEITO = "feito", "Feito"
+
+    class Priority(models.TextChoices):
+        BAIXA = "baixa", "Baixa"
+        MEDIA = "media", "Média"
+        ALTA = "alta", "Alta"
 
     plan = models.ForeignKey(ActionPlan, on_delete=models.CASCADE, related_name="items")
     title = models.CharField("título", max_length=250)
+    description = models.TextField(blank=True)
+    priority = models.CharField(max_length=10, choices=Priority.choices, default=Priority.MEDIA)
+    blocked_reason = models.CharField("motivo do bloqueio", max_length=250, blank=True)
+    created_at = models.DateTimeField(auto_now_add=True, null=True)
+    started_at = models.DateTimeField(null=True, blank=True)   # 1ª vez em "fazendo" (lead time)
     responsible = models.ForeignKey(
         settings.AUTH_USER_MODEL, on_delete=models.SET_NULL, null=True, blank=True,
         related_name="action_items",

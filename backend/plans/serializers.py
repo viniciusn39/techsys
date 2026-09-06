@@ -27,14 +27,16 @@ class DeviationSerializer(serializers.ModelSerializer):
 
 class ActionItemSerializer(serializers.ModelSerializer):
     responsible_name = serializers.CharField(source="responsible.first_name", read_only=True)
+    plan_title = serializers.CharField(source="plan.title", read_only=True)
+    plan_priority = serializers.CharField(source="plan.priority", read_only=True)
 
     class Meta:
         model = ActionItem
         fields = [
-            "id", "plan", "title", "responsible", "responsible_name",
-            "due_date", "status", "order", "done_at",
+            "id", "plan", "plan_title", "plan_priority", "title", "description", "priority", "blocked_reason",
+            "responsible", "responsible_name", "due_date", "status", "order", "created_at", "started_at", "done_at",
         ]
-        read_only_fields = ["done_at"]
+        read_only_fields = ["done_at", "started_at", "created_at"]
 
 
 class ActionPlanSerializer(serializers.ModelSerializer):

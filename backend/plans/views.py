@@ -115,7 +115,54 @@ class ActionItemViewSet(viewsets.ModelViewSet):
     def _apply_status(self, item, new_status):
         item.status = new_status
         item.done_at = timezone.now() if new_status == ActionItem.Status.FEITO else None
+        if new_status in (ActionItem.Status.FAZENDO, ActionItem.Status.FEITO) and item.started_at is None:
+            item.started_at = timezone.now()
+        if new_status != ActionItem.Status.BLOQUEADO:
+            item.blocked_reason = ""
         item.save()
+
+    @action(detail=False, methods=["get"])
+    def analise(self, request):
+        """Números do quadro: por status, por responsável, atrasadas, lead time e vazão semanal."""
+        from collections import Counter, defaultdict
+        from datetime import date, timedelta
+
+        hoje = date.today()
+        itens = list(self.get_queryset().exclude(plan__status=ActionPlan.Status.CANCELADO))
+        abertos = [i for i in itens if i.status != ActionItem.Status.FEITO]
+        atrasadas = [i for i in abertos if i.due_date and i.due_date < hoje]
+        por_status = Counter(i.status for i in itens)
+        por_resp = defaultdict(lambda: {"abertas": 0, "feitas": 0, "atrasadas": 0, "bloqueadas": 0})
+        for i in itens:
+            nome = i.responsible.first_name if i.responsible else "(sem responsável)"
+            r = por_resp[nome]
+            if i.status == ActionItem.Status.FEITO:
+                r["feitas"] += 1
+            else:
+                r["abertas"] += 1
+                if i.due_date and i.due_date < hoje:
+                    r["atrasadas"] += 1
+                if i.status == ActionItem.Status.BLOQUEADO:
+                    r["bloqueadas"] += 1
+        leads = [(i.done_at - i.started_at).total_seconds() / 86400 for i in itens if i.done_at and i.started_at and i.done_at >= i.started_at]
+        semanas = []
+        seg = hoje - timedelta(days=hoje.weekday())
+        for k in range(7, -1, -1):
+            ini = seg - timedelta(weeks=k)
+            fim = ini + timedelta(days=6)
+            semanas.append({
+                "semana": ini.isoformat(),
+                "feitas": sum(1 for i in itens if i.done_at and ini <= i.done_at.date() <= fim),
+                "criadas": sum(1 for i in itens if i.created_at and ini <= i.created_at.date() <= fim),
+            })
+        return Response({
+            "total": len(itens), "abertas": len(abertos), "atrasadas": len(atrasadas),
+            "por_status": {k: por_status.get(k, 0) for k in ActionItem.Status.values},
+            "por_responsavel": [{"nome": n, **v} for n, v in sorted(por_resp.items(), key=lambda kv: -kv[1]["abertas"])],
+            "lead_time_medio_dias": round(sum(leads) / len(leads), 1) if leads else None,
+            "concluidas_30d": sum(1 for i in itens if i.done_at and i.done_at.date() >= hoje - timedelta(days=30)),
+            "semanas": semanas,
+        })
 
     def perform_update(self, serializer):
         old_status = serializer.instance.status

@@ -11,8 +11,19 @@ import { fmtDate } from "../utils/format";
 const KANBAN_COLS: { key: ActionItem["status"]; label: string; icon: string }[] = [
   { key: "a_fazer", label: "A fazer", icon: "bi-circle" },
   { key: "fazendo", label: "Fazendo", icon: "bi-arrow-repeat" },
+  { key: "bloqueado", label: "Bloqueado", icon: "bi-slash-circle" },
   { key: "feito", label: "Feito", icon: "bi-check-circle-fill" },
 ];
+
+interface Analise {
+  total: number; abertas: number; atrasadas: number;
+  por_status: Record<string, number>;
+  por_responsavel: { nome: string; abertas: number; feitas: number; atrasadas: number; bloqueadas: number }[];
+  lead_time_medio_dias: number | null; concluidas_30d: number;
+  semanas: { semana: string; feitas: number; criadas: number }[];
+}
+
+const hojeIso = () => new Date().toISOString().slice(0, 10);
 
 const PDCA = ["plan", "do", "check", "act"] as const;
 
@@ -37,7 +48,14 @@ export function PlanosAcao() {
   const [users, setUsers] = useState<UserRow[]>([]);
   const [units, setUnits] = useState<OrgUnit[]>([]);
   const [indicators, setIndicators] = useState<Indicator[]>([]);
-  const [view, setView] = useState<"lista" | "kanban">("kanban");
+  const [view, setView] = useState<"lista" | "kanban" | "analise">("kanban");
+  const [itemEdit, setItemEdit] = useState<Partial<ActionItem> | null>(null);
+  const [fResp, setFResp] = useState("");
+  const [fPrio, setFPrio] = useState("");
+  const [fPlano, setFPlano] = useState("");
+  const [fAtrasadas, setFAtrasadas] = useState(false);
+  const [busca, setBusca] = useState("");
+  const [analise, setAnalise] = useState<Analise | null>(null);
   const [editing, setEditing] = useState<Partial<ActionPlan> | null>(null);
   const [detailId, setDetailId] = useState<number | null>(null);
   const [newItem, setNewItem] = useState("");
@@ -69,12 +87,45 @@ export function PlanosAcao() {
     load();
   };
 
-  const allItems = list.flatMap((p) =>
-    p.items.map((i) => ({ ...i, planTitle: p.title, planPriority: p.priority }))
-  );
+  const allItems = list
+    .filter((p) => p.status !== "cancelado")
+    .flatMap((p) => p.items.map((i) => ({ ...i, planTitle: p.title, planPriority: p.priority, planId: p.id })))
+    .filter((i) => !fResp || String(i.responsible ?? "") === fResp)
+    .filter((i) => !fPrio || (i.priority ?? "media") === fPrio)
+    .filter((i) => !fPlano || String(i.plan) === fPlano)
+    .filter((i) => !fAtrasadas || (i.due_date && i.due_date < hojeIso() && i.status !== "feito"))
+    .filter((i) => !busca || `${i.title} ${i.planTitle}`.toLowerCase().includes(busca.toLowerCase()))
+    .sort((a, b) => ({ alta: 0, media: 1, baixa: 2 }[a.priority ?? "media"] - { alta: 0, media: 1, baixa: 2 }[b.priority ?? "media"]) || (a.due_date ?? "9").localeCompare(b.due_date ?? "9"));
+
+  const saveItem = async () => {
+    if (!itemEdit?.title?.trim() || !itemEdit.plan) return;
+    const body = {
+      plan: itemEdit.plan, title: itemEdit.title.trim(), description: itemEdit.description ?? "", priority: itemEdit.priority ?? "media",
+      responsible: itemEdit.responsible || null, due_date: itemEdit.due_date || null, status: itemEdit.status ?? "a_fazer",
+      blocked_reason: itemEdit.status === "bloqueado" ? (itemEdit.blocked_reason ?? "") : "",
+    };
+    if (itemEdit.id) await api.patch(`/api/action-items/${itemEdit.id}/`, body);
+    else await api.post("/api/action-items/", body);
+    setItemEdit(null);
+    load();
+  };
+  const removeItem = async () => {
+    if (!itemEdit?.id) return;
+    await api.del(`/api/action-items/${itemEdit.id}/`);
+    setItemEdit(null);
+    load();
+  };
+
+  useEffect(() => {
+    if (view === "analise") api.get<Analise>("/api/action-items/analise/").then(setAnalise).catch(() => setAnalise(null));
+  }, [view, plans]);
 
   const moveItem = async (item: ActionItem, status: ActionItem["status"]) => {
     if (item.status === status) return;
+    if (status === "bloqueado") {
+      setItemEdit({ ...item, status: "bloqueado" });
+      return;
+    }
     await api.patch(`/api/action-items/${item.id}/move/`, { status });
     load();
   };
@@ -166,21 +217,44 @@ export function PlanosAcao() {
 
       <div className="filter-bar">
         <div className="btn-group btn-group-sm">
-          {(["kanban", "lista"] as const).map((v) => (
+          {(["kanban", "lista", "analise"] as const).map((v) => (
             <button
               key={v}
               className={`btn btn-outline-secondary ${view === v ? "active" : ""}`}
               onClick={() => setView(v)}
             >
-              <i className={`bi ${v === "kanban" ? "bi-kanban" : "bi-list-ul"} me-1`} />
-              {v === "kanban" ? "Kanban" : "Lista"}
+              <i className={`bi ${v === "kanban" ? "bi-kanban" : v === "lista" ? "bi-list-ul" : "bi-bar-chart-line"} me-1`} />
+              {v === "kanban" ? "Kanban" : v === "lista" ? "Planos" : "Análise"}
             </button>
           ))}
         </div>
-        <Form.Select size="sm" style={{ width: 175 }} value={filterStatus} onChange={(e) => setFilterStatus(e.target.value)}>
-          <option value="">Todos os status</option>
-          {Object.entries(STATUS_META).map(([k, v]) => <option key={k} value={k}>{v.label}</option>)}
-        </Form.Select>
+        {view === "lista" && (
+          <Form.Select size="sm" style={{ width: 175 }} value={filterStatus} onChange={(e) => setFilterStatus(e.target.value)}>
+            <option value="">Todos os status</option>
+            {Object.entries(STATUS_META).map(([k, v]) => <option key={k} value={k}>{v.label}</option>)}
+          </Form.Select>
+        )}
+        {view === "kanban" && (
+          <>
+            <Form.Control size="sm" style={{ width: 180 }} placeholder="Buscar atividade…" value={busca} onChange={(e) => setBusca(e.target.value)} />
+            <Form.Select size="sm" style={{ width: 170 }} value={fPlano} onChange={(e) => setFPlano(e.target.value)}>
+              <option value="">Todos os planos</option>
+              {(plans ?? []).filter((p) => p.status !== "cancelado").map((p) => <option key={p.id} value={p.id}>{p.title}</option>)}
+            </Form.Select>
+            <Form.Select size="sm" style={{ width: 160 }} value={fResp} onChange={(e) => setFResp(e.target.value)}>
+              <option value="">Todos os responsáveis</option>
+              {users.map((u) => <option key={u.id} value={u.id}>{u.first_name}</option>)}
+            </Form.Select>
+            <Form.Select size="sm" style={{ width: 130 }} value={fPrio} onChange={(e) => setFPrio(e.target.value)}>
+              <option value="">Prioridade</option>
+              {Object.entries(PRIORITY_META).map(([k, v]) => <option key={k} value={k}>{v.label}</option>)}
+            </Form.Select>
+            <Form.Check type="switch" id="f-atrasadas" label="Só atrasadas" className="small" checked={fAtrasadas} onChange={(e) => setFAtrasadas(e.target.checked)} />
+            <Button size="sm" variant="outline-secondary" onClick={() => setItemEdit({ status: "a_fazer", priority: "media", plan: fPlano ? Number(fPlano) : (plans ?? []).find((p) => p.status !== "cancelado" && p.status !== "concluido")?.id })}>
+              <i className="bi bi-plus-lg me-1" />Atividade
+            </Button>
+          </>
+        )}
         <Button
           size="sm"
           className="ms-auto"
@@ -198,7 +272,7 @@ export function PlanosAcao() {
             {KANBAN_COLS.map((col) => {
               const items = allItems.filter((i) => i.status === col.key);
               return (
-                <div className="col-md-4" key={col.key}>
+                <div className="col-md-6 col-xl-3" key={col.key}>
                   <div
                     className={`kanban-col ${dragOver === col.key ? "is-over" : ""}`}
                     onDragOver={(e) => {
@@ -215,29 +289,40 @@ export function PlanosAcao() {
                       <span><i className={`bi ${col.icon} me-1`} />{col.label}</span>
                       <span className="badge rounded-pill text-bg-light border">{items.length}</span>
                     </div>
-                    {items.map((i) => (
-                      <div
-                        key={i.id}
-                        className="kanban-card"
-                        draggable
-                        onDragStart={() => setDragging(i)}
-                        onDragEnd={() => {
-                          setDragging(null);
-                          setDragOver(null);
-                        }}
-                      >
-                        <div className="title">{i.title}</div>
-                        <div className="meta mt-1">{(i as any).planTitle}</div>
-                        <div className="d-flex justify-content-between align-items-center mt-2">
-                          <span className="meta">
-                            {i.responsible_name && <><i className="bi bi-person me-1" />{i.responsible_name}</>}
-                          </span>
-                          {i.due_date && (
-                            <span className="meta"><i className="bi bi-calendar3 me-1" />{fmtDate(i.due_date)}</span>
-                          )}
+                    {items.map((i) => {
+                      const atrasada = !!i.due_date && i.due_date < hojeIso() && i.status !== "feito";
+                      const prio = PRIORITY_META[i.priority ?? "media"];
+                      return (
+                        <div
+                          key={i.id}
+                          className="kanban-card"
+                          draggable
+                          role="button"
+                          onClick={() => setItemEdit(i)}
+                          onDragStart={() => setDragging(i)}
+                          onDragEnd={() => {
+                            setDragging(null);
+                            setDragOver(null);
+                          }}
+                          style={atrasada ? { borderLeft: "3px solid var(--st-vermelho)" } : i.status === "bloqueado" ? { borderLeft: "3px solid var(--st-amarelo)" } : undefined}
+                        >
+                          <div className="d-flex align-items-start gap-2">
+                            <div className="title flex-grow-1">{i.title}</div>
+                            <span className={`status-pill ${prio.cls}`} style={{ fontSize: "0.66rem" }}><i className="bi bi-flag-fill" />{prio.label}</span>
+                          </div>
+                          <div className="meta mt-1"><i className="bi bi-kanban me-1" />{(i as any).planTitle}</div>
+                          {i.status === "bloqueado" && i.blocked_reason && <div className="meta mt-1" style={{ color: "#8a6100" }}><i className="bi bi-slash-circle me-1" />{i.blocked_reason}</div>}
+                          <div className="d-flex justify-content-between align-items-center mt-2">
+                            <span className="meta">
+                              {i.responsible_name ? <><i className="bi bi-person me-1" />{i.responsible_name}</> : <span className="text-muted-2">sem responsável</span>}
+                            </span>
+                            {i.due_date && (
+                              <span className="meta" style={atrasada ? { color: "var(--st-vermelho)", fontWeight: 600 } : undefined}><i className={`bi ${atrasada ? "bi-clock-history" : "bi-calendar3"} me-1`} />{fmtDate(i.due_date)}</span>
+                            )}
+                          </div>
                         </div>
-                      </div>
-                    ))}
+                      );
+                    })}
                     {items.length === 0 && (
                       <div className="text-muted-2 small text-center py-4">Arraste atividades para cá</div>
                     )}
@@ -256,6 +341,58 @@ export function PlanosAcao() {
             </Panel>
           </div>
         </>
+      ) : view === "analise" ? (
+        <div className="d-grid gap-3">
+          {!analise ? <Panel><Skeleton height={200} /></Panel> : (
+            <>
+              <div className="row g-3">
+                <div className="col-6 col-xl-3"><StatCard icon="bi-list-check" label="Atividades abertas" value={analise.abertas} foot={`${analise.total} no total`} /></div>
+                <div className="col-6 col-xl-3"><StatCard icon="bi-clock-history" label="Atrasadas" value={analise.atrasadas} foot={analise.por_status.bloqueado ? `${analise.por_status.bloqueado} bloqueada(s)` : "nenhuma bloqueada"} /></div>
+                <div className="col-6 col-xl-3"><StatCard icon="bi-check2-circle" label="Concluídas em 30 dias" value={analise.concluidas_30d} /></div>
+                <div className="col-6 col-xl-3"><StatCard icon="bi-hourglass-split" label="Lead time médio" value={analise.lead_time_medio_dias === null ? "—" : `${analise.lead_time_medio_dias} d`} foot="de 'fazendo' até 'feito'" /></div>
+              </div>
+              <div className="row g-3">
+                <div className="col-xl-7">
+                  <Panel title="Vazão semanal" subtitle="Atividades concluídas e criadas por semana (8 semanas)">
+                    <EChart height={220} option={{
+                      grid: { left: 4, right: 8, top: 28, bottom: 4, containLabel: true },
+                      legend: { top: 0, left: 0 },
+                      tooltip: { trigger: "axis" },
+                      xAxis: { type: "category", data: analise.semanas.map((w) => fmtDate(w.semana)) },
+                      yAxis: { type: "value", minInterval: 1 },
+                      series: [
+                        { name: "Concluídas", type: "bar", barMaxWidth: BAR_MAX_WIDTH, itemStyle: { color: t.status.verde, borderRadius: [4, 4, 0, 0] }, data: analise.semanas.map((w) => w.feitas) },
+                        { name: "Criadas", type: "line", symbol: "circle", symbolSize: 6, lineStyle: { width: 2, color: t.series[0] }, itemStyle: { color: t.series[0] }, data: analise.semanas.map((w) => w.criadas) },
+                      ],
+                    }} />
+                  </Panel>
+                </div>
+                <div className="col-xl-5">
+                  <Panel title="Por responsável" subtitle="Quem está com o quê">
+                    {analise.por_responsavel.length === 0 ? <EmptyState icon="bi-people" title="Sem atividades" /> : (
+                      <div className="table-responsive">
+                        <table className="table table-sm mb-0">
+                          <thead><tr><th>Responsável</th><th className="num">Abertas</th><th className="num">Atrasadas</th><th className="num">Bloqueadas</th><th className="num">Feitas</th></tr></thead>
+                          <tbody>
+                            {analise.por_responsavel.map((r) => (
+                              <tr key={r.nome}>
+                                <td>{r.nome}</td>
+                                <td className="num">{r.abertas}</td>
+                                <td className="num" style={r.atrasadas ? { color: "var(--st-vermelho)", fontWeight: 600 } : undefined}>{r.atrasadas}</td>
+                                <td className="num">{r.bloqueadas}</td>
+                                <td className="num text-muted-2">{r.feitas}</td>
+                              </tr>
+                            ))}
+                          </tbody>
+                        </table>
+                      </div>
+                    )}
+                  </Panel>
+                </div>
+              </div>
+            </>
+          )}
+        </div>
       ) : (
         <Panel>
           {list.length === 0 ? (
@@ -509,6 +646,68 @@ export function PlanosAcao() {
             </Modal.Body>
           </>
         )}
+      </Modal>
+
+      {/* --- Modal da atividade (cartão do Kanban) --- */}
+      <Modal show={!!itemEdit} onHide={() => setItemEdit(null)} centered>
+        <Modal.Header closeButton>
+          <Modal.Title className="fs-6">{itemEdit?.id ? "Atividade" : "Nova atividade"}</Modal.Title>
+        </Modal.Header>
+        <Modal.Body>
+          {itemEdit && (
+            <div className="row g-2">
+              <div className="col-12">
+                <Form.Label className="small">Plano</Form.Label>
+                <Form.Select size="sm" value={itemEdit.plan ?? ""} onChange={(e) => setItemEdit({ ...itemEdit, plan: Number(e.target.value) })} disabled={!!itemEdit.id}>
+                  <option value="">—</option>
+                  {(plans ?? []).filter((p) => p.status !== "cancelado").map((p) => <option key={p.id} value={p.id}>{p.title}</option>)}
+                </Form.Select>
+              </div>
+              <div className="col-12">
+                <Form.Label className="small">Título</Form.Label>
+                <Form.Control size="sm" autoFocus value={itemEdit.title ?? ""} onChange={(e) => setItemEdit({ ...itemEdit, title: e.target.value })} onKeyDown={(e) => e.key === "Enter" && saveItem()} />
+              </div>
+              <div className="col-12">
+                <Form.Label className="small">Descrição</Form.Label>
+                <Form.Control size="sm" as="textarea" rows={2} value={itemEdit.description ?? ""} onChange={(e) => setItemEdit({ ...itemEdit, description: e.target.value })} />
+              </div>
+              <div className="col-6">
+                <Form.Label className="small">Responsável</Form.Label>
+                <Form.Select size="sm" value={itemEdit.responsible ?? ""} onChange={(e) => setItemEdit({ ...itemEdit, responsible: e.target.value ? Number(e.target.value) : null })}>
+                  <option value="">—</option>
+                  {users.map((u) => <option key={u.id} value={u.id}>{u.first_name}</option>)}
+                </Form.Select>
+              </div>
+              <div className="col-6">
+                <Form.Label className="small">Prazo</Form.Label>
+                <Form.Control size="sm" type="date" value={itemEdit.due_date ?? ""} onChange={(e) => setItemEdit({ ...itemEdit, due_date: e.target.value || null })} />
+              </div>
+              <div className="col-6">
+                <Form.Label className="small">Prioridade</Form.Label>
+                <Form.Select size="sm" value={itemEdit.priority ?? "media"} onChange={(e) => setItemEdit({ ...itemEdit, priority: e.target.value as any })}>
+                  {Object.entries(PRIORITY_META).map(([k, v]) => <option key={k} value={k}>{v.label}</option>)}
+                </Form.Select>
+              </div>
+              <div className="col-6">
+                <Form.Label className="small">Situação</Form.Label>
+                <Form.Select size="sm" value={itemEdit.status ?? "a_fazer"} onChange={(e) => setItemEdit({ ...itemEdit, status: e.target.value as any })}>
+                  {KANBAN_COLS.map((c) => <option key={c.key} value={c.key}>{c.label}</option>)}
+                </Form.Select>
+              </div>
+              {itemEdit.status === "bloqueado" && (
+                <div className="col-12">
+                  <Form.Label className="small">Motivo do bloqueio</Form.Label>
+                  <Form.Control size="sm" value={itemEdit.blocked_reason ?? ""} onChange={(e) => setItemEdit({ ...itemEdit, blocked_reason: e.target.value })} placeholder="O que impede de continuar?" />
+                </div>
+              )}
+            </div>
+          )}
+        </Modal.Body>
+        <Modal.Footer>
+          {itemEdit?.id && <Button size="sm" variant="outline-danger" className="me-auto" onClick={removeItem}>Excluir</Button>}
+          <Button size="sm" variant="outline-secondary" onClick={() => setItemEdit(null)}>Cancelar</Button>
+          <Button size="sm" onClick={saveItem}>Salvar</Button>
+        </Modal.Footer>
       </Modal>
     </div>
   );

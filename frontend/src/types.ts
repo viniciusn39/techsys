@@ -186,8 +186,16 @@ export interface ActionItem {
   responsible: number | null;
   responsible_name?: string;
   due_date: string | null;
-  status: "a_fazer" | "fazendo" | "feito";
+  status: "a_fazer" | "fazendo" | "bloqueado" | "feito";
   order: number;
+  description?: string;
+  priority?: "baixa" | "media" | "alta";
+  blocked_reason?: string;
+  plan_title?: string;
+  plan_priority?: string;
+  created_at?: string | null;
+  started_at?: string | null;
+  done_at?: string | null;
 }
 
 export interface ActionPlan {
