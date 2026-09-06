@@ -70,6 +70,21 @@ def _branch_q(filters, path="branch"):
     return Q(**{f"{path}__code__in": codes})
 
 
+def _rep_q(filters, path="sales_rep"):
+    """`sales_rep` aceita um código de RCA ("120") ou vários ("120,121") — visão por vendedor."""
+    code = (filters or {}).get("sales_rep")
+    if not code:
+        return Q()
+    if isinstance(code, str):
+        code = [c.strip() for c in code.split(",") if c.strip()]
+    codes = [str(c) for c in code]
+    if not codes:
+        return Q()
+    if len(codes) == 1:
+        return Q(**{f"{path}__code": codes[0]})
+    return Q(**{f"{path}__code__in": codes})
+
+
 def _sum(qs, expr):
     v = qs.aggregate(v=Sum(expr))["v"]
     return D(v) if v is not None else None
@@ -90,7 +105,7 @@ def _money(v):
 def notas_do_periodo(tenant, ini, fim, filters):
     return SalesInvoice.objects.filter(
         tenant=tenant, issued_at__range=(ini, fim)
-    ).filter(regras.filtro_notas_faturadas()).filter(_branch_q(filters))
+    ).filter(regras.filtro_notas_faturadas()).filter(_branch_q(filters)).filter(_rep_q(filters))
 
 
 def faturamento(tenant, ini, fim, filters=None):
@@ -155,7 +170,7 @@ def churn_clientes_pct(tenant, ini, fim, filters=None):
 def _itens_venda(tenant, ini, fim, filters):
     return SalesInvoiceItem.objects.filter(
         tenant=tenant, moved_at__range=(ini, fim), operation__in=regras.OPERACOES_VENDA,
-    ).filter(_branch_q(filters))
+    ).filter(_branch_q(filters)).filter(_rep_q(filters))
 
 
 _VALOR = ExpressionWrapper(F("quantity") * F("unit_price"), output_field=DecimalField(max_digits=18, decimal_places=4))
@@ -421,7 +436,107 @@ def desligamentos(tenant, ini, fim, filters=None):
 def _pedidos(tenant, ini, fim, filters):
     return Order.objects.filter(tenant=tenant, order_date__range=(ini, fim)).exclude(
         status=Order.Status.CANCELED
-    ).filter(_branch_q(filters))
+    ).filter(_branch_q(filters)).filter(_rep_q(filters))
+
+
+# --- Força de vendas: o que o app do vendedor (Ion/MaxSoluções) apura --------
+# Regras copiadas do que esses sistemas executam no WinThor: venda transmitida
+# (PCPEDC.VLATEND sem bonificação), venda bloqueada (POSICAO B), lucratividade
+# = (venda − custo) ÷ venda, curva ABC por RANK/RATIO_TO_REPORT, crédito
+# disponível = limite + crédito − títulos − pedidos − cheques.
+
+def valor_pedidos(tenant, ini, fim, filters=None):
+    """Venda transmitida: valor dos pedidos digitados no período (sem bonificação)."""
+    qs = _pedidos(tenant, ini, fim, filters).exclude(sale_type__in=regras.CONDVENDA_BONIFICACAO)
+    v = _sum(qs, "total")
+    return _money(v) if v is not None else None
+
+
+def pedidos_bloqueados_valor(tenant, ini, fim, filters=None):
+    """Venda bloqueada: pedidos pendentes na posição B (bloqueio comercial/financeiro)."""
+    qs = Order.objects.filter(tenant=tenant, status=Order.Status.PENDING, erp_position="B").filter(_branch_q(filters)).filter(_rep_q(filters))
+    return _money(_sum(qs, "total") or ZERO)
+
+
+def pedidos_bloqueados_pct(tenant, ini, fim, filters=None):
+    qs = _pedidos(tenant, ini, fim, filters)
+    n = qs.count()
+    return _pct(qs.filter(erp_position="B").count(), n) if n else None
+
+
+def comissao_valor(tenant, ini, fim, filters=None):
+    """Comissão gerada nos itens faturados: PERCOM × valor do item (PCMOV)."""
+    qs = _itens_venda(tenant, ini, fim, filters).filter(commission_pct__isnull=False)
+    expr = ExpressionWrapper(F("quantity") * F("unit_price") * F("commission_pct") / 100, output_field=DecimalField(max_digits=18, decimal_places=4))
+    return _money(_sum(qs, expr) or ZERO)
+
+
+def comissao_pct(tenant, ini, fim, filters=None):
+    return _pct(comissao_valor(tenant, ini, fim, filters), _sum(_itens_venda(tenant, ini, fim, filters), _VALOR))
+
+
+def _curva_a_pct(valores):
+    """% dos elementos que somam 80 % do total (curva A)."""
+    total = sum(valores)
+    if not total:
+        return None
+    acumulado, n = ZERO, 0
+    for v in sorted(valores, reverse=True):
+        acumulado += v
+        n += 1
+        if acumulado >= total * D("0.8"):
+            break
+    return _pct(n, len(valores))
+
+
+def clientes_curva_a_pct(tenant, ini, fim, filters=None):
+    """% dos clientes positivados que respondem por 80 % da venda (curva A)."""
+    rows = notas_do_periodo(tenant, ini, fim, filters).filter(customer__isnull=False).values("customer").annotate(v=Sum("total"))
+    return _curva_a_pct([D(r["v"] or 0) for r in rows])
+
+
+def skus_curva_a_pct(tenant, ini, fim, filters=None):
+    """% dos produtos vendidos que respondem por 80 % da venda (curva A)."""
+    rows = _itens_venda(tenant, ini, fim, filters).values("product").annotate(v=Sum(_VALOR))
+    return _curva_a_pct([D(r["v"] or 0) for r in rows])
+
+
+def mix_por_cliente(tenant, ini, fim, filters=None):
+    """Produtos distintos por cliente positivado (mix médio da cesta)."""
+    rows = _itens_venda(tenant, ini, fim, filters).filter(customer__isnull=False).values("customer").annotate(n=Count("product", distinct=True))
+    ns = [r["n"] for r in rows]
+    return (D(sum(ns)) / len(ns)).quantize(D("0.1")) if ns else None
+
+
+def _credito_por_cliente(tenant, fim, filters):
+    """Limite − títulos em aberto − pedidos pendentes, cliente a cliente (aproximação da PKG_LIMITECREDITO)."""
+    clientes = Customer.objects.filter(tenant=tenant, blocked=False, credit_limit__gt=0).filter(_rep_q(filters))
+    abertos = dict(FinancialTitle.objects.filter(tenant=tenant, kind="receivable", status="open", customer__in=clientes)
+                   .values_list("customer").annotate(v=Sum("amount")).values_list("customer", "v"))
+    pendentes = dict(Order.objects.filter(tenant=tenant, status=Order.Status.PENDING, customer__in=clientes)
+                     .exclude(sale_type__in=[8, 13]).values_list("customer").annotate(v=Sum("total")).values_list("customer", "v"))
+    for c in clientes.only("id", "credit_limit"):
+        yield c.id, D(c.credit_limit) - D(abertos.get(c.id) or 0) - D(pendentes.get(c.id) or 0)
+
+
+def credito_disponivel_carteira(tenant, ini, fim, filters=None):
+    """Soma do crédito disponível dos clientes com limite (sem cheques nem sazonal — aproximação)."""
+    vals = [max(v, ZERO) for _, v in _credito_por_cliente(tenant, fim, filters)]
+    return _money(sum(vals)) if vals else None
+
+
+def clientes_sem_credito_pct(tenant, ini, fim, filters=None):
+    """% dos clientes com limite cujo crédito disponível está zerado ou negativo."""
+    vals = [v for _, v in _credito_por_cliente(tenant, fim, filters)]
+    return _pct(sum(1 for v in vals if v <= 0), len(vals)) if vals else None
+
+
+def clientes_positivados_delta(tenant, ini, fim, filters=None):
+    """Positivados no período − positivados no período anterior de mesmo tamanho."""
+    dias = (fim - ini).days + 1
+    atual = positivacao(tenant, ini, fim, filters)
+    anterior = positivacao(tenant, ini - timedelta(days=dias), ini - timedelta(days=1), filters)
+    return atual - anterior
 
 
 def qtd_pedidos(tenant, ini, fim, filters=None):
@@ -905,6 +1020,156 @@ def folha_estimada(tenant, ini, fim, filters=None):
     return _money(v) if v else None
 
 
+# --- WMS: ordens de serviço do armazém (PCMOVENDPEND agregada por OS) ---------
+
+def _os(tenant, ini, fim, filters):
+    from .models import WmsOrder
+
+    return WmsOrder.objects.filter(tenant=tenant, date__range=(ini, fim), operation__startswith="S").exclude(
+        position="C").filter(_branch_q(filters))
+
+
+def wms_os_concluidas(tenant, ini, fim, filters=None):
+    return D(_os(tenant, ini, fim, filters).filter(picking_end__isnull=False).count())
+
+
+def _media_minutos(qs, campo_ini, campo_fim, peso="lines"):
+    total, soma = ZERO, ZERO
+    for o in qs.only(campo_ini, campo_fim, peso):
+        a, b = getattr(o, campo_ini), getattr(o, campo_fim)
+        if not a or not b or b < a:
+            continue
+        w = D(getattr(o, peso) or 1)
+        total += w
+        soma += w * D((b - a).total_seconds() / 60)
+    return (soma / total).quantize(D("0.1")) if total else None
+
+
+def wms_tempo_separacao_min(tenant, ini, fim, filters=None):
+    return _media_minutos(_os(tenant, ini, fim, filters).filter(picking_start__isnull=False, picking_end__isnull=False), "picking_start", "picking_end")
+
+
+def wms_tempo_conferencia_min(tenant, ini, fim, filters=None):
+    return _media_minutos(_os(tenant, ini, fim, filters).filter(check_start__isnull=False, check_end__isnull=False), "check_start", "check_end")
+
+
+def wms_os_pendentes(tenant, ini, fim, filters=None):
+    from .models import WmsOrder
+
+    return D(WmsOrder.objects.filter(tenant=tenant, date__lte=fim, operation__startswith="S", picking_end__isnull=True)
+             .exclude(position="C").filter(_branch_q(filters)).count())
+
+
+def wms_linhas_por_hora(tenant, ini, fim, filters=None):
+    linhas, horas = ZERO, ZERO
+    for o in _os(tenant, ini, fim, filters).filter(picking_start__isnull=False, picking_end__isnull=False).only("picking_start", "picking_end", "lines"):
+        seg = (o.picking_end - o.picking_start).total_seconds()
+        if seg <= 0:
+            continue
+        linhas += D(o.lines or 0)
+        horas += D(seg / 3600)
+    return (linhas / horas).quantize(D("0.1")) if horas else None
+
+
+def wms_corte_pct(tenant, ini, fim, filters=None):
+    qs = _os(tenant, ini, fim, filters)
+    return _pct(_sum(qs, "qty_canceled") or ZERO, _sum(qs, "qty"))
+
+
+def wms_erros_conferencia(tenant, ini, fim, filters=None):
+    v = _sum(_os(tenant, ini, fim, filters), "errors")
+    return D(v) if v is not None else None
+
+
+# --- Entrega lida direto do WinThor (PCCARREG: NUMENT, NUMCID, KM) -------------
+# O que o roteirizador mostra por carga o WinThor também guarda: clientes e
+# praças distintas (rotina 1743) e o odômetro do acerto. Vale para qualquer
+# cliente, com ou sem FusionTrak.
+
+def entregas_por_carga(tenant, ini, fim, filters=None):
+    qs = _cargas(tenant, ini, fim, filters).filter(num_customers__isnull=False)
+    n = qs.count()
+    v = _sum(qs, "num_customers")
+    return (D(v) / n).quantize(D("0.1")) if n and v is not None else None
+
+
+def cidades_por_carga_erp(tenant, ini, fim, filters=None):
+    qs = _cargas(tenant, ini, fim, filters).filter(num_cities__isnull=False)
+    n = qs.count()
+    v = _sum(qs, "num_cities")
+    return (D(v) / n).quantize(D("0.1")) if n and v is not None else None
+
+
+def km_por_carga(tenant, ini, fim, filters=None):
+    """KMFINAL − KMINICIAL do acerto, nas cargas com odômetro preenchido."""
+    qs = _cargas(tenant, ini, fim, filters).filter(km_start__gt=0, km_end__gt=F("km_start"))
+    n = qs.count()
+    if not n:
+        return None
+    expr = ExpressionWrapper(F("km_end") - F("km_start"), output_field=DecimalField(max_digits=12, decimal_places=1))
+    return (D(_sum(qs, expr)) / n).quantize(D("0.1"))
+
+
+def km_por_entrega(tenant, ini, fim, filters=None):
+    qs = _cargas(tenant, ini, fim, filters).filter(km_start__gt=0, km_end__gt=F("km_start"), num_invoices__gt=0)
+    expr = ExpressionWrapper(F("km_end") - F("km_start"), output_field=DecimalField(max_digits=12, decimal_places=1))
+    km, notas = _sum(qs, expr), _sum(qs, "num_invoices")
+    return (D(km) / D(notas)).quantize(D("0.01")) if km is not None and notas else None
+
+
+def cargas_sem_km_pct(tenant, ini, fim, filters=None):
+    """% das cargas retornadas sem odômetro no acerto (dado que o roteirizador cobra)."""
+    qs = _cargas(tenant, ini, fim, filters).filter(return_date__isnull=False)
+    n = qs.count()
+    return _pct(qs.filter(Q(km_end__isnull=True) | Q(km_end__lte=0)).count(), n) if n else None
+
+
+# --- Roteirização (FusionTrak) --------------------------------------------------
+
+def _rotas(tenant, ini, fim, filters):
+    from .models import RouteLoad
+
+    return RouteLoad.objects.filter(tenant=tenant, departure_date__range=(ini, fim)).filter(_branch_q(filters))
+
+
+def cargas_roteirizadas_pct(tenant, ini, fim, filters=None):
+    n = cargas_expedidas(tenant, ini, fim, filters)
+    return _pct(_rotas(tenant, ini, fim, filters).filter(routed_at__isnull=False).count(), n) if n else None
+
+
+def ocupacao_peso_pct(tenant, ini, fim, filters=None):
+    qs = _rotas(tenant, ini, fim, filters).filter(max_weight__gt=0)
+    return _pct(_sum(qs, "weight") or ZERO, _sum(qs, "max_weight"))
+
+
+def entregas_por_carga_roteirizada(tenant, ini, fim, filters=None):
+    qs = _rotas(tenant, ini, fim, filters)
+    n = qs.count()
+    v = _sum(qs, "num_customers")
+    return (D(v) / n).quantize(D("0.1")) if n and v is not None else None
+
+
+def cidades_por_carga(tenant, ini, fim, filters=None):
+    qs = _rotas(tenant, ini, fim, filters)
+    n = qs.count()
+    v = _sum(qs, "num_cities")
+    return (D(v) / n).quantize(D("0.1")) if n and v is not None else None
+
+
+def ocorrencias_entrega(tenant, ini, fim, filters=None):
+    from .models import DeliveryEvent
+
+    return D(DeliveryEvent.objects.filter(tenant=tenant, occurred_at__range=(ini, fim)).exclude(reason_id__isnull=True).exclude(reason_id=0).count())
+
+
+def entregas_com_ocorrencia_pct(tenant, ini, fim, filters=None):
+    from .models import DeliveryEvent
+
+    qs = DeliveryEvent.objects.filter(tenant=tenant, occurred_at__range=(ini, fim), order_number__gt="")
+    n = qs.values("order_number").distinct().count()
+    return _pct(qs.exclude(reason_id__isnull=True).exclude(reason_id=0).values("order_number").distinct().count(), n) if n else None
+
+
 # --- Catálogo ----------------------------------------------------------------
 
 def _m(key, label, unit, polarity, aggregation, group, description, entities, fn, decimals=2):
@@ -1150,6 +1415,68 @@ CATALOG = [
        "Funcionários com TIPOMOTORISTA ativos.", ["employee"], motoristas_ativos, 0),
     _m("faturamento_por_funcionario", "Faturamento por funcionário", "R$", "maior_melhor", "media", "Pessoas",
        "Faturamento do mês dividido pelo headcount.", ["sales_invoice", "employee"], faturamento_por_funcionario),
+    # Força de vendas
+    _m("valor_pedidos", "Venda transmitida (pedidos)", "R$", "maior_melhor", "soma", "Força de vendas",
+       "Valor dos pedidos digitados no período, sem bonificação (PCPEDC.VLATEND).", ["order"], valor_pedidos),
+    _m("pedidos_bloqueados_valor", "Venda bloqueada", "R$", "menor_melhor", "ultimo", "Força de vendas",
+       "Pedidos pendentes na posição B (bloqueio comercial/financeiro).", ["order"], pedidos_bloqueados_valor),
+    _m("pedidos_bloqueados_pct", "Pedidos bloqueados", "%", "menor_melhor", "media", "Força de vendas",
+       "% dos pedidos do período que estão bloqueados.", ["order"], pedidos_bloqueados_pct),
+    _m("comissao_valor", "Comissão gerada", "R$", "menor_melhor", "soma", "Força de vendas",
+       "PERCOM × valor dos itens faturados.", ["sales_invoice_item"], comissao_valor),
+    _m("comissao_pct", "Comissão sobre a venda", "%", "menor_melhor", "media", "Força de vendas",
+       "Comissão gerada sobre o valor vendido nos itens.", ["sales_invoice_item"], comissao_pct),
+    _m("clientes_curva_a_pct", "Clientes curva A", "%", "maior_melhor", "media", "Força de vendas",
+       "% dos clientes positivados que fazem 80 % da venda.", ["sales_invoice"], clientes_curva_a_pct),
+    _m("skus_curva_a_pct", "Produtos curva A", "%", "maior_melhor", "media", "Força de vendas",
+       "% dos produtos vendidos que fazem 80 % da venda.", ["sales_invoice_item"], skus_curva_a_pct),
+    _m("mix_por_cliente", "Mix por cliente", "un", "maior_melhor", "media", "Força de vendas",
+       "Produtos distintos por cliente positivado.", ["sales_invoice_item"], mix_por_cliente, 1),
+    _m("credito_disponivel_carteira", "Crédito disponível na carteira (aprox.)", "R$", "maior_melhor", "ultimo", "Força de vendas",
+       "Limite − títulos em aberto − pedidos pendentes, somado nos clientes com limite.", ["customer", "title_receivable", "order"], credito_disponivel_carteira),
+    _m("clientes_sem_credito_pct", "Clientes sem crédito disponível", "%", "menor_melhor", "ultimo", "Força de vendas",
+       "% dos clientes com limite cujo crédito disponível está zerado.", ["customer", "title_receivable", "order"], clientes_sem_credito_pct),
+    _m("clientes_positivados_delta", "Variação de positivados", "un", "maior_melhor", "soma", "Força de vendas",
+       "Positivados no período menos os do período anterior.", ["sales_invoice"], clientes_positivados_delta, 0),
+    # WMS (PCMOVENDPEND agregada por OS)
+    _m("wms_os_concluidas", "OS de separação concluídas", "un", "maior_melhor", "soma", "WMS",
+       "Ordens de serviço de saída com separação concluída no período.", ["wms_os"], lambda t, i, f, fl=None: wms_os_concluidas(t, i, f, fl), 0),
+    _m("wms_tempo_separacao_min", "Tempo médio de separação", "min", "menor_melhor", "media", "WMS",
+       "Minutos entre início e fim da separação por OS, ponderado por linhas.", ["wms_os"], lambda t, i, f, fl=None: wms_tempo_separacao_min(t, i, f, fl), 1),
+    _m("wms_tempo_conferencia_min", "Tempo médio de conferência", "min", "menor_melhor", "media", "WMS",
+       "Minutos entre início e fim da conferência por OS.", ["wms_os"], lambda t, i, f, fl=None: wms_tempo_conferencia_min(t, i, f, fl), 1),
+    _m("wms_os_pendentes", "OS de saída pendentes", "un", "menor_melhor", "ultimo", "WMS",
+       "OS de saída abertas (sem fim de separação) no fim do período.", ["wms_os"], lambda t, i, f, fl=None: wms_os_pendentes(t, i, f, fl), 0),
+    _m("wms_linhas_por_hora", "Linhas separadas por hora", "un", "maior_melhor", "media", "WMS",
+       "Linhas de OS concluídas ÷ horas de separação.", ["wms_os"], lambda t, i, f, fl=None: wms_linhas_por_hora(t, i, f, fl), 1),
+    _m("wms_corte_pct", "Corte na separação", "%", "menor_melhor", "media", "WMS",
+       "Quantidade cancelada/cortada sobre a quantidade pedida nas OS.", ["wms_os"], lambda t, i, f, fl=None: wms_corte_pct(t, i, f, fl)),
+    _m("wms_erros_conferencia", "Erros de conferência", "un", "menor_melhor", "soma", "WMS",
+       "Erros apontados na conferência das OS (QTERROS).", ["wms_os"], lambda t, i, f, fl=None: wms_erros_conferencia(t, i, f, fl), 0),
+    # Entrega direto do WinThor (PCCARREG)
+    _m("entregas_por_carga", "Entregas por carga", "un", "maior_melhor", "media", "Logística",
+       "PCCARREG.NUMENT (clientes distintos) por carga.", ["load"], entregas_por_carga, 1),
+    _m("cidades_por_carga_erp", "Praças por carga", "un", "menor_melhor", "media", "Logística",
+       "PCCARREG.NUMCID (praças distintas) por carga.", ["load"], cidades_por_carga_erp, 1),
+    _m("km_por_carga", "Km rodados por carga", "km", "menor_melhor", "media", "Logística",
+       "KMFINAL − KMINICIAL do acerto, nas cargas com odômetro.", ["load"], km_por_carga, 1),
+    _m("km_por_entrega", "Km por entrega", "km", "menor_melhor", "media", "Logística",
+       "Km rodados ÷ notas entregues.", ["load"], km_por_entrega),
+    _m("cargas_sem_km_pct", "Cargas sem odômetro no acerto", "%", "menor_melhor", "media", "Logística",
+       "Cargas retornadas sem KMFINAL preenchido.", ["load"], cargas_sem_km_pct),
+    # Roteirização (FusionTrak)
+    _m("cargas_roteirizadas_pct", "Cargas roteirizadas", "%", "maior_melhor", "media", "Roteirização",
+       "Cargas expedidas que passaram pelo roteirizador.", ["route_load", "load"], lambda t, i, f, fl=None: cargas_roteirizadas_pct(t, i, f, fl)),
+    _m("ocupacao_peso_pct", "Ocupação do veículo (peso)", "%", "maior_melhor", "media", "Roteirização",
+       "Peso da carga sobre o peso máximo do veículo, nas cargas roteirizadas.", ["route_load"], lambda t, i, f, fl=None: ocupacao_peso_pct(t, i, f, fl)),
+    _m("entregas_por_carga_roteirizada", "Entregas por carga roteirizada", "un", "maior_melhor", "media", "Roteirização",
+       "Clientes por carga no roteirizador.", ["route_load"], lambda t, i, f, fl=None: entregas_por_carga_roteirizada(t, i, f, fl), 1),
+    _m("cidades_por_carga", "Cidades por carga", "un", "menor_melhor", "media", "Roteirização",
+       "Cidades atendidas por carga roteirizada.", ["route_load"], lambda t, i, f, fl=None: cidades_por_carga(t, i, f, fl), 1),
+    _m("ocorrencias_entrega", "Ocorrências de entrega", "un", "menor_melhor", "soma", "Roteirização",
+       "Eventos de entrega com ocorrência (recusa, devolução, reentrega) no período.", ["delivery_event"], lambda t, i, f, fl=None: ocorrencias_entrega(t, i, f, fl), 0),
+    _m("entregas_com_ocorrencia_pct", "Entregas com ocorrência", "%", "menor_melhor", "media", "Roteirização",
+       "Pedidos com evento de ocorrência sobre pedidos entregues.", ["delivery_event"], lambda t, i, f, fl=None: entregas_com_ocorrencia_pct(t, i, f, fl)),
 ]
 
 METRICS = {m.key: m for m in CATALOG}

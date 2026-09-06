@@ -21,6 +21,7 @@ from .models import (
     Branch,
     CashMovement,
     Customer,
+    DeliveryEvent,
     DeliveryLoad,
     Employee,
     ErpRecord,
@@ -29,12 +30,14 @@ from .models import (
     Order,
     Product,
     PurchaseInvoice,
+    RouteLoad,
     SalesInvoice,
     SalesInvoiceItem,
     SalesRep,
     SalesTarget,
     StockBalance,
     Supplier,
+    WmsOrder,
 )
 
 logger = logging.getLogger(__name__)
@@ -59,6 +62,9 @@ ENTITY_MODELS = {
     "load": DeliveryLoad,
     "target": SalesTarget,
     "target_daily": SalesTarget,
+    "wms_os": WmsOrder,
+    "route_load": RouteLoad,
+    "delivery_event": DeliveryEvent,
 }
 
 ENTITY_DEFAULTS = {
@@ -87,6 +93,8 @@ ENTITY_FKS = {
     "load": {"branch": Branch},
     "target": {"branch": Branch, "sales_rep": SalesRep},
     "target_daily": {"branch": Branch, "sales_rep": SalesRep},
+    "wms_os": {"branch": Branch},
+    "route_load": {"branch": Branch},
 }
 
 REQUIRED_FKS = {

@@ -24,7 +24,7 @@ ORDEM_DE_VALOR = [
     "branch", "salesrep", "supplier", "employee", "customer", "product",
     "sales_invoice", "sales_invoice_item", "title_receivable", "title_payable",
     "financial_snapshot", "bank_account", "cash_movement", "stock", "order",
-    "purchase", "load", "target", "target_daily",
+    "purchase", "load", "target", "target_daily", "wms_os", "route_load", "delivery_event",
 ]
 
 WINTHOR_QUERIES = [
@@ -330,7 +330,8 @@ GROUP BY N.NUMTRANSENT
         "since_column": "DTULTALTER",
         "sql": """
 SELECT C.NUMCAR, C.CODFILIALSAIDA, E.NOME AS MOTORISTA, V.PLACA, C.CODROTAPRINC,
-       C.DESTINO, C.NUMNOTAS, C.TOTPESO, C.VLTOTAL, C.VLFRETE,
+       C.DESTINO, C.NUMNOTAS, C.NUMENT, C.NUMCID, C.KMINICIAL, C.KMFINAL,
+       C.TOTPESO, C.VLTOTAL, C.VLFRETE,
        TO_CHAR(C.DTSAIDA,'YYYY-MM-DD') AS DTSAIDA,
        TO_CHAR(C.DTRETORNO,'YYYY-MM-DD') AS DTRETORNO,
        CASE WHEN C.DT_CANCEL IS NOT NULL THEN 'canceled'
@@ -386,6 +387,76 @@ WHERE R.DATA >= ADD_MONTHS(TRUNC(SYSDATE,'MM'), -12)
 GROUP BY R.CODFILIAL, R.CODUSUR, R.DATA
 HAVING (SUM(NVL(R.VLVENDAPREV,0)) > 0 OR SUM(NVL(R.NUMCLIPOS,0)) > 0 OR SUM(NVL(R.QTPEDPREV,0)) > 0)
    AND (:since IS NULL OR MAX(NVL(R.DTMXSALTER, R.DATA)) > TO_DATE(:since,'YYYY-MM-DD HH24:MI:SS'))
+""",
+    },
+    {  # PCMOVENDPEND — a OS do WMS, agregada por NUMOS (uma linha por produto no
+       # ERP). Só clientes com WMS: `opcional` faz o agente desistir em silêncio
+       # se a tabela não existir ou não tiver GRANT. Janela curta (3 meses): é a
+       # tabela mais movimentada do armazém. Reprocessa 3 dias por ciclo.
+        "entity": "wms_os",
+        "label": "OS do WMS (PCMOVENDPEND)",
+        "every_minutes": 60,
+        "incremental": True,
+        "since_column": "DATA",
+        "batch": 1000,
+        "opcional": True,
+        "backfill_meses": 3,
+        "backfill_passo": 1,
+        "sql": """
+SELECT TO_CHAR(M.NUMOS) AS NUMOS, MAX(M.TIPOOS) AS TIPOOS, MAX(M.CODOPER) AS CODOPER,
+       MAX(M.CODFILIAL) AS CODFILIAL, MAX(M.NUMPED) AS NUMPED, MAX(M.NUMCAR) AS NUMCAR,
+       TO_CHAR(MIN(M.DATA),'YYYY-MM-DD') AS DATA, MAX(M.POSICAO) AS POSICAO,
+       COUNT(*) AS LINHAS,
+       SUM(NVL(M.QT,0)) AS QT, SUM(NVL(M.QTSEPARADA,0)) AS QTSEPARADA,
+       SUM(NVL(M.QTCONFERIDA,0)) AS QTCONFERIDA, SUM(NVL(M.QTCANCEL,0)) AS QTCANCEL,
+       SUM(NVL(M.QTERROS,0)) AS QTERROS,
+       TO_CHAR(MIN(M.DTINICIOOS),'YYYY-MM-DD HH24:MI:SS') AS DTINICIOOS,
+       TO_CHAR(CASE WHEN COUNT(*) = COUNT(M.DTFIMSEPARACAO) THEN MAX(M.DTFIMSEPARACAO) END,'YYYY-MM-DD HH24:MI:SS') AS DTFIMSEPARACAO,
+       TO_CHAR(MIN(M.DTINICIOCONFERENCIA),'YYYY-MM-DD HH24:MI:SS') AS DTINICIOCONFERENCIA,
+       TO_CHAR(CASE WHEN COUNT(*) = COUNT(M.DTFIMCONFERENCIA) THEN MAX(M.DTFIMCONFERENCIA) END,'YYYY-MM-DD HH24:MI:SS') AS DTFIMCONFERENCIA,
+       MAX(M.CODFUNCOS) AS CODFUNCOS, MAX(M.CODFUNCCONF) AS CODFUNCCONF
+FROM PCMOVENDPEND M
+WHERE M.DTESTORNO IS NULL
+  AND M.DATA >= ADD_MONTHS(TRUNC(SYSDATE), -:janela)
+  AND (:since IS NULL OR M.DATA >= TRUNC(SYSDATE) - 3)
+GROUP BY M.NUMOS
+""",
+    },
+    {  # FusionTrak — cargas enviadas ao roteirizador (schema FUSIONT). Opcional:
+       # só existe em quem usa FusionTrak; precisa de GRANT no schema FUSIONT.
+        "entity": "route_load",
+        "label": "Cargas roteirizadas (FusionTrak)",
+        "every_minutes": 120,
+        "incremental": True,
+        "since_column": "T10_DATA_SAIDA",
+        "opcional": True,
+        "sql": """
+SELECT TO_CHAR(C.CODIGO_INT) AS CODIGO_INT, C.CARGAS_GERADAS_ERP, C.T43_CODIGO_FILIAL_ERP,
+       TO_CHAR(C.T10_DATA_SAIDA,'YYYY-MM-DD') AS T10_DATA_SAIDA,
+       TO_CHAR(R.DTROTEIRIZACAO,'YYYY-MM-DD') AS DTROTEIRIZACAO,
+       C.T06_CODIGO_ERP, C.T05_CODIGO_ERP, C.CODROTAPRINC,
+       C.PESO, C.VOLUME, C.T06_PESO_MAX_ENTREGAS, C.T06_VOLUME_MAX_ENTREGAS, C.VALORTOTAL,
+       C.NUMITENS, C.NUMCLIENTES, C.NUMCIDADES, C.STATUS_INT
+FROM FUSIONT.FUSIONTRAK_INT_CARGA C
+LEFT JOIN FUSIONT.FUSIONTRAK_CARGAS_ROTEIRIZADAS R ON TO_CHAR(R.NUMCAR) = C.CARGAS_GERADAS_ERP
+WHERE C.T10_DATA_SAIDA >= ADD_MONTHS(TRUNC(SYSDATE), -12)
+  AND (:since IS NULL OR C.T10_DATA_SAIDA >= TRUNC(SYSDATE) - 7)
+""",
+    },
+    {  # FusionTrak — o que aconteceu na rua (ocorrências, km, posição).
+        "entity": "delivery_event",
+        "label": "Eventos de entrega (FusionTrak)",
+        "every_minutes": 60,
+        "incremental": True,
+        "since_column": "DATA_EVENTO",
+        "opcional": True,
+        "sql": """
+SELECT TO_CHAR(E.ID_PK) AS ID_PK, E.TIPO, TO_CHAR(E.DATA_EVENTO,'YYYY-MM-DD') AS DATA_EVENTO,
+       E.SEQ_PEDIDO_ERP, E.CARGA_ERP, E.MOTORISTA_CODIGO_ERP, E.VEICULO_PLACA, E.KMATUAL,
+       E.LATITUDE, E.LONGITUDE, E.MOTIVO_DEVOL_REENT_ID, E.OBS_MOTORISTA
+FROM FUSIONT.FUSIONTRAK_INT_EVENTOS E
+WHERE E.DATA_EVENTO >= ADD_MONTHS(TRUNC(SYSDATE), -12)
+  AND (:since IS NULL OR E.DATA_EVENTO >= TRUNC(SYSDATE) - 7)
 """,
     },
 ]
@@ -507,7 +578,9 @@ DEFAULT_SYNC = {
         "external_id": "NUMCAR", "number": "NUMCAR", "branch": "CODFILIALSAIDA",
         "driver": "MOTORISTA", "vehicle_plate": "PLACA", "route": "CODROTAPRINC",
         "destination": "DESTINO", "departure_date": "DTSAIDA", "return_date": "DTRETORNO",
-        "num_invoices": "NUMNOTAS", "total_weight": "TOTPESO", "total_value": "VLTOTAL",
+        "num_invoices": "NUMNOTAS", "num_customers": "NUMENT", "num_cities": "NUMCID",
+        "km_start": "KMINICIAL", "km_end": "KMFINAL",
+        "total_weight": "TOTPESO", "total_value": "VLTOTAL",
         "freight": "VLFRETE", "status": "STATUS",
     }},
     "target": {"fields": {
@@ -522,6 +595,28 @@ DEFAULT_SYNC = {
         "external_id": "EXTERNAL_ID", "branch": "CODFILIAL", "sales_rep": "CODUSUR",
         "period": "DATA", "sales_value": "VLVENDAPREV", "positivation": "NUMCLIPOS",
         "orders": "QTPEDPREV", "sales_qty": "QTITENSPEDPREV", "positivation_pct": "PERVENDAPREV",
+    }},
+    "wms_os": {"fields": {
+        "external_id": "NUMOS", "number": "NUMOS", "os_type": "TIPOOS", "operation": "CODOPER",
+        "branch": "CODFILIAL", "order_number": "NUMPED", "load_number": "NUMCAR", "date": "DATA",
+        "position": "POSICAO", "lines": "LINHAS", "qty": "QT", "qty_picked": "QTSEPARADA",
+        "qty_checked": "QTCONFERIDA", "qty_canceled": "QTCANCEL", "errors": "QTERROS",
+        "picking_start": "DTINICIOOS", "picking_end": "DTFIMSEPARACAO",
+        "check_start": "DTINICIOCONFERENCIA", "check_end": "DTFIMCONFERENCIA",
+        "picker": "CODFUNCOS", "checker": "CODFUNCCONF",
+    }},
+    "route_load": {"fields": {
+        "external_id": "CODIGO_INT", "load_number": "CARGAS_GERADAS_ERP", "branch": "T43_CODIGO_FILIAL_ERP",
+        "departure_date": "T10_DATA_SAIDA", "routed_at": "DTROTEIRIZACAO", "vehicle_code": "T06_CODIGO_ERP",
+        "driver_code": "T05_CODIGO_ERP", "route": "CODROTAPRINC", "weight": "PESO", "volume": "VOLUME",
+        "max_weight": "T06_PESO_MAX_ENTREGAS", "max_volume": "T06_VOLUME_MAX_ENTREGAS", "total_value": "VALORTOTAL",
+        "num_items": "NUMITENS", "num_customers": "NUMCLIENTES", "num_cities": "NUMCIDADES", "status": "STATUS_INT",
+    }},
+    "delivery_event": {"fields": {
+        "external_id": "ID_PK", "event_type": "TIPO", "occurred_at": "DATA_EVENTO", "order_number": "SEQ_PEDIDO_ERP",
+        "load_number": "CARGA_ERP", "driver_code": "MOTORISTA_CODIGO_ERP", "vehicle_plate": "VEICULO_PLACA",
+        "km": "KMATUAL", "latitude": "LATITUDE", "longitude": "LONGITUDE", "reason_id": "MOTIVO_DEVOL_REENT_ID",
+        "note": "OBS_MOTORISTA",
     }},
 }
 
@@ -575,8 +670,10 @@ def winthor_tables():
 
     tables = set()
     for q in WINTHOR_QUERIES:
-        tables.update(re.findall(r"(?:FROM|JOIN)\s+(PC\w+)", q["sql"], re.IGNORECASE))
-    return sorted(tables)
+        # PC* do schema do ERP e tabelas de outros schemas (FUSIONT.X) usadas por
+        # entidades opcionais — o DBA dá GRANT só nas que existem no cliente.
+        tables.update(re.findall(r"(?:FROM|JOIN)\s+((?:[A-Z_]+\.)?PC\w+|[A-Z_]+\.[A-Z_]+)", q["sql"], re.IGNORECASE))
+    return sorted(t.upper() for t in tables)
 
 
 def oracle_user_script(usuario="TECHSYS"):
@@ -586,7 +683,11 @@ def oracle_user_script(usuario="TECHSYS"):
     para o schema dono (ALTER SESSION SET CURRENT_SCHEMA) e consulta sem prefixo.
     """
     tables = winthor_tables()
-    grants = "\n".join(f"GRANT SELECT ON __DONO__.{t} TO {usuario};" for t in tables)
+    grants = "\n".join(
+        (f"GRANT SELECT ON {t} TO {usuario};  -- opcional: só se o schema existir" if "." in t
+         else f"GRANT SELECT ON __DONO__.{t} TO {usuario};")
+        for t in tables
+    )
     return f"""-- ============================================================================
 -- Usuário {usuario} (somente leitura) no Oracle do WinThor — rode como DBA.
 -- Schema dono das tabelas: __DONO__   (confira com:

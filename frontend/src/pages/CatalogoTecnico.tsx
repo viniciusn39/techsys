@@ -28,6 +28,9 @@ interface Item {
   explanation: string;
   importance: string;
   rule: string;
+  origin: string;
+  origin_label: string;
+  requires_system: string;
   status: "pronto" | "planejado";
   requer: string[];
   tags: string[];
@@ -74,7 +77,7 @@ export function CatalogoTecnico() {
     const q = busca.trim().toLowerCase();
     return (data?.itens ?? []).filter((i) => {
       if (setor && i.sector !== setor) return false;
-      if (q && !`${i.code} ${i.name} ${i.rule} ${i.erp_metric} ${i.entities.join(" ")}`.toLowerCase().includes(q)) return false;
+      if (q && !`${i.code} ${i.name} ${i.rule} ${i.erp_metric} ${i.entities.join(" ")} ${i.origin_label} ${i.requires_system}`.toLowerCase().includes(q)) return false;
       return true;
     });
   }, [data, setor, busca]);
@@ -148,7 +151,7 @@ export function CatalogoTecnico() {
       <Panel title="KPIs">
         <div className="table-responsive">
           <table className="table table-sm align-middle mb-0">
-            <thead><tr><th>KPI</th><th>Setor</th><th>Métrica no espelho</th><th>Lê do WinThor</th><th>Meta</th><th>Situação</th></tr></thead>
+            <thead><tr><th>KPI</th><th>Setor</th><th>Origem da inteligência</th><th>Métrica no espelho</th><th>Lê do WinThor</th><th>Meta</th><th>Situação</th></tr></thead>
             <tbody>
               {visiveis.map((i) => (
                 <>
@@ -159,6 +162,12 @@ export function CatalogoTecnico() {
                       <div className="small text-muted-2">{i.description}</div>
                     </td>
                     <td className="small">{i.sector_label}</td>
+                    <td className="small">
+                      <span className={`badge ${i.origin === "winthor" ? "text-bg-primary" : i.origin === "techsys" ? "text-bg-dark" : "text-bg-info"}`}>{i.origin_label}</span>
+                      <div className="text-muted-2" style={{ fontSize: "0.72rem" }}>
+                        {i.requires_system ? <><i className="bi bi-exclamation-circle me-1" />só com: {i.requires_system}</> : <><i className="bi bi-check2-circle me-1" />qualquer banco WinThor</>}
+                      </div>
+                    </td>
                     <td className="small">{i.erp_metric ? <code>{i.erp_metric}</code> : <span className="text-muted-2">—</span>}<div className="text-muted-2" style={{ fontSize: "0.72rem" }}>{i.unit} · {i.aggregation} · {i.polarity === "menor_melhor" ? "menor é melhor" : "maior é melhor"}</div></td>
                     <td className="small">{i.entities.length ? i.entities.map((e) => data.consultas[e]?.label ?? e).join(", ") : <span className="text-muted-2">{i.requer.join(", ") || "—"}</span>}</td>
                     <td className="small">{i.erp_target ? <code>{i.erp_target}</code> : <span className="text-muted-2">manual</span>}</td>
@@ -166,7 +175,7 @@ export function CatalogoTecnico() {
                   </tr>
                   {aberto === i.code && (
                     <tr key={`${i.code}-det`}>
-                      <td colSpan={6}>
+                      <td colSpan={7}>
                         <div className="row g-3">
                           <div className="col-12">
                             {i.explanation && <div className="small mb-1"><strong>Como é calculado (texto do cliente):</strong> {i.explanation}</div>}

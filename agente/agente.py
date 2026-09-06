@@ -39,7 +39,7 @@ import time
 import traceback
 import urllib.request
 
-VERSION = "1.0.6"  # BUMP ao publicar: os agentes instalados se auto-atualizam
+VERSION = "1.0.7"  # BUMP ao publicar: os agentes instalados se auto-atualizam
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 BASE_DIR = os.path.dirname(os.path.abspath(sys.executable)) if getattr(sys, "frozen", False) else HERE
@@ -650,6 +650,8 @@ def _progresso_da_carga():
         out.setdefault(entity, {})["janela"] = janela
     for entity, p in passes.items():
         out.setdefault(entity, {})["passe"] = p
+    for entity, motivo in (state.get("_indisponivel") or {}).items():
+        out.setdefault(entity, {})["indisponivel"] = motivo
     atual = next((e for e, p in passes.items() if p.get("em_andamento")), None)
     return {"entidades": out, "coletando": BUSY.is_set(), "atual": atual,
             "pausa": state.get("_pausa"), "load": _load_local()}
@@ -717,6 +719,12 @@ def remover_coluna(sql, coluna):
     return novo
 
 
+def _tabela_inexistente(erro):
+    """ORA-00942 (tabela/view não existe) ou ORA-01031 (sem privilégio)."""
+    txt = str(erro)
+    return "ORA-00942" in txt or "ORA-01031" in txt
+
+
 def _coluna_invalida(erro):
     txt = str(erro)
     if "ORA-00904" not in txt:
@@ -771,6 +779,10 @@ def run_sync(platform_api, oracle, plan, state, machine=""):
         if not _na_janela(q.get("horas")):
             continue
         inicio = time.time()
+        # Entidade OPCIONAL (WMS, roteirizador…): se a tabela não existe ou não
+        # tem GRANT neste cliente, desiste em silêncio e não tenta de novo.
+        if (state.get("_indisponivel") or {}).get(entity):
+            continue
         try:
             params = {}
             if ":since" in sql:
@@ -907,6 +919,13 @@ def run_sync(platform_api, oracle, plan, state, machine=""):
             auditoria.append({"entity": entity, "rows": len(rows),
                               "duration_ms": int((time.time() - inicio) * 1000), "ok": True})
         except Exception as exc:  # noqa: BLE001 — uma entidade não derruba as demais
+            if q.get("opcional") and _tabela_inexistente(exc):
+                state.setdefault("_indisponivel", {})[entity] = str(exc)[:160]
+                save_state(state)
+                _log("[sync] %s: opcional e indisponível neste ERP (%s) — não será mais tentada" % (entity, str(exc)[:80]))
+                platform_api.report_error("opcional:%s" % entity, "entidade opcional indisponível neste ERP: %s" % str(exc)[:160])
+                auditoria.append({"entity": entity, "rows": 0, "duration_ms": 0, "ok": True, "skipped": "indisponivel"})
+                continue
             _log("[sync] ERRO em %s: %s" % (entity, exc))
             platform_api.report_error("sync:%s" % entity, exc)
             auditoria.append({"entity": entity, "rows": 0,

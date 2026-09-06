@@ -337,6 +337,35 @@ class ColetorIngestTests(APITestCase):
         self.assertIn("def vlvendaprev", fat["target_formula"])
         self.assertIn("FROM PCNFSAID", d["consultas"]["sales_invoice"]["sql"])
         self.assertIn("filtro_notas_faturadas", d["bases"]["regras"])
+        por = {i["code"]: i for i in d["itens"]}
+        self.assertEqual((por["FAT"]["origin"], por["FAT"]["requires_system"]), ("winthor", ""))
+        self.assertEqual(por["FV_TRANSMITIDA"]["origin"], "forca_vendas")
+        self.assertEqual(por["DSO"]["origin"], "techsys")
+        self.assertIn("FusionTrak", por["ROTA_PCT"]["requires_system"])
+        self.assertIn("FUSIONT.FUSIONTRAK_INT_CARGA", d["consultas"]["route_load"]["sql"])
+
+    def test_metricas_por_vendedor_e_forca_de_vendas(self):
+        hoje = date.today().isoformat()
+        self.ingest("branch", [{"CODIGO": "1", "RAZAOSOCIAL": "Matriz"}])
+        self.ingest("salesrep", [{"CODUSUR": "7", "NOME": "Ana", "IS_ACTIVE": 1}, {"CODUSUR": "8", "NOME": "Bia", "IS_ACTIVE": 1}])
+        self.ingest("customer", [{"CODCLI": "1", "CLIENTE": "A", "LIMCRED": "1000"}, {"CODCLI": "2", "CLIENTE": "B", "LIMCRED": "500"}])
+        self.ingest("sales_invoice", [
+            {"NUMTRANSVENDA": "1", "NUMNOTA": "1", "CODFILIAL": "1", "CODUSUR": "7", "CODCLI": "1", "DTSAIDA": hoje, "CONDVENDA": 1, "VLTOTAL": "900"},
+            {"NUMTRANSVENDA": "2", "NUMNOTA": "2", "CODFILIAL": "1", "CODUSUR": "8", "CODCLI": "2", "DTSAIDA": hoje, "CONDVENDA": 1, "VLTOTAL": "100"},
+        ])
+        self.ingest("order", [
+            {"NUMPED": "10", "CODFILIAL": "1", "CODUSUR": "7", "CODCLI": "1", "DATA": hoje, "POSICAO": "B", "STATUS": "pending", "CONDVENDA": 1, "VLTOTAL": "300"},
+            {"NUMPED": "11", "CODFILIAL": "1", "CODUSUR": "8", "CODCLI": "2", "DATA": hoje, "POSICAO": "L", "STATUS": "pending", "CONDVENDA": 1, "VLTOTAL": "50"},
+        ])
+        self.ingest("title_receivable", [{"EXTERNAL_ID": "1-1", "CODCLI": "1", "VALOR": "600", "DTVENC": hoje, "STATUS": "open"}])
+        t = self.tenant
+        self.assertEqual(compute_metric("faturamento", t, date.today(), {"sales_rep": "7"}), 900)
+        self.assertEqual(compute_metric("faturamento", t, date.today(), {"sales_rep": "7,8"}), 1000)
+        self.assertEqual(compute_metric("pedidos_bloqueados_valor", t, date.today()), 300)
+        self.assertEqual(compute_metric("clientes_curva_a_pct", t, date.today()), 50)   # 1 de 2 clientes faz 90 %
+        # crédito: cliente 1 = 1000 − 600 − 300 = 100; cliente 2 = 500 − 0 − 50 = 450
+        self.assertEqual(compute_metric("credito_disponivel_carteira", t, date.today()), 550)
+        self.assertEqual(compute_metric("clientes_sem_credito_pct", t, date.today()), 0)
 
     def test_heartbeat_atualiza_health_e_last_seen(self):
         r = self.client.post("/api/coletor/heartbeat/", {"oracle_ok": True, "agent_version": "1.0.0"},

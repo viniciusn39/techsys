@@ -685,6 +685,7 @@ class KpiCatalogoTecnicoView(APIView):
                 "perspective": t.perspective, "unit": t.unit, "decimals": t.decimals, "polarity": t.polarity,
                 "aggregation": t.aggregation, "description": t.description, "rule": t.rule,
                 "explanation": t.explanation, "importance": t.importance,
+                "origin": t.origin, "origin_label": t.get_origin_display(), "requires_system": t.requires_system,
                 "status": t.status, "requer": t.requer, "tags": t.tags, "default_filters": t.default_filters,
                 "erp_metric": t.erp_metric, "metric_label": metric.label if metric else "",
                 "entities": list(metric.entities) if metric else [],

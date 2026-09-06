@@ -626,6 +626,10 @@ class DeliveryLoad(ErpModel):
     departure_date = models.DateField(null=True, blank=True)
     return_date = models.DateField(null=True, blank=True)
     num_invoices = models.IntegerField(null=True, blank=True)
+    num_customers = models.IntegerField(null=True, blank=True)   # PCCARREG.NUMENT (clientes distintos)
+    num_cities = models.IntegerField(null=True, blank=True)      # PCCARREG.NUMCID (praças distintas)
+    km_start = models.DecimalField(max_digits=12, decimal_places=1, null=True, blank=True)   # KMINICIAL (acerto)
+    km_end = models.DecimalField(max_digits=12, decimal_places=1, null=True, blank=True)     # KMFINAL
     total_weight = models.DecimalField(max_digits=14, decimal_places=3, null=True, blank=True)
     total_value = models.DecimalField(max_digits=14, decimal_places=2, null=True, blank=True)
     freight = models.DecimalField(max_digits=14, decimal_places=2, null=True, blank=True)
@@ -668,6 +672,85 @@ class SalesTarget(ErpModel):
         indexes = [models.Index(fields=["tenant", "period"])]
 
 
+class WmsOrder(ErpModel):
+    """Ordem de serviço do WMS (PCMOVENDPEND) agregada por NUMOS.
+
+    Uma OS tem uma linha por produto no WinThor; aqui vira uma linha por OS com
+    quantidades somadas e os carimbos de início/fim de separação e conferência.
+    É o que dá tempo de separação, produtividade, corte e erro do armazém.
+    """
+
+    number = models.CharField(max_length=30)                      # NUMOS
+    os_type = models.CharField(max_length=6, blank=True)          # TIPOOS
+    operation = models.CharField(max_length=4, blank=True)        # CODOPER (S* saída, E* entrada)
+    branch = models.ForeignKey(Branch, on_delete=models.SET_NULL, null=True, blank=True, related_name="wms_orders")
+    order_number = models.CharField(max_length=30, blank=True)    # NUMPED
+    load_number = models.CharField(max_length=30, blank=True)     # NUMCAR
+    date = models.DateField(null=True, blank=True)                # DATA
+    position = models.CharField(max_length=2, blank=True)         # POSICAO (P pendente, C cancelada)
+    lines = models.IntegerField(default=0)                        # linhas (produtos) da OS
+    qty = models.DecimalField(max_digits=16, decimal_places=3, default=0)          # Σ QT
+    qty_picked = models.DecimalField(max_digits=16, decimal_places=3, default=0)   # Σ QTSEPARADA
+    qty_checked = models.DecimalField(max_digits=16, decimal_places=3, default=0)  # Σ QTCONFERIDA
+    qty_canceled = models.DecimalField(max_digits=16, decimal_places=3, default=0) # Σ QTCANCEL
+    errors = models.IntegerField(default=0)                       # Σ QTERROS
+    picking_start = models.DateTimeField(null=True, blank=True)   # MIN DTINICIOOS
+    picking_end = models.DateTimeField(null=True, blank=True)     # MAX DTFIMSEPARACAO (só se todas as linhas)
+    check_start = models.DateTimeField(null=True, blank=True)     # MIN DTINICIOCONFERENCIA
+    check_end = models.DateTimeField(null=True, blank=True)       # MAX DTFIMCONFERENCIA
+    picker = models.CharField(max_length=20, blank=True)          # CODFUNCOS
+    checker = models.CharField(max_length=20, blank=True)         # CODFUNCCONF
+
+    class Meta:
+        constraints = [models.UniqueConstraint(fields=["tenant", "external_id"], name="uniq_wms_order_ext")]
+        indexes = [models.Index(fields=["tenant", "date"])]
+
+
+class RouteLoad(ErpModel):
+    """Carga enviada ao roteirizador (FusionTrak FUSIONT.FUSIONTRAK_INT_CARGA)."""
+
+    load_number = models.CharField(max_length=30, blank=True)     # CARGAS_GERADAS_ERP / NUMCAR
+    branch = models.ForeignKey(Branch, on_delete=models.SET_NULL, null=True, blank=True, related_name="route_loads")
+    departure_date = models.DateField(null=True, blank=True)      # T10_DATA_SAIDA
+    routed_at = models.DateField(null=True, blank=True)           # FUSIONTRAK_CARGAS_ROTEIRIZADAS.DTROTEIRIZACAO
+    vehicle_code = models.CharField(max_length=20, blank=True)    # T06_CODIGO_ERP
+    driver_code = models.CharField(max_length=20, blank=True)     # T05_CODIGO_ERP
+    route = models.CharField(max_length=20, blank=True)           # CODROTAPRINC
+    weight = models.DecimalField(max_digits=14, decimal_places=3, null=True, blank=True)
+    volume = models.DecimalField(max_digits=14, decimal_places=3, null=True, blank=True)
+    max_weight = models.DecimalField(max_digits=14, decimal_places=3, null=True, blank=True)   # T06_PESO_MAX_ENTREGAS
+    max_volume = models.DecimalField(max_digits=14, decimal_places=3, null=True, blank=True)
+    total_value = models.DecimalField(max_digits=14, decimal_places=2, null=True, blank=True)
+    num_items = models.IntegerField(null=True, blank=True)
+    num_customers = models.IntegerField(null=True, blank=True)
+    num_cities = models.IntegerField(null=True, blank=True)
+    status = models.CharField(max_length=10, blank=True)          # STATUS_INT
+
+    class Meta:
+        constraints = [models.UniqueConstraint(fields=["tenant", "external_id"], name="uniq_route_load_ext")]
+        indexes = [models.Index(fields=["tenant", "departure_date"])]
+
+
+class DeliveryEvent(ErpModel):
+    """Evento de entrega vindo da rua (FusionTrak FUSIONT.FUSIONTRAK_INT_EVENTOS)."""
+
+    event_type = models.CharField(max_length=10, blank=True)      # TIPO (7 = ocorrência que vira PCMENS)
+    occurred_at = models.DateField(null=True, blank=True)
+    order_number = models.CharField(max_length=30, blank=True)    # SEQ_PEDIDO_ERP
+    load_number = models.CharField(max_length=30, blank=True)
+    driver_code = models.CharField(max_length=20, blank=True)     # MOTORISTA_CODIGO_ERP
+    vehicle_plate = models.CharField(max_length=12, blank=True)
+    km = models.DecimalField(max_digits=12, decimal_places=1, null=True, blank=True)   # KMATUAL
+    latitude = models.CharField(max_length=30, blank=True)
+    longitude = models.CharField(max_length=30, blank=True)
+    reason_id = models.IntegerField(null=True, blank=True)        # MOTIVO_DEVOL_REENT_ID
+    note = models.CharField(max_length=300, blank=True)           # OBS_MOTORISTA
+
+    class Meta:
+        constraints = [models.UniqueConstraint(fields=["tenant", "external_id"], name="uniq_delivery_event_ext")]
+        indexes = [models.Index(fields=["tenant", "occurred_at"])]
+
+
 class KpiTemplate(models.Model):
     """Modelo de KPI por ERP — o catálogo que a empresa "pluga" com um clique.
 
@@ -688,6 +771,9 @@ class KpiTemplate(models.Model):
         LOGISTICA = "logistica", "Logística"
         FISCAL = "fiscal", "Fiscal"
         RH = "rh", "Pessoas / RH"
+        FORCA_VENDAS = "forca_vendas", "Força de vendas"
+        WMS = "wms", "Armazém / WMS"
+        ROTEIRIZACAO = "roteirizacao", "Roteirização / entrega"
         DIRETORIA = "diretoria", "Diretoria"
 
     class Perspectiva(models.TextChoices):
@@ -700,7 +786,18 @@ class KpiTemplate(models.Model):
         PRONTO = "pronto", "Pronto (calculado do espelho)"
         PLANEJADO = "planejado", "Planejado (depende de coleta adicional)"
 
+    class Origem(models.TextChoices):
+        WINTHOR = "winthor", "Regra do próprio WinThor"
+        FORCA_VENDAS = "forca_vendas", "Aprendida da força de vendas (Ion / MaxSoluções)"
+        WMS = "wms", "Módulo WMS do WinThor"
+        ROTEIRIZADOR = "roteirizador", "Roteirizador (FusionTrak)"
+        TECHSYS = "techsys", "Composição TechSys sobre dados do ERP"
+
     erp = models.CharField(max_length=20, default=Connector.Erp.WINTHOR, db_index=True)
+    # De onde veio a inteligência do KPI (root) e o que o cliente precisa ter
+    # além do WinThor para o número existir ("" = qualquer banco WinThor).
+    origin = models.CharField(max_length=20, choices=Origem.choices, default=Origem.WINTHOR)
+    requires_system = models.CharField(max_length=120, blank=True)
     code = models.CharField(max_length=30)
     name = models.CharField(max_length=200)
     sector = models.CharField(max_length=20, choices=Setor.choices)
