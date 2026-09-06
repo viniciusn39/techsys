@@ -655,6 +655,29 @@ def preco_medio_item(tenant, ini, fim, filters=None):
     return _money(D(agg["v"]) / D(agg["q"])) if agg["q"] else None
 
 
+# --- Peso e volume vendidos (varredura: SUM(QTCONT × PESOLIQ) aparece em 300+ objetos) --
+
+_PESO = ExpressionWrapper(F("quantity") * F("product__net_weight"), output_field=DecimalField(max_digits=18, decimal_places=4))
+
+
+def peso_vendido_ton(tenant, ini, fim, filters=None):
+    """Toneladas vendidas: quantidade × peso líquido do produto (PCPRODUT.PESOLIQ)."""
+    v = _sum(_itens_venda(tenant, ini, fim, filters).filter(product__net_weight__gt=0), _PESO)
+    return (D(v) / 1000).quantize(D("0.01")) if v is not None else None
+
+
+def preco_medio_kg(tenant, ini, fim, filters=None):
+    qs = _itens_venda(tenant, ini, fim, filters).filter(product__net_weight__gt=0)
+    agg = qs.aggregate(v=Sum(_VALOR), p=Sum(_PESO))
+    return _money(D(agg["v"]) / D(agg["p"])) if agg["p"] else None
+
+
+def custo_medio_kg(tenant, ini, fim, filters=None):
+    qs = _itens_venda(tenant, ini, fim, filters).filter(product__net_weight__gt=0, cost__isnull=False)
+    agg = qs.aggregate(c=Sum(_CUSTO), p=Sum(_PESO))
+    return _money(D(agg["c"]) / D(agg["p"])) if agg["p"] else None
+
+
 # --- Financeiro: aging, prazos, liquidez --------------------------------------
 
 def a_receber_vencido_60_pct(tenant, ini, fim, filters=None):
@@ -1336,6 +1359,12 @@ CATALOG = [
        "(Venda − custo) / custo nos itens faturados.", ["sales_invoice_item"], markup_pct),
     _m("preco_medio_item", "Preço médio por unidade", "R$", "maior_melhor", "media", "Vendas",
        "Valor vendido ÷ quantidade nos itens faturados.", ["sales_invoice_item"], preco_medio_item),
+    _m("peso_vendido_ton", "Peso vendido", "t", "maior_melhor", "soma", "Vendas",
+       "Quantidade × PESOLIQ do produto nos itens faturados, em toneladas.", ["sales_invoice_item", "product"], peso_vendido_ton),
+    _m("preco_medio_kg", "Preço médio por kg", "R$", "maior_melhor", "media", "Vendas",
+       "Valor vendido ÷ quilos vendidos.", ["sales_invoice_item", "product"], preco_medio_kg),
+    _m("custo_medio_kg", "Custo médio por kg", "R$", "menor_melhor", "media", "Financeiro",
+       "Custo dos itens vendidos ÷ quilos vendidos.", ["sales_invoice_item", "product"], custo_medio_kg),
     # Financeiro (aging, prazos, liquidez, resultado)
     _m("a_receber_vencido_60_pct", "Carteira vencida há +60 dias", "%", "menor_melhor", "ultimo", "Financeiro",
        "Vencido há mais de 60 dias sobre o total em aberto.", ["title_receivable"], a_receber_vencido_60_pct),
