@@ -16,7 +16,7 @@ from datetime import date, timedelta
 from decimal import Decimal
 from typing import Callable, Optional
 
-from django.db.models import Count, DecimalField, ExpressionWrapper, F, Q, Sum
+from django.db.models import Case, Count, DecimalField, ExpressionWrapper, F, Q, Sum, Value, When
 
 from . import regras
 from .models import (
@@ -733,24 +733,32 @@ def preco_medio_item(tenant, ini, fim, filters=None):
 
 
 # --- Peso e volume vendidos (varredura: SUM(QTCONT × PESOLIQ) aparece em 300+ objetos) --
-
-_PESO = ExpressionWrapper(F("quantity") * F("product__net_weight"), output_field=DecimalField(max_digits=18, decimal_places=4))
+# Regra do WinThor: NVL(PCMOV.PESOLIQ, PCPRODUT.PESOLIQ). Muita base não preenche o
+# peso do produto; para item vendido por KG a quantidade já é o peso.
+_PESO = Case(
+    When(weight__gt=0, then=F("weight")),
+    When(product__unit="KG", then=F("quantity")),
+    When(product__net_weight__gt=0, then=F("quantity") * F("product__net_weight")),
+    default=Value(None),
+    output_field=DecimalField(max_digits=18, decimal_places=4),
+)
+_COM_PESO = Q(weight__gt=0) | Q(product__unit="KG") | Q(product__net_weight__gt=0)
 
 
 def peso_vendido_ton(tenant, ini, fim, filters=None):
-    """Toneladas vendidas: quantidade × peso líquido do produto (PCPRODUT.PESOLIQ)."""
-    v = _sum(_itens_venda(tenant, ini, fim, filters).filter(product__net_weight__gt=0), _PESO)
+    """Toneladas vendidas: PESOLIQ da linha, ou quantidade (item por KG), ou quantidade × peso do produto."""
+    v = _sum(_itens_venda(tenant, ini, fim, filters).filter(_COM_PESO), _PESO)
     return (D(v) / 1000).quantize(D("0.01")) if v is not None else None
 
 
 def preco_medio_kg(tenant, ini, fim, filters=None):
-    qs = _itens_venda(tenant, ini, fim, filters).filter(product__net_weight__gt=0)
+    qs = _itens_venda(tenant, ini, fim, filters).filter(_COM_PESO)
     agg = qs.aggregate(v=Sum(_VALOR), p=Sum(_PESO))
     return _money(D(agg["v"]) / D(agg["p"])) if agg["p"] else None
 
 
 def custo_medio_kg(tenant, ini, fim, filters=None):
-    qs = _itens_venda(tenant, ini, fim, filters).filter(product__net_weight__gt=0, cost__isnull=False)
+    qs = _itens_venda(tenant, ini, fim, filters).filter(_COM_PESO, cost__isnull=False)
     agg = qs.aggregate(c=Sum(_CUSTO), p=Sum(_PESO))
     return _money(D(agg["c"]) / D(agg["p"])) if agg["p"] else None
 

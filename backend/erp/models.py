@@ -477,6 +477,7 @@ class SalesInvoiceItem(ErpModel):
     commission_pct = models.DecimalField(max_digits=8, decimal_places=4, null=True, blank=True)
     cost = models.DecimalField(max_digits=14, decimal_places=4, null=True, blank=True)
     cost_real = models.DecimalField(max_digits=14, decimal_places=4, null=True, blank=True)
+    weight = models.DecimalField(max_digits=14, decimal_places=3, null=True, blank=True)   # PCMOV.PESOLIQ da linha (kg)
     moved_at = models.DateField(null=True, blank=True)
 
     class Meta:

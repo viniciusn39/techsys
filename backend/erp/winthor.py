@@ -171,7 +171,7 @@ WHERE N.DTSAIDA >= ADD_MONTHS(TRUNC(SYSDATE), -:janela)
 SELECT M.NUMTRANSITEM, M.NUMTRANSVENDA, M.NUMNOTA, M.CODOPER, M.CODFILIAL,
        M.CODPROD, M.CODCLI, M.CODUSUR, M.CODEPTO, M.CODSEC,
        M.QT, M.QTCX, M.PUNIT, M.PTABELA, M.VLDESCONTO,
-       M.CUSTOREAL, M.CUSTOFIN, M.NUMPED,
+       M.CUSTOREAL, M.CUSTOFIN, M.NUMPED, M.PESOLIQ,
        TO_CHAR(M.DTMOV,'YYYY-MM-DD') AS DTMOV
 FROM PCMOV M
 WHERE M.DTCANCEL IS NULL
@@ -727,7 +727,7 @@ DEFAULT_SYNC = {
         "customer": "CODCLI", "sales_rep": "CODUSUR", "department": "CODEPTO",
         "section": "CODSEC", "quantity": "QT", "boxes": "QTCX", "unit_price": "PUNIT",
         "table_price": "PTABELA", "discount": "VLDESCONTO", "cost_real": "CUSTOREAL",
-        "cost": "CUSTOFIN", "order_number": "NUMPED", "moved_at": "DTMOV",
+        "cost": "CUSTOFIN", "order_number": "NUMPED", "weight": "PESOLIQ", "moved_at": "DTMOV",
     }},
     "title_receivable": {"fields": {
         "external_id": "EXTERNAL_ID", "number": "DUPLIC", "installment": "PREST",
