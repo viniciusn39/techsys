@@ -1,8 +1,11 @@
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { Button, Form, Modal } from "react-bootstrap";
 import { api } from "../api/client";
 import { useAuth } from "../auth/AuthContext";
+import { BAR_MAX_WIDTH, BAR_RADIUS_H, vizTokens } from "../charts/theme";
+import { EChart } from "../components/EChart";
 import { EmptyState, Panel, Skeleton } from "../components/ui";
+import { useTheme } from "../hooks/useTheme";
 import type { Tenant } from "../types";
 
 interface TenantForm extends Partial<Tenant> {
@@ -15,11 +18,73 @@ const slugify = (s: string) =>
   s.toLowerCase().normalize("NFD").replace(/[̀-ͯ]/g, "")
     .replace(/[^a-z0-9]+/g, "-").replace(/(^-|-$)/g, "");
 
+interface Armazenamento { tenant: string; total_bytes: number; total_linhas: number; tabelas: { tabela: string; modelo: string; app: string; linhas: number; bytes: number; tabela_bytes: number }[] }
+
+const bytes = (n: number | null | undefined) => {
+  if (n === null || n === undefined) return "—";
+  const u = ["B", "KB", "MB", "GB", "TB"];
+  let i = 0; let v = n;
+  while (v >= 1024 && i < u.length - 1) { v /= 1024; i++; }
+  return `${v.toFixed(v >= 100 || i === 0 ? 0 : 1)} ${u[i]}`;
+};
+
+/** Modal: disco ocupado pelos dados da empresa, por tabela e no total. */
+function DiscoDaEmpresa({ tenant, onHide }: { tenant: Tenant; onHide: () => void }) {
+  const { isDark } = useTheme();
+  const t = vizTokens(isDark);
+  const [d, setD] = useState<Armazenamento | null>(null);
+  const [erro, setErro] = useState("");
+  useEffect(() => { api.get<Armazenamento>(`/api/tenants/${tenant.id}/armazenamento/`).then(setD).catch((e) => setErro(e.message)); }, [tenant.id]);
+  const option = useMemo(() => {
+    const rows = [...(d?.tabelas ?? [])].slice(0, 14).reverse();
+    return {
+      grid: { left: 4, right: 70, top: 6, bottom: 4, containLabel: true },
+      tooltip: { trigger: "item" as const, formatter: (p: any) => { const r = rows[p.dataIndex]; return `<strong>${bytes(r.bytes)}</strong><br/>${r.tabela}<br/><span style="color:${t.inkMuted}">${r.linhas.toLocaleString("pt-BR")} linhas · ${d && d.total_bytes ? Math.round(100 * r.bytes / d.total_bytes) : 0}% do total</span>`; } },
+      xAxis: { type: "value" as const, axisLabel: { formatter: (v: number) => bytes(v) } },
+      yAxis: { type: "category" as const, data: rows.map((r) => r.tabela.replace(/^(erp|indicators|strategy|plans|support|accounts|ai)_/, "")), axisLabel: { fontSize: 11, color: t.inkSecondary } },
+      series: [{ type: "bar" as const, barMaxWidth: BAR_MAX_WIDTH, itemStyle: { color: t.series[0], borderRadius: BAR_RADIUS_H }, label: { show: true, position: "right" as const, fontSize: 11, color: t.inkSecondary, formatter: (p: any) => bytes(p.value) }, data: rows.map((r) => r.bytes) }],
+    };
+  }, [d, t]);
+  return (
+    <Modal show onHide={onHide} size="lg">
+      <Modal.Header closeButton><Modal.Title className="fs-6"><i className="bi bi-hdd me-2" />Armazenamento · {tenant.name}</Modal.Title></Modal.Header>
+      <Modal.Body>
+        {erro ? <div className="alert alert-warning py-2 small">{erro}</div> : !d ? <Skeleton height={240} /> : (
+          <>
+            <div className="d-flex flex-wrap gap-3 mb-3">
+              <div className="p-3 rounded flex-grow-1" style={{ background: "var(--surface-sunken)" }}><div className="small text-muted-2">Total ocupado (dados + índices)</div><div className="fs-4 fw-bold">{bytes(d.total_bytes)}</div></div>
+              <div className="p-3 rounded flex-grow-1" style={{ background: "var(--surface-sunken)" }}><div className="small text-muted-2">Linhas da empresa</div><div className="fs-4 fw-bold">{d.total_linhas.toLocaleString("pt-BR")}</div></div>
+              <div className="p-3 rounded flex-grow-1" style={{ background: "var(--surface-sunken)" }}><div className="small text-muted-2">Tabelas com dados</div><div className="fs-4 fw-bold">{d.tabelas.length}</div></div>
+            </div>
+            {d.tabelas.length === 0 ? <EmptyState icon="bi-hdd" title="Sem dados ainda" /> : (
+              <>
+                <EChart option={option} height={Math.max(200, Math.min(14, d.tabelas.length) * 24 + 20)} />
+                <div className="table-responsive mt-2" style={{ maxHeight: 320, overflow: "auto" }}>
+                  <table className="table table-sm mb-0" style={{ fontSize: "0.8rem" }}>
+                    <thead><tr><th>Tabela</th><th className="num">Linhas</th><th className="num">Disco</th><th className="num">% do total</th></tr></thead>
+                    <tbody>
+                      {d.tabelas.map((r) => (
+                        <tr key={r.tabela}><td><code>{r.tabela}</code></td><td className="num">{r.linhas.toLocaleString("pt-BR")}</td><td className="num">{bytes(r.bytes)}</td><td className="num text-muted-2">{d.total_bytes ? (100 * r.bytes / d.total_bytes).toFixed(1) : "0"}%</td></tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+                <div className="small text-muted-2 mt-2">Estimativa: tamanho físico de cada tabela (dados + índices) rateado pela fração de linhas da empresa.</div>
+              </>
+            )}
+          </>
+        )}
+      </Modal.Body>
+    </Modal>
+  );
+}
+
 export function Tenants() {
   const { actAsTenant } = useAuth();
   const [rows, setRows] = useState<Tenant[] | null>(null);
   const [editing, setEditing] = useState<TenantForm | null>(null);
   const [error, setError] = useState("");
+  const [disco, setDisco] = useState<Tenant | null>(null);
 
   const load = useCallback(() => {
     api.get("/api/tenants/").then((d) => setRows(d.results ?? d)).catch(() => setRows([]));
@@ -98,6 +163,9 @@ export function Tenants() {
                     </td>
                     <td className="text-end">
                       <div className="d-flex gap-2 justify-content-end">
+                        <Button size="sm" variant="outline-secondary" onClick={() => setDisco(t)} title="Disco ocupado pelos dados">
+                          <i className="bi bi-hdd me-1" />Disco
+                        </Button>
                         <Button size="sm" variant="outline-secondary" onClick={() => actAsTenant(t.id)}>
                           <i className="bi bi-box-arrow-in-right me-1" />Acessar
                         </Button>
@@ -184,6 +252,7 @@ export function Tenants() {
           <Button onClick={save} disabled={!editing?.name || !editing?.slug}>Salvar</Button>
         </Modal.Footer>
       </Modal>
+      {disco && <DiscoDaEmpresa tenant={disco} onHide={() => setDisco(null)} />}
     </div>
   );
 }

@@ -251,3 +251,20 @@ class PerfisDeAcessoTests(APITestCase):
         self.assertEqual(self.client.patch(f"/api/access-profiles/{self.comercial.id}/", {"sectors": ["marketing"]}, format="json").status_code, 400)
         r = self.client.post("/api/access-profiles/", {"name": "Lojas", "key": "lojas", "sectors": ["vendas"], "modules": ["dashboard", "indicadores"]}, format="json")
         self.assertEqual(r.status_code, 201, r.content)
+
+
+class ArmazenamentoTests(APITestCase):
+    def test_root_ve_disco_por_tabela_da_empresa(self):
+        tenant = Tenant.objects.create(name="Acme", slug="acme-disco")
+        outro = Tenant.objects.create(name="Outra", slug="outra-disco")
+        root = User.objects.create_user("r@disco.com", "x", first_name="R", role=User.Role.ROOT)
+        Indicator.objects.create(tenant=tenant, code="A", name="a")
+        Indicator.objects.create(tenant=outro, code="B", name="b")
+        self.client.force_authenticate(root)
+        d = self.client.get(f"/api/tenants/{tenant.id}/armazenamento/").json()
+        ind = next(t for t in d["tabelas"] if t["tabela"] == "indicators_indicator")
+        self.assertEqual(ind["linhas"], 1)
+        self.assertGreaterEqual(d["total_bytes"], 0)
+        adm = User.objects.create_user("a@disco.com", "x", first_name="A", tenant=tenant, role=User.Role.ADMIN)
+        self.client.force_authenticate(adm)
+        self.assertEqual(self.client.get(f"/api/tenants/{tenant.id}/armazenamento/").status_code, 403)

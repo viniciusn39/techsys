@@ -33,6 +33,11 @@ class TenantViewSet(viewsets.ModelViewSet):
         tenant.save(update_fields=["is_active"])
         return Response(TenantSerializer(tenant).data)
 
+    @action(detail=True, methods=["get"])
+    def armazenamento(self, request, pk=None):
+        """Disco ocupado pelos dados da empresa, por tabela e no total."""
+        return Response({"tenant": pk, **armazenamento_do_tenant(self.get_object())})
+
 
 class UserViewSet(TenantScopedViewSet):
     queryset = User.objects.select_related("org_unit")
@@ -112,3 +117,37 @@ class AccessProfileViewSet(TenantScopedViewSet):
         if tenant is None:
             raise PermissionDenied("Nenhuma empresa selecionada.")
         return Response({"criados": seed_access_profiles(tenant)})
+
+
+def armazenamento_do_tenant(tenant):
+    """Quanto de disco os dados de uma empresa ocupam, tabela a tabela (estimativa).
+
+    Tamanho em disco da tabela (dados + índices, pg_total_relation_size) rateado
+    pela fração de linhas que pertencem à empresa. Só tabelas com coluna tenant.
+    """
+    from django.apps import apps
+    from django.db import connection
+
+    with connection.cursor() as cur:
+        cur.execute("""SELECT relname, pg_total_relation_size(relid), greatest(n_live_tup, 1)
+                       FROM pg_stat_user_tables""")
+        fisico = {r[0]: (int(r[1]), int(r[2])) for r in cur.fetchall()}
+
+    linhas = []
+    for model in apps.get_models():
+        campos = {f.name: f for f in model._meta.get_fields() if getattr(f, "concrete", False)}
+        if "tenant" not in campos or model._meta.abstract or model._meta.proxy:
+            continue
+        tabela = model._meta.db_table
+        tamanho, total = fisico.get(tabela, (0, 1))
+        n = model.objects.filter(tenant=tenant).count()
+        if n == 0:
+            continue
+        # A estimativa do Postgres (n_live_tup) pode estar abaixo da contagem real logo após carga grande.
+        fracao = min(1.0, n / max(total, n))
+        linhas.append({
+            "tabela": tabela, "modelo": model._meta.verbose_name.title() if model._meta.verbose_name else model.__name__,
+            "app": model._meta.app_label, "linhas": n, "bytes": int(tamanho * fracao), "tabela_bytes": tamanho,
+        })
+    linhas.sort(key=lambda r: -r["bytes"])
+    return {"total_bytes": sum(r["bytes"] for r in linhas), "total_linhas": sum(r["linhas"] for r in linhas), "tabelas": linhas}
