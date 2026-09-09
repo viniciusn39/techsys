@@ -116,7 +116,7 @@ export interface Goal {
   indicator_status?: Farol;
   indicator_resumo?: {
     code: string; name: string; unit: string; decimals: number; aggregation: string; polarity: string;
-    meta_ano: string | null; realizado_ano: string | null; pct_ano: string | null;
+    meta_ano: string | null; meta_ate_hoje: string | null; realizado_ano: string | null; pct_ano: string | null;
     ultimo_periodo: string | null; ultimo_valor: string | null; ultimo_pct: string | null;
   } | null;
   weight: string;

@@ -107,11 +107,16 @@ class GoalSerializer(serializers.ModelSerializer):
 
         ind = obj.indicator
         last = ind.values.order_by("-period").first()
-        ytd = compute_ytd(ind, date.today().year)
+        ano = date.today().year
+        ytd = compute_ytd(ind, ano)  # meta até o último mês medido (mês corrente proporcional)
+        if ind.aggregation == "soma":
+            meta_ano = sum((t.target_value for t in ind.targets.filter(period__year=ano)), start=None) if ind.targets.filter(period__year=ano).exists() else None
+        else:
+            meta_ano = ytd["target"]
         return {
             "code": ind.code, "name": ind.name, "unit": ind.unit, "decimals": ind.decimals,
             "aggregation": ind.aggregation, "polarity": ind.polarity,
-            "meta_ano": ytd["target"], "realizado_ano": ytd["value"], "pct_ano": ytd["achievement_pct"],
+            "meta_ano": meta_ano, "meta_ate_hoje": ytd["target"], "realizado_ano": ytd["value"], "pct_ano": ytd["achievement_pct"],
             "ultimo_periodo": last.period if last else None, "ultimo_valor": last.value if last else None,
             "ultimo_pct": last.achievement_pct if last else None,
         }

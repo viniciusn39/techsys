@@ -63,7 +63,7 @@ function GoalNode({ goal, depth, onEdit, onAddChild }: {
               <span className="text-muted-2 d-block text-truncate" style={{ fontSize: "0.74rem" }}>
                 <span style={{ color: "var(--brand)" }} className="fw-semibold">{r.code}</span>
                 {acumulado ? (
-                  <> · meta do ano {val(r.meta_ano)} · realizado {val(r.realizado_ano)}{r.pct_ano !== null && <> ({fmtPct(r.pct_ano)})</>}</>
+                  <> · meta do ano {val(r.meta_ano)} · realizado {val(r.realizado_ano)}{r.pct_ano !== null && <> ({fmtPct(r.pct_ano)} do previsto até hoje)</>}</>
                 ) : (
                   <> · meta {val(r.meta_ano)} · último {val(r.ultimo_valor)}{r.ultimo_pct !== null && <> ({fmtPct(r.ultimo_pct)} da meta)</>}</>
                 )}
