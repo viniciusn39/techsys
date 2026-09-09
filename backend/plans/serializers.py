@@ -106,10 +106,11 @@ class ActionPlanSerializer(serializers.ModelSerializer):
         ]
 
     def get_items_done(self, obj):
-        return sum(1 for i in obj.items.all() if i.status == ActionItem.Status.FEITO)
+        return sum(1 for i in obj.items.all() if i.parent_id is None and i.status == ActionItem.Status.FEITO)
 
     def get_items_total(self, obj):
-        return obj.items.count()
+        # Só as atividades principais: as subatividades entram no avanço da mãe.
+        return sum(1 for i in obj.items.all() if i.parent_id is None)
 
     def get_progress_pct(self, obj):
         """Avanço do plano: média do avanço das atividades de primeiro nível (subatividades entram na mãe)."""
