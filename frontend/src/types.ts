@@ -198,6 +198,11 @@ export interface ActionItem {
   blocked_reason?: string;
   plan_title?: string;
   plan_priority?: string;
+  parent?: number | null;
+  progress_pct?: number;
+  progress?: number;
+  children_total?: number;
+  children_done?: number;
   created_at?: string | null;
   started_at?: string | null;
   done_at?: string | null;
@@ -229,6 +234,10 @@ export interface ActionPlan {
   items_done: number;
   items_total: number;
   created_at: string;
+  progress_pct?: number;
+  last_update_at?: string | null;
+  last_update_text?: string;
+  last_next_action?: string;
 }
 
 export interface AIInsight {

@@ -25,6 +25,10 @@ interface Analise {
 
 const hojeIso = () => new Date().toISOString().slice(0, 10);
 
+interface PlanUpdate { id: number; author_name: string; text: string; progress_pct: number | null; next_action: string; created_at: string }
+const fmtDataHora = (iso: string | null | undefined) => (iso ? new Date(iso).toLocaleString("pt-BR", { day: "2-digit", month: "2-digit", hour: "2-digit", minute: "2-digit" }) : "—");
+const diasDesde = (iso: string | null | undefined) => (iso ? Math.floor((Date.now() - new Date(iso).getTime()) / 86400000) : null);
+
 const PDCA = ["plan", "do", "check", "act"] as const;
 
 const STATUS_META: Record<string, { label: string; cls: string; icon: string }> = {
@@ -56,6 +60,9 @@ export function PlanosAcao() {
   const [fAtrasadas, setFAtrasadas] = useState(false);
   const [busca, setBusca] = useState("");
   const [analise, setAnalise] = useState<Analise | null>(null);
+  const [updates, setUpdates] = useState<PlanUpdate[] | null>(null);
+  const [novoUpd, setNovoUpd] = useState<{ text: string; progress_pct: string; next_action: string }>({ text: "", progress_pct: "", next_action: "" });
+  const [abaDetalhe, setAbaDetalhe] = useState<"atividades" | "acompanhamento">("atividades");
   const [editing, setEditing] = useState<Partial<ActionPlan> | null>(null);
   const [detailId, setDetailId] = useState<number | null>(null);
   const [newItem, setNewItem] = useState("");
@@ -76,6 +83,27 @@ export function PlanosAcao() {
   }, [load]);
 
   const detail = plans?.find((p) => p.id === detailId) ?? null;
+  useEffect(() => {
+    if (!detailId) { setUpdates(null); return; }
+    setAbaDetalhe("atividades");
+    api.get<PlanUpdate[]>(`/api/action-plans/${detailId}/updates/`).then(setUpdates).catch(() => setUpdates([]));
+  }, [detailId]);
+  const registrarAndamento = async () => {
+    if (!detail || !novoUpd.text.trim()) return;
+    await api.post(`/api/action-plans/${detail.id}/updates/`, { text: novoUpd.text.trim(), progress_pct: novoUpd.progress_pct === "" ? null : Number(novoUpd.progress_pct), next_action: novoUpd.next_action.trim() });
+    setNovoUpd({ text: "", progress_pct: "", next_action: "" });
+    const [u] = await Promise.all([api.get<PlanUpdate[]>(`/api/action-plans/${detail.id}/updates/`), load()]);
+    setUpdates(u);
+  };
+  const setProgresso = async (item: ActionItem, pct: number) => {
+    await api.patch(`/api/action-items/${item.id}/`, { progress_pct: pct, status: pct >= 100 ? "feito" : item.status === "feito" ? "fazendo" : item.status });
+    load();
+  };
+  const addSub = async (parent: ActionItem, titulo: string) => {
+    if (!titulo.trim()) return;
+    await api.post("/api/action-items/", { plan: parent.plan, parent: parent.id, title: titulo.trim(), responsible: parent.responsible, due_date: parent.due_date });
+    load();
+  };
   const list = (plans ?? []).filter((p) => !filterStatus || p.status === filterStatus);
 
   const save = async () => {
@@ -89,7 +117,7 @@ export function PlanosAcao() {
 
   const allItems = list
     .filter((p) => p.status !== "cancelado")
-    .flatMap((p) => p.items.map((i) => ({ ...i, planTitle: p.title, planPriority: p.priority, planId: p.id })))
+    .flatMap((p) => p.items.filter((i) => !i.parent).map((i) => ({ ...i, planTitle: p.title, planPriority: p.priority, planId: p.id })))
     .filter((i) => !fResp || String(i.responsible ?? "") === fResp)
     .filter((i) => !fPrio || (i.priority ?? "media") === fPrio)
     .filter((i) => !fPlano || String(i.plan) === fPlano)
@@ -103,6 +131,7 @@ export function PlanosAcao() {
       plan: itemEdit.plan, title: itemEdit.title.trim(), description: itemEdit.description ?? "", priority: itemEdit.priority ?? "media",
       responsible: itemEdit.responsible || null, due_date: itemEdit.due_date || null, status: itemEdit.status ?? "a_fazer",
       blocked_reason: itemEdit.status === "bloqueado" ? (itemEdit.blocked_reason ?? "") : "",
+      progress_pct: itemEdit.progress_pct ?? 0, parent: itemEdit.parent || null,
     };
     if (itemEdit.id) await api.patch(`/api/action-items/${itemEdit.id}/`, body);
     else await api.post("/api/action-items/", body);
@@ -311,6 +340,12 @@ export function PlanosAcao() {
                             <span className={`status-pill ${prio.cls}`} style={{ fontSize: "0.66rem" }}><i className="bi bi-flag-fill" />{prio.label}</span>
                           </div>
                           <div className="meta mt-1"><i className="bi bi-kanban me-1" />{(i as any).planTitle}</div>
+                          {((i.progress ?? 0) > 0 || (i.children_total ?? 0) > 0) && i.status !== "feito" && (
+                            <div className="d-flex align-items-center gap-2 mt-1">
+                              <div className="flex-grow-1"><Meter pct={i.progress ?? 0} /></div>
+                              <span className="meta" style={{ whiteSpace: "nowrap" }}>{i.progress ?? 0}%{(i.children_total ?? 0) > 0 ? ` · ${i.children_done}/${i.children_total} sub` : ""}</span>
+                            </div>
+                          )}
                           {i.status === "bloqueado" && i.blocked_reason && <div className="meta mt-1" style={{ color: "#8a6100" }}><i className="bi bi-slash-circle me-1" />{i.blocked_reason}</div>}
                           <div className="d-flex justify-content-between align-items-center mt-2">
                             <span className="meta">
@@ -407,7 +442,7 @@ export function PlanosAcao() {
                 <thead>
                   <tr>
                     <th>Plano</th><th>Responsável</th><th>Prazo</th>
-                    <th>PDCA</th><th style={{ width: 150 }}>Progresso</th>
+                    <th>PDCA</th><th style={{ width: 150 }}>Avanço</th><th>Última atualização</th>
                     <th>Prioridade</th><th>Status</th>
                   </tr>
                 </thead>
@@ -434,10 +469,18 @@ export function PlanosAcao() {
                           <span className="pdca-step current">{p.pdca_stage}</span>
                         </td>
                         <td>
-                          <Meter pct={p.items_total ? (p.items_done / p.items_total) * 100 : 0} />
+                          <Meter pct={p.progress_pct ?? (p.items_total ? (p.items_done / p.items_total) * 100 : 0)} />
                           <span className="text-muted-2" style={{ fontSize: "0.72rem" }}>
-                            {p.items_done}/{p.items_total} atividades
+                            {p.progress_pct ?? 0}% · {p.items_done}/{p.items_total} atividades
                           </span>
+                        </td>
+                        <td className="small">
+                          {p.last_update_at ? (
+                            <>
+                              <div className={diasDesde(p.last_update_at)! > 14 ? "fw-semibold" : ""} style={diasDesde(p.last_update_at)! > 14 ? { color: "var(--st-vermelho)" } : undefined}>há {diasDesde(p.last_update_at)} dia(s)</div>
+                              <div className="text-muted-2 text-truncate" style={{ maxWidth: 220 }}>{p.last_next_action || p.last_update_text}</div>
+                            </>
+                          ) : <span className="text-muted-2">sem registro</span>}
                         </td>
                         <td>
                           <span className={`status-pill ${PRIORITY_META[p.priority].cls}`}>
@@ -603,46 +646,106 @@ export function PlanosAcao() {
                 {detail.how_much && <span><i className="bi bi-cash me-1" />R$ {detail.how_much}</span>}
               </div>
 
-              <div className="d-flex justify-content-between align-items-center mb-2">
-                <strong className="small">Checklist</strong>
-                <span className="text-muted-2 small">{detail.items_done}/{detail.items_total} concluídas</span>
+              <div className="d-flex align-items-center gap-2 mb-2">
+                <div className="btn-group btn-group-sm">
+                  <button className={`btn btn-outline-secondary ${abaDetalhe === "atividades" ? "active" : ""}`} onClick={() => setAbaDetalhe("atividades")}><i className="bi bi-list-check me-1" />Atividades ({detail.items_done}/{detail.items_total})</button>
+                  <button className={`btn btn-outline-secondary ${abaDetalhe === "acompanhamento" ? "active" : ""}`} onClick={() => setAbaDetalhe("acompanhamento")}><i className="bi bi-chat-left-text me-1" />Acompanhamento{updates && updates.length ? ` (${updates.length})` : ""}</button>
+                </div>
+                <span className="text-muted-2 small ms-auto">avanço do plano <strong>{detail.progress_pct ?? 0}%</strong></span>
               </div>
-              <Meter pct={detail.items_total ? (detail.items_done / detail.items_total) * 100 : 0} />
+              <Meter pct={detail.progress_pct ?? 0} />
 
-              <div className="mt-2">
-                {detail.items.map((i) => (
-                  <div key={i.id} className="d-flex align-items-center gap-2 py-2 border-bottom" style={{ borderColor: "var(--grid)" }}>
-                    <Form.Check
-                      checked={i.status === "feito"}
-                      onChange={(e) => moveItem(i, e.target.checked ? "feito" : "a_fazer")}
-                    />
-                    <span className={`small flex-grow-1 ${i.status === "feito" ? "text-decoration-line-through text-muted-2" : ""}`}>
-                      {i.title}
-                    </span>
-                    <Form.Select
-                      size="sm" style={{ width: 120 }}
-                      value={i.status}
-                      onChange={(e) => moveItem(i, e.target.value as any)}
-                    >
-                      {KANBAN_COLS.map((c) => <option key={c.key} value={c.key}>{c.label}</option>)}
-                    </Form.Select>
+              {abaDetalhe === "atividades" ? (
+                <>
+                  <div className="mt-2">
+                    {detail.items.filter((i) => !i.parent).map((i) => {
+                      const subs = detail.items.filter((c) => c.parent === i.id);
+                      return (
+                        <div key={i.id} className="py-2 border-bottom" style={{ borderColor: "var(--grid)" }}>
+                          <div className="d-flex align-items-center gap-2">
+                            <Form.Check checked={i.status === "feito"} onChange={(e) => moveItem(i, e.target.checked ? "feito" : "a_fazer")} />
+                            <span className={`small flex-grow-1 ${i.status === "feito" ? "text-decoration-line-through text-muted-2" : ""}`} role="button" onClick={() => setItemEdit(i)}>
+                              {i.title}
+                              {i.responsible_name && <span className="text-muted-2"> · {i.responsible_name}</span>}
+                              {i.due_date && <span className={`ms-1 ${i.due_date < hojeIso() && i.status !== "feito" ? "fw-semibold" : "text-muted-2"}`} style={i.due_date < hojeIso() && i.status !== "feito" ? { color: "var(--st-vermelho)" } : undefined}>· {fmtDate(i.due_date)}</span>}
+                            </span>
+                            {subs.length === 0 && i.status !== "feito" && (
+                              <Form.Select size="sm" style={{ width: 84 }} value={i.progress_pct ?? 0} onChange={(e) => setProgresso(i, Number(e.target.value))} title="% de avanço">
+                                {[0, 10, 25, 50, 75, 90, 100].map((n) => <option key={n} value={n}>{n}%</option>)}
+                              </Form.Select>
+                            )}
+                            {subs.length > 0 && <span className="small text-muted-2" style={{ width: 84, textAlign: "right" }}>{i.progress ?? 0}%</span>}
+                            <Form.Select size="sm" style={{ width: 120 }} value={i.status} onChange={(e) => moveItem(i, e.target.value as any)}>
+                              {KANBAN_COLS.map((c) => <option key={c.key} value={c.key}>{c.label}</option>)}
+                            </Form.Select>
+                          </div>
+                          {subs.length > 0 && (
+                            <div className="ps-4 mt-1">
+                              {subs.map((c) => (
+                                <div key={c.id} className="d-flex align-items-center gap-2 py-1">
+                                  <Form.Check checked={c.status === "feito"} onChange={(e) => moveItem(c, e.target.checked ? "feito" : "a_fazer")} />
+                                  <span className={`small flex-grow-1 ${c.status === "feito" ? "text-decoration-line-through text-muted-2" : ""}`} role="button" onClick={() => setItemEdit(c)}>
+                                    <i className="bi bi-arrow-return-right me-1 text-muted-2" />{c.title}
+                                  </span>
+                                  {c.status !== "feito" && (
+                                    <Form.Select size="sm" style={{ width: 84 }} value={c.progress_pct ?? 0} onChange={(e) => setProgresso(c, Number(e.target.value))}>
+                                      {[0, 10, 25, 50, 75, 90, 100].map((n) => <option key={n} value={n}>{n}%</option>)}
+                                    </Form.Select>
+                                  )}
+                                </div>
+                              ))}
+                            </div>
+                          )}
+                          <div className="ps-4 mt-1">
+                            <input className="form-control form-control-sm" style={{ maxWidth: 360, fontSize: "0.78rem" }} placeholder="+ subatividade e Enter"
+                              onKeyDown={(e) => { if (e.key === "Enter") { addSub(i, (e.target as HTMLInputElement).value); (e.target as HTMLInputElement).value = ""; } }} />
+                          </div>
+                        </div>
+                      );
+                    })}
+                    {detail.items.length === 0 && (
+                      <div className="text-muted-2 small py-2">Nenhuma atividade ainda.</div>
+                    )}
                   </div>
-                ))}
-                {detail.items.length === 0 && (
-                  <div className="text-muted-2 small py-2">Nenhuma atividade ainda.</div>
-                )}
-              </div>
 
-              <div className="d-flex gap-2 mt-3">
-                <Form.Control
-                  size="sm"
-                  placeholder="Nova atividade..."
-                  value={newItem}
-                  onChange={(e) => setNewItem(e.target.value)}
-                  onKeyDown={(e) => e.key === "Enter" && addItem()}
-                />
-                <Button size="sm" onClick={addItem}><i className="bi bi-plus-lg" /></Button>
-              </div>
+                  <div className="d-flex gap-2 mt-3">
+                    <Form.Control
+                      size="sm"
+                      placeholder="Nova atividade..."
+                      value={newItem}
+                      onChange={(e) => setNewItem(e.target.value)}
+                      onKeyDown={(e) => e.key === "Enter" && addItem()}
+                    />
+                    <Button size="sm" onClick={addItem}><i className="bi bi-plus-lg" /></Button>
+                  </div>
+                </>
+              ) : (
+                <div className="mt-2">
+                  <div className="p-2 rounded mb-3" style={{ background: "var(--surface-sunken)" }}>
+                    <Form.Control as="textarea" rows={2} size="sm" placeholder="O que andou desde a última atualização?" value={novoUpd.text} onChange={(e) => setNovoUpd({ ...novoUpd, text: e.target.value })} />
+                    <div className="d-flex gap-2 mt-2 align-items-center flex-wrap">
+                      <Form.Select size="sm" style={{ width: 150 }} value={novoUpd.progress_pct} onChange={(e) => setNovoUpd({ ...novoUpd, progress_pct: e.target.value })}>
+                        <option value="">% informado (opcional)</option>
+                        {[0, 10, 25, 50, 75, 90, 100].map((n) => <option key={n} value={n}>{n}%</option>)}
+                      </Form.Select>
+                      <Form.Control size="sm" style={{ flex: 1, minWidth: 200 }} placeholder="Próxima ação (e quando)" value={novoUpd.next_action} onChange={(e) => setNovoUpd({ ...novoUpd, next_action: e.target.value })} />
+                      <Button size="sm" onClick={registrarAndamento} disabled={!novoUpd.text.trim()}><i className="bi bi-send me-1" />Registrar</Button>
+                    </div>
+                  </div>
+                  {updates === null ? <Skeleton height={80} /> : updates.length === 0 ? (
+                    <div className="small text-muted-2">Nenhum registro ainda. Escreva o andamento acima; a data e o autor ficam gravados.</div>
+                  ) : updates.map((u) => (
+                    <div key={u.id} className="d-flex gap-2 py-2 border-bottom" style={{ borderColor: "var(--grid)" }}>
+                      <div className="text-muted-2 small" style={{ minWidth: 92 }}>{fmtDataHora(u.created_at)}</div>
+                      <div className="flex-grow-1 small">
+                        <div><span className="fw-semibold">{u.author_name}</span>{u.progress_pct !== null && <span className="badge text-bg-light border ms-2">{u.progress_pct}%</span>}</div>
+                        <div style={{ whiteSpace: "pre-wrap" }}>{u.text}</div>
+                        {u.next_action && <div className="text-muted-2"><i className="bi bi-arrow-right-short" />próxima ação: {u.next_action}</div>}
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
             </Modal.Body>
           </>
         )}
@@ -686,6 +789,20 @@ export function PlanosAcao() {
                 <Form.Label className="small">Prioridade</Form.Label>
                 <Form.Select size="sm" value={itemEdit.priority ?? "media"} onChange={(e) => setItemEdit({ ...itemEdit, priority: e.target.value as any })}>
                   {Object.entries(PRIORITY_META).map(([k, v]) => <option key={k} value={k}>{v.label}</option>)}
+                </Form.Select>
+              </div>
+              <div className="col-6">
+                <Form.Label className="small">% de avanço</Form.Label>
+                <Form.Select size="sm" value={itemEdit.progress_pct ?? 0} onChange={(e) => setItemEdit({ ...itemEdit, progress_pct: Number(e.target.value) })} disabled={(itemEdit.children_total ?? 0) > 0}>
+                  {[0, 10, 25, 50, 75, 90, 100].map((n) => <option key={n} value={n}>{n}%</option>)}
+                </Form.Select>
+                {(itemEdit.children_total ?? 0) > 0 && <div className="form-text">Calculado pelas subatividades.</div>}
+              </div>
+              <div className="col-6">
+                <Form.Label className="small">Subatividade de</Form.Label>
+                <Form.Select size="sm" value={itemEdit.parent ?? ""} onChange={(e) => setItemEdit({ ...itemEdit, parent: e.target.value ? Number(e.target.value) : null })} disabled={(itemEdit.children_total ?? 0) > 0}>
+                  <option value="">— (atividade principal)</option>
+                  {(plans ?? []).find((p) => p.id === itemEdit.plan)?.items.filter((x) => !x.parent && x.id !== itemEdit.id).map((x) => <option key={x.id} value={x.id}>{x.title}</option>)}
                 </Form.Select>
               </div>
               <div className="col-6">

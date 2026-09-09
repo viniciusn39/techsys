@@ -9,6 +9,11 @@ import { useTheme } from "../hooks/useTheme";
 import type { AIInsight, Deviation, IndicatorSeries } from "../types";
 import { MONTHS_SHORT, fmtNumber, fmtPct, fmtPeriod } from "../utils/format";
 
+interface Guia {
+  origem: string; descricao: string; como_calcula: string; por_que_importa: string; impacto: string; causas: string[]; dicas: string[];
+  numeros: { unidade: string; decimais: number; polaridade: string; realizado: string; meta: string | null; meta_cheia: string | null; meta_proporcional: boolean; diferenca: string | null; meses_seguidos_vermelho: number; media_3m: string | null; variacao_vs_media_pct: string | null; mes_corrente: boolean };
+}
+
 const STATUS_META: Record<string, { label: string; cls: string; icon: string }> = {
   aberto: { label: "Aberto", cls: "st-vermelho", icon: "bi-exclamation-circle-fill" },
   em_tratamento: { label: "Em tratamento", cls: "st-amarelo", icon: "bi-arrow-repeat" },
@@ -27,6 +32,8 @@ export function Desvios() {
   const [series, setSeries] = useState<IndicatorSeries | null>(null);
   const [aiInsight, setAiInsight] = useState<AIInsight | null>(null);
   const [generating, setGenerating] = useState(false);
+  const [guia, setGuia] = useState<Guia | null>(null);
+  const [verMais, setVerMais] = useState(false);
   const pollRef = useRef<number | null>(null);
 
   const load = useCallback(() => {
@@ -46,6 +53,9 @@ export function Desvios() {
     setRootCause(d.root_cause);
     setAiInsight(null);
     setSeries(null);
+    setGuia(null);
+    setVerMais(false);
+    api.get<Guia>(`/api/deviations/${d.id}/guia/`).then(setGuia).catch(() => {});
     const year = Number(d.period.slice(0, 4));
     api
       .get<IndicatorSeries>(`/api/indicators/${d.indicator}/series/?year=${year}`)
@@ -252,6 +262,66 @@ export function Desvios() {
               <StatCard label="Planos vinculados" value={treating?.plans_count ?? 0} />
             </div>
           </div>
+
+          {guia === null ? <Skeleton height={120} /> : (
+            <div className="rounded p-3 mb-3" style={{ background: "var(--surface-sunken)", border: "1px solid var(--border)" }}>
+              <div className="fw-semibold mb-1"><i className="bi bi-info-circle me-1" />{treating?.indicator_name}</div>
+              {(guia.descricao || guia.por_que_importa) && (
+                <div className="small mb-2">
+                  {guia.descricao && <div>{guia.descricao}</div>}
+                  {guia.por_que_importa && <div className="text-muted-2 mt-1"><i className="bi bi-lightbulb me-1" />{guia.por_que_importa}</div>}
+                </div>
+              )}
+              {(() => {
+                const n = guia.numeros; const dec = n.decimais ?? 2; const u = n.unidade;
+                const dif = n.diferenca !== null ? Number(n.diferenca) : null;
+                const faltou = dif !== null && (n.polaridade === "menor_melhor" ? dif > 0 : dif < 0);
+                return (
+                  <div className="d-flex flex-wrap gap-2 mb-2">
+                    {dif !== null && (
+                      <span className="badge fw-normal" style={{ background: "var(--st-vermelho-soft, rgba(220,53,69,.12))", color: "var(--st-vermelho)" }}>
+                        <i className="bi bi-arrow-down-right me-1" />
+                        {n.polaridade === "menor_melhor" ? "passou da meta em" : "faltaram"} {fmtNumber(Math.abs(dif), dec)} {u}
+                        {n.meta_proporcional && n.mes_corrente ? " (meta proporcional aos dias medidos)" : ""}
+                      </span>
+                    )}
+                    {!faltou && dif !== null && <span className="badge text-bg-light border fw-normal">meta cheia: {fmtNumber(n.meta_cheia, dec)} {u}</span>}
+                    {n.meses_seguidos_vermelho > 1 && (
+                      <span className="badge text-bg-light border fw-normal"><i className="bi bi-arrow-repeat me-1" />{n.meses_seguidos_vermelho}º mês seguido abaixo da meta</span>
+                    )}
+                    {n.variacao_vs_media_pct !== null && (
+                      <span className="badge text-bg-light border fw-normal">
+                        {Number(n.variacao_vs_media_pct) >= 0 ? "+" : ""}{fmtNumber(n.variacao_vs_media_pct, 1)}% frente à média dos 3 meses anteriores ({fmtNumber(n.media_3m, dec)} {u})
+                      </span>
+                    )}
+                  </div>
+                );
+              })()}
+              <div className="row g-3 small">
+                <div className="col-md-6">
+                  <div className="fw-semibold mb-1" style={{ color: "var(--st-vermelho)" }}><i className="bi bi-exclamation-triangle me-1" />Impacto</div>
+                  <div>{guia.impacto}</div>
+                  {guia.causas.length > 0 && (
+                    <>
+                      <div className="fw-semibold mt-2 mb-1"><i className="bi bi-search me-1" />Causas mais comuns</div>
+                      <div className="d-flex flex-wrap gap-1">{guia.causas.map((c) => <span key={c} className="badge text-bg-light border fw-normal" style={{ whiteSpace: "normal", textAlign: "left" }}>{c}</span>)}</div>
+                    </>
+                  )}
+                </div>
+                <div className="col-md-6">
+                  <div className="fw-semibold mb-1" style={{ color: "var(--brand)" }}><i className="bi bi-check2-square me-1" />Por onde começar</div>
+                  <ol className="ps-3 mb-0">{guia.dicas.map((d) => <li key={d} className="mb-1">{d}</li>)}</ol>
+                </div>
+              </div>
+              {guia.como_calcula && (
+                <div className="mt-2 small">
+                  <span role="button" className="text-muted-2" onClick={() => setVerMais(!verMais)}><i className={`bi ${verMais ? "bi-chevron-up" : "bi-chevron-down"} me-1`} />Como é calculado</span>
+                  {verMais && <div className="text-muted-2 mt-1">{guia.como_calcula}</div>}
+                </div>
+              )}
+              {guia.origem !== "metrica" && <div className="text-muted-2 mt-2" style={{ fontSize: "0.72rem" }}>Orientação geral para indicadores {guia.origem === "grupo" ? "deste grupo" : "desta polaridade"}; use a IA abaixo para uma análise específica com os seus números.</div>}
+            </div>
+          )}
 
           <Panel title="Contexto do indicador no ano" className="mb-3">
             {series ? <EChart option={contextOption} height={220} /> : <Skeleton height={220} />}
