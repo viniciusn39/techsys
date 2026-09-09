@@ -109,7 +109,7 @@ export function Desvios() {
           areaStyle: { color: areaWash(t.series[0]) },
           data: s.map((p) => (p.value !== null ? Number(p.value) : null)),
           markPoint:
-            markIdx >= 0 && s[markIdx]?.value !== null
+            markIdx >= 0 && s[markIdx]?.value != null
               ? {
                   symbol: "pin",
                   symbolSize: 34,

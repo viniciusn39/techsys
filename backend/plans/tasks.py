@@ -13,10 +13,14 @@ def detectar_desvios():
     from .models import Deviation
 
     created = 0
+    from .signals import periodo_recente
+
     reds = IndicatorValue.objects.filter(
         status=IndicatorValue.Status.VERMELHO, deviation__isnull=True
     ).select_related("indicator")
     for value in reds:
+        if not periodo_recente(value.period):
+            continue
         Deviation.objects.get_or_create(
             indicator_value=value,
             defaults={"tenant": value.indicator.tenant, "indicator": value.indicator},

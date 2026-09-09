@@ -48,7 +48,7 @@ class FarolTests(TestCase):
 
     def test_valor_vermelho_cria_desvio_e_correcao_remove(self):
         ind = self._make(Indicator.Polarity.MAIOR_MELHOR)
-        v = self._lancar(ind, 1, 100, 50)
+        v = self._lancar(ind, date.today().month, 100, 50)   # desvio só nasce para mês recente
         self.assertTrue(Deviation.objects.filter(indicator_value=v).exists())
         v.value = 120
         v.save()

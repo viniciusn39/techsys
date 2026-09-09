@@ -7,6 +7,7 @@ import { useTheme } from "../hooks/useTheme";
 import type { ActionPlan, Deviation, Indicator, Objective } from "../types";
 import { fmtDate, fmtNumber, fmtPct, fmtPeriod } from "../utils/format";
 import { EChart } from "./EChart";
+import { IndicadorResumoModal } from "./IndicadorResumoModal";
 import { EmptyState, Skeleton, Sparkline, StatusPill } from "./ui";
 
 interface SwotItem { id: number; quadrant: string; quadrant_label: string; text: string; impact: number; objective: number | null }
@@ -23,6 +24,7 @@ export function ObjetivoDashboard({ objective, perspectiveName, perspectiveColor
   const [planos, setPlanos] = useState<ActionPlan[]>([]);
   const [swot, setSwot] = useState<SwotItem[]>([]);
   const [estrategias, setEstrategias] = useState<Estrategia[]>([]);
+  const [indAberto, setIndAberto] = useState<Indicator | null>(null);
 
   useEffect(() => {
     setInds(null);
@@ -108,9 +110,9 @@ export function ObjetivoDashboard({ objective, perspectiveName, perspectiveColor
                       <thead><tr><th>Indicador</th><th className="num">Último resultado</th><th className="num">Atingimento</th><th>Farol</th><th>Tendência</th></tr></thead>
                       <tbody>
                         {inds.map((i) => (
-                          <tr key={i.id}>
+                          <tr key={i.id} role="button" onClick={() => setIndAberto(i)} title="Ver os últimos meses">
                             <td>
-                              <Link to={`/indicadores/${i.id}`} className="fw-semibold text-decoration-none">{i.code}</Link> <span className="small">· {i.name}</span>
+                              <span className="fw-semibold" style={{ color: "var(--brand)" }}>{i.code}</span> <span className="small">· {i.name}</span>
                               {i.erp_metric && <i className="bi bi-robot ms-1 text-muted-2 small" title="calculado do ERP" />}
                             </td>
                             <td className="num small">{i.last_value ? <>{fmtNumber(i.last_value.value, i.decimals)} {i.unit}<div className="text-muted-2" style={{ fontSize: "0.7rem" }}>{fmtPeriod(i.last_value.period)}</div></> : "—"}</td>
@@ -158,6 +160,7 @@ export function ObjetivoDashboard({ objective, perspectiveName, perspectiveColor
           </div>
         )}
       </Modal.Body>
+      {indAberto && <IndicadorResumoModal indicator={indAberto} onClose={() => setIndAberto(null)} />}
     </Modal>
   );
 }
