@@ -168,10 +168,45 @@ def mes_de_referencia(tenant):
     return hoje
 
 
-def foto_mes(tenant, filters, ref):
-    atual = {k: _num(m.compute_metric(k, tenant, ref, filters)) for k in FOTO_MES}
-    anterior = {k: _num(m.compute_metric(k, tenant, _mes_anterior(ref), filters)) for k in ("faturamento", "qtd_notas", "ticket_medio", "margem_bruta_pct", "positivacao")}
-    return {"periodo": ref.replace(day=1), "atual": atual, "mes_anterior": anterior}
+FLUXO = ("faturamento", "qtd_notas", "ticket_medio", "margem_bruta_pct", "positivacao")
+
+
+def _intervalo(ref, meses):
+    """[dia 1 do mês (ref − meses + 1) .. fim do mês ref (limitado a hoje)]."""
+    ini = ref.replace(day=1)
+    for _ in range(max(0, meses - 1)):
+        ini = _mes_anterior(ini)
+    _, fim = m.month_bounds(ref)
+    return ini, min(fim, date.today())
+
+
+def foto_mes(tenant, filters, ref, meses=1):
+    """Cartões do topo. Com 1 mês: o mês de referência. Com N meses: os fluxos
+    (faturamento, notas, ticket, margem, positivação) somam/medem o período inteiro
+    e a comparação é com os N meses anteriores; saldos (a receber, caixa, estoque)
+    são a foto no fim do período."""
+    meses = max(1, int(meses or 1))
+    if meses == 1:
+        atual = {k: _num(m.compute_metric(k, tenant, ref, filters)) for k in FOTO_MES}
+        anterior = {k: _num(m.compute_metric(k, tenant, _mes_anterior(ref), filters)) for k in FLUXO}
+        ini, fim = m.month_bounds(ref)
+        ini_ant, fim_ant = m.month_bounds(_mes_anterior(ref))
+    else:
+        ini, fim = _intervalo(ref, meses)
+        ini_ant, fim_ant = _intervalo(_mes_anterior(ini), meses)
+        atual = {}
+        for k in FOTO_MES:
+            metric = m.get_metric(k)
+            if k in FLUXO and metric is not None:
+                atual[k] = _num(metric.compute(tenant, ini, fim, filters or {}))
+            else:
+                atual[k] = _num(m.compute_metric(k, tenant, ref, filters))
+        anterior = {}
+        for k in FLUXO:
+            metric = m.get_metric(k)
+            anterior[k] = _num(metric.compute(tenant, ini_ant, fim_ant, filters or {})) if metric else None
+    return {"periodo": ref.replace(day=1), "meses": meses, "ini": ini, "fim": fim,
+            "ini_anterior": ini_ant, "fim_anterior": fim_ant, "atual": atual, "mes_anterior": anterior}
 
 
 def por_filial(tenant, ref):
@@ -341,7 +376,7 @@ def painel(tenant, meses=12, branch=None, ate=None):
         "cobertura": cob,
         "serie": serie_mensal(tenant, meses, filters, ref),
         "serie_dia": serie_diaria(tenant, ref, filters) if meses == 1 else [],
-        "foto": foto_mes(tenant, filters, ref),
+        "foto": foto_mes(tenant, filters, ref, meses),
         "por_filial": por_filial(tenant, ref),
         "rankings": rankings(tenant, filters, ref),
         "indicadores": confer,

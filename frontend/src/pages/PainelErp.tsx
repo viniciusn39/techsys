@@ -51,7 +51,7 @@ interface Painel {
   cobertura: { entity: string; label: string; total: number; de: string | null; ate: string | null; incremental: boolean }[];
   serie: Serie[];
   serie_dia: { dia: string; faturamento: number | null; qtd_notas: number }[];
-  foto: { periodo: string; atual: Record<string, number | null>; mes_anterior: Record<string, number | null> };
+  foto: { periodo: string; meses: number; ini: string; fim: string; ini_anterior: string; fim_anterior: string; atual: Record<string, number | null>; mes_anterior: Record<string, number | null> };
   por_filial: { code: string; name: string; faturamento_mes: number | null; notas_mes: number; faturamento_ano: number | null }[];
   rankings: {
     periodo: string;
@@ -305,9 +305,12 @@ export function PainelErp() {
   const res = data.resumo_conferencia;
   const mesRef = fmtPeriod(data.foto.periodo);
 
+  const nMeses = data.foto.meses ?? 1;
+  const rotuloPeriodo = nMeses === 1 ? "no mês" : `em ${nMeses} meses`;
+  const fmtDia = (iso: string) => iso.split("-").reverse().join("/");
   const delta = (k: string) => {
     const v = variacao(a[k], ant[k]);
-    return v === null ? undefined : { value: v, since: "vs mês anterior" };
+    return v === null ? undefined : { value: v, since: nMeses === 1 ? "vs mês anterior" : `vs ${nMeses} meses anteriores` };
   };
 
   return (
@@ -354,10 +357,15 @@ export function PainelErp() {
         </div>
       )}
 
-      {/* Cartões do mês */}
+      {/* Cartões do período selecionado */}
+      {nMeses > 1 && (
+        <div className="small text-muted-2 mb-2">
+          Fluxos (faturamento, notas, margem, positivação) somam <strong>{fmtDia(data.foto.ini)} → {fmtDia(data.foto.fim)}</strong>; comparação com {fmtDia(data.foto.ini_anterior)} → {fmtDia(data.foto.fim_anterior)}. Saldos (a receber, a pagar, caixa, estoque) são a foto no fim do período.
+        </div>
+      )}
       <div className="row g-3">
-        <div className="col-6 col-lg-2"><StatCard label="Faturamento no mês" icon="bi-cash-stack" value={moneyCompact(a.faturamento)} delta={delta("faturamento")} foot={`${fmtNumber(a.qtd_notas, 0)} notas · ticket ${money(a.ticket_medio)}`} /></div>
-        <div className="col-6 col-lg-2"><StatCard label="Margem bruta" icon="bi-percent" value={pct(a.margem_bruta_pct)} delta={delta("margem_bruta_pct")} foot={`${fmtNumber(a.positivacao, 0)} clientes positivados`} /></div>
+        <div className="col-6 col-lg-2"><StatCard label={`Faturamento ${rotuloPeriodo}`} icon="bi-cash-stack" value={moneyCompact(a.faturamento)} delta={delta("faturamento")} foot={`${fmtNumber(a.qtd_notas, 0)} notas · ticket ${money(a.ticket_medio)}`} /></div>
+        <div className="col-6 col-lg-2"><StatCard label={`Margem bruta ${rotuloPeriodo}`} icon="bi-percent" value={pct(a.margem_bruta_pct)} delta={delta("margem_bruta_pct")} foot={`${fmtNumber(a.positivacao, 0)} clientes positivados`} /></div>
         <div className="col-6 col-lg-2"><StatCard label="A receber vencido" icon="bi-receipt" value={moneyCompact(a.a_receber_vencido)} foot={`${moneyCompact(a.a_receber_aberto)} em aberto · inadimplência ${pct(a.inadimplencia_pct)}`} /></div>
         <div className="col-6 col-lg-2"><StatCard label="A pagar vencido" icon="bi-wallet2" value={moneyCompact(a.a_pagar_vencido)} foot={`${moneyCompact(a.a_pagar_aberto)} em aberto`} /></div>
         <div className="col-6 col-lg-2"><StatCard label="Caixa e bancos" icon="bi-bank" value={moneyCompact(a.saldo_caixa)} foot={`carteira de pedidos ${moneyCompact(a.carteira_pedidos)}`} /></div>
