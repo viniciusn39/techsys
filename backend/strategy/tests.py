@@ -210,3 +210,4 @@ class GoalResumoTests(APITestCase):
         g = Goal.objects.create(tenant=t, name="Meta", indicator=ind)
         r = GoalSerializer(g).data["indicator_resumo"]
         self.assertEqual((float(r["meta_ano"]), float(r["realizado_ano"])), (1200.0, 90.0))
+        self.assertEqual((float(r["meta_ate_hoje"]), float(r["pct_ano"])), (100.0, 90.0))
