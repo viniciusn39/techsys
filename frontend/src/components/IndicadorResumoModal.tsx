@@ -28,7 +28,8 @@ export function IndicadorResumoModal({ indicator, onClose }: { indicator: Indica
   const option = useMemo(() => {
     const ps = q?.periodos ?? [];
     return {
-      grid: { left: 4, right: 16, top: 16, bottom: 4, containLabel: true },
+      grid: { left: 4, right: 16, top: 30, bottom: 4, containLabel: true },
+      legend: { top: 0, left: 0, itemWidth: 14, itemHeight: 8, textStyle: { fontSize: 11, color: t.inkSecondary }, data: [{ name: "Realizado", icon: "roundRect" }, { name: "Meta do mês", icon: "rect" }] },
       tooltip: {
         trigger: "axis" as const, axisPointer: { type: "shadow" as const },
         formatter: (params: any[]) => {
@@ -41,7 +42,8 @@ export function IndicadorResumoModal({ indicator, onClose }: { indicator: Indica
       yAxis: { type: "value" as const },
       series: [
         { name: "Realizado", type: "bar" as const, barMaxWidth: BAR_MAX_WIDTH, data: ps.map((p) => ({ value: p.value === null ? null : Number(p.value), itemStyle: { color: p.status ? t.status[statusKey(p.status)] : t.series[0], borderRadius: BAR_RADIUS_V, opacity: p.parcial ? 0.55 : 1 } })) },
-        { name: "Meta", type: "line" as const, step: "middle" as const, symbol: "none", lineStyle: { width: 2, color: t.series[0], type: "dashed" as const }, data: ps.map((p) => (p.target === null ? null : Number(p.target))) },
+        // Meta como um traço curto sobre cada mês (só onde há meta): a barra que passa do traço bateu a meta.
+        { name: "Meta do mês", type: "scatter" as const, symbol: "rect", symbolSize: [BAR_MAX_WIDTH + 10, 3], itemStyle: { color: t.ink }, z: 3, tooltip: { show: false }, data: ps.map((p) => (p.target === null ? null : Number(p.target))) },
       ],
     };
   }, [q, t, dec, indicator.unit]);

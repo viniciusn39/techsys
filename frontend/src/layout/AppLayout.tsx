@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import { Dropdown } from "react-bootstrap";
 import { NavLink, Outlet, useLocation, useNavigate } from "react-router-dom";
+import { AssistenteFlutuante } from "../components/AssistenteFlutuante";
 import { api } from "../api/client";
 import { useAuth } from "../auth/AuthContext";
 import type { Tenant } from "../types";
@@ -237,6 +238,7 @@ export function AppLayout() {
         <main className="app-content">
           <Outlet />
         </main>
+        {activeTenant && (!me.modules || me.modules.includes("ia")) && <AssistenteFlutuante />}
       </div>
     </div>
   );

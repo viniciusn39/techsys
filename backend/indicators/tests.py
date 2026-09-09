@@ -84,3 +84,58 @@ class FarolTests(TestCase):
         ind.targets.filter(period=date(2026, 1, 1)).update(target_value=90)
         v.save()
         self.assertEqual(v.status, "verde")
+
+
+class CalibracaoTests(TestCase):
+    """Meta calibrada pelo histórico: mediana de 12 meses + 5 % na direção da polaridade."""
+
+    def setUp(self):
+        from accounts.models import Tenant
+
+        self.tenant = Tenant.objects.create(name="Cal", slug="cal")
+
+    def _ind(self, code, polarity="maior_melhor", valores=(), erp_target="vlvendaprev"):
+        from datetime import date
+
+        ind = Indicator.objects.create(tenant=self.tenant, code=code, name=code, unit="R$", decimals=2,
+                                       polarity=polarity, erp_metric="faturamento", erp_target=erp_target)
+        hoje = date.today().replace(day=1)
+        for k, v in enumerate(valores, start=1):
+            m = hoje.month - k; y = hoje.year
+            while m <= 0:
+                m += 12; y -= 1
+            IndicatorValue.objects.create(indicator=ind, period=date(y, m, 1), value=v, source="agent")
+        return ind
+
+    def test_mediana_mais_cinco_por_cento_e_desliga_meta_do_erp(self):
+        from decimal import Decimal
+
+        from .calibracao import calibrar_indicador
+
+        ind = self._ind("FAT", valores=[100, 120, 80, 1000, 110, 90])  # mediana 105 (o 1000 não distorce)
+        r = calibrar_indicador(ind)
+        self.assertEqual((r.meses_usados, r.meta), (6, Decimal("110.25")))
+        self.assertEqual(ind.targets.count(), 12)
+        ind.refresh_from_db()
+        self.assertEqual(ind.erp_target, "")
+
+    def test_menor_e_melhor_reduz_e_nao_sobrescreve_sem_pedir(self):
+        from datetime import date
+        from decimal import Decimal
+
+        from .calibracao import calibrar_indicador
+
+        ind = self._ind("RUP", polarity="menor_melhor", valores=[10, 8, 12])
+        IndicatorTarget.objects.create(indicator=ind, period=date(date.today().year, 1, 1), target_value=3)
+        r = calibrar_indicador(ind)
+        self.assertEqual(r.meta, Decimal("9.50"))
+        self.assertEqual(ind.targets.get(period__month=1).target_value, Decimal("3"))  # manual preservada
+        self.assertEqual(r.gravadas, 11)
+        calibrar_indicador(ind, sobrescrever=True)
+        self.assertEqual(ind.targets.get(period__month=1).target_value, Decimal("9.50"))
+
+    def test_sem_historico_e_pulado(self):
+        from .calibracao import calibrar_indicador
+
+        r = calibrar_indicador(self._ind("VAZIO"))
+        self.assertIsNone(r.meta)

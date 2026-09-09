@@ -2,6 +2,7 @@ import { useCallback, useEffect, useState } from "react";
 import { Button, Form, Modal } from "react-bootstrap";
 import { api } from "../api/client";
 import { EmptyState, Panel, Skeleton, StatusPill } from "../components/ui";
+import { fmtNumber, fmtPct } from "../utils/format";
 import type { Goal, Indicator, Objective, OrgUnit, UserRow } from "../types";
 
 const LEVEL_LABELS: Record<string, string> = {
@@ -52,13 +53,23 @@ function GoalNode({ goal, depth, onEdit, onAddChild }: {
           {LEVEL_LABELS[goal.level]}
         </span>
 
-        <span
-          className="fw-semibold flex-grow-1 text-truncate"
-          role="button"
-          style={{ fontSize: "0.88rem" }}
-          onClick={() => onEdit(goal)}
-        >
-          {goal.name}
+        <span className="flex-grow-1 min-w-0" role="button" onClick={() => onEdit(goal)}>
+          <span className="fw-semibold d-block text-truncate" style={{ fontSize: "0.88rem" }}>{goal.name}</span>
+          {goal.indicator_resumo && (() => {
+            const r = goal.indicator_resumo; const dec = r.decimals ?? 2;
+            const val = (v: string | null) => (v === null ? "—" : r.unit === "R$" ? `R$ ${fmtNumber(v, dec)}` : `${fmtNumber(v, dec)} ${r.unit}`);
+            const acumulado = r.aggregation === "soma";
+            return (
+              <span className="text-muted-2 d-block text-truncate" style={{ fontSize: "0.74rem" }}>
+                <span style={{ color: "var(--brand)" }} className="fw-semibold">{r.code}</span>
+                {acumulado ? (
+                  <> · meta do ano {val(r.meta_ano)} · realizado {val(r.realizado_ano)}{r.pct_ano !== null && <> ({fmtPct(r.pct_ano)})</>}</>
+                ) : (
+                  <> · meta {val(r.meta_ano)} · último {val(r.ultimo_valor)}{r.ultimo_pct !== null && <> ({fmtPct(r.ultimo_pct)} da meta)</>}</>
+                )}
+              </span>
+            );
+          })()}
         </span>
 
         {goal.indicator_status && <StatusPill status={goal.indicator_status} />}

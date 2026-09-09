@@ -2,6 +2,8 @@ import os
 from datetime import timedelta
 from pathlib import Path
 
+from celery.schedules import crontab
+
 BASE_DIR = Path(__file__).resolve().parent.parent
 
 SECRET_KEY = os.environ.get("SECRET_KEY", "dev-secret-key-change-me")
@@ -152,10 +154,11 @@ CELERY_BEAT_SCHEDULE = {
         "task": "erp.tasks.calcular_indicadores_erp",
         "schedule": 60 * 30,
     },
-    # Metas puxadas do ERP (PCMETA / cadastro do RCA): a cada 6 h.
-    "sincronizar-metas-erp": {
-        "task": "erp.tasks.sincronizar_metas_erp",
-        "schedule": 60 * 60 * 6,
+    # Metas calibradas pelo histórico (mediana de 12 meses + 5 %) nos meses sem meta: todo dia 1º às 04:30.
+    # A meta do WinThor (PCMETA) não é mais sincronizada automaticamente.
+    "calibrar-metas-automatico": {
+        "task": "indicators.tasks.calibrar_metas_automatico",
+        "schedule": crontab(day_of_month="1", hour=4, minute=30),
     },
     # Amostra do servidor (CPU, memória, disco, banco) para a tela do root: a cada 5 min.
     "amostrar-servidor": {

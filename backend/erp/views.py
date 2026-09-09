@@ -622,13 +622,18 @@ class KpiCatalogoView(APIView):
                     tenant=tenant, code=t.code, name=t.name, description=descricao, sector=t.sector,
                     unit=t.unit, decimals=t.decimals, polarity=t.polarity, aggregation=t.aggregation,
                     org_unit=raiz, objective_id=objective_id,
-                    erp_metric=t.erp_metric, erp_filters=dict(t.default_filters or {}), erp_target=t.erp_target,
+                    erp_metric=t.erp_metric, erp_filters=dict(t.default_filters or {}), erp_target="",
                 ))
             else:
                 pulados.append(code)
         if criados:
-            sincronizar_metas_erp.delay(tenant_id=tenant.id, meses=12)
-            calcular_indicadores_erp.delay(tenant_id=tenant.id, meses=12)
+            # Calcula 12 meses e, em seguida, calibra a meta pelo histórico.
+            from celery import chain
+
+            from indicators.tasks import calibrar_metas_automatico
+
+            chain(calcular_indicadores_erp.si(tenant_id=tenant.id, meses=12),
+                  calibrar_metas_automatico.si(tenant_id=tenant.id)).delay()
         return Response({
             "created": IndicatorSerializer(criados, many=True, context={"request": request, "tenant": tenant}).data,
             "skipped": pulados,

@@ -87,14 +87,34 @@ class GoalSerializer(serializers.ModelSerializer):
     org_unit_name = serializers.CharField(source="org_unit.name", read_only=True)
     objective_name = serializers.CharField(source="objective.name", read_only=True)
     indicator_status = serializers.SerializerMethodField()
+    indicator_resumo = serializers.SerializerMethodField()
 
     class Meta:
         model = Goal
         fields = [
             "id", "objective", "objective_name", "parent", "level", "org_unit",
             "org_unit_name", "owner", "owner_name", "name", "description",
-            "indicator", "indicator_status", "weight", "status",
+            "indicator", "indicator_status", "indicator_resumo", "weight", "status",
         ]
+
+    def get_indicator_resumo(self, obj):
+        """Meta e realizado do ano do indicador ligado (o título da meta é só texto)."""
+        if not obj.indicator_id:
+            return None
+        from datetime import date
+
+        from indicators.services import compute_ytd
+
+        ind = obj.indicator
+        last = ind.values.order_by("-period").first()
+        ytd = compute_ytd(ind, date.today().year)
+        return {
+            "code": ind.code, "name": ind.name, "unit": ind.unit, "decimals": ind.decimals,
+            "aggregation": ind.aggregation, "polarity": ind.polarity,
+            "meta_ano": ytd["target"], "realizado_ano": ytd["value"], "pct_ano": ytd["achievement_pct"],
+            "ultimo_periodo": last.period if last else None, "ultimo_valor": last.value if last else None,
+            "ultimo_pct": last.achievement_pct if last else None,
+        }
 
     def get_indicator_status(self, obj):
         if not obj.indicator_id:

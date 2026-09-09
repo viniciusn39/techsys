@@ -330,7 +330,8 @@ class ColetorIngestTests(APITestCase):
         self.assertEqual(criados, {"FAT", "POSIT"})
         self.assertIn("DIVERG_RECEB", r.json()["skipped"])          # planejado não pluga
         fat = Indicator.objects.get(tenant=self.tenant, code="FAT")
-        self.assertEqual((fat.erp_metric, fat.erp_target, fat.unit, fat.polarity), ("faturamento", "vlvendaprev", "R$", "maior_melhor"))
+        # Meta do WinThor não é mais usada: a meta é calibrada pelo histórico depois do cálculo.
+        self.assertEqual((fat.erp_metric, fat.erp_target, fat.unit, fat.polarity), ("faturamento", "", "R$", "maior_melhor"))
         self.assertTrue(self.client.get("/api/erp/kpi-catalogo/").json()["itens"] and
                         next(i for i in self.client.get("/api/erp/kpi-catalogo/").json()["itens"] if i["code"] == "FAT")["plugado"])
 

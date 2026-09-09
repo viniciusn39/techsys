@@ -26,6 +26,25 @@ def recalcular_farois(tenant_id=None):
 
 
 @shared_task
+def calibrar_metas_automatico(tenant_id=None, sobrescrever=False):
+    """Todo dia 1º (e ao plugar KPI): meta calibrada pelo histórico de 12 meses
+    nos meses do ano que ainda não têm meta. Não mexe em meta já cadastrada."""
+    from accounts.models import Tenant
+
+    from .calibracao import calibrar_tenant
+
+    qs = Tenant.objects.filter(is_active=True)
+    if tenant_id:
+        qs = qs.filter(id=tenant_id)
+    total = 0
+    for tenant in qs:
+        for r in calibrar_tenant(tenant, sobrescrever=sobrescrever):
+            total += r.gravadas
+    logger.info("calibrar_metas_automatico: %s metas gravadas", total)
+    return total
+
+
+@shared_task
 def coletar_fontes_dados():
     """Coleta automática das fontes de dados não-manuais (gancho do agente ERP)."""
     from .models import DataSource
