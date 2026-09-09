@@ -265,6 +265,18 @@ _GRUPO = {
         impacto="Desvio de pessoas afeta custo e capacidade de entrega ao mesmo tempo.",
         causas=["Liderança", "Remuneração", "Sobrecarga"],
         dicas=["Abra por gestor e área.", "Entreviste quem saiu.", "Reveja o plano de vagas."]),
+    "Força de vendas": dict(
+        impacto="Desvio na força de vendas aparece no faturamento dos próximos dias.",
+        causas=["Roteiro", "Crédito", "Integração de pedidos"],
+        dicas=["Abra por RCA.", "Cruze com crédito e bloqueios.", "Cobre meta diária."]),
+    "WMS": dict(
+        impacto="Gargalo no armazém atrasa a carga e a entrega.",
+        causas=["Capacidade da equipe", "Endereçamento", "Divergência física"],
+        dicas=["Compare por turno e operador.", "Resolva OS travadas.", "Faça inventário rotativo."]),
+    "Roteirização": dict(
+        impacto="Rota ruim custa km, tempo e nível de serviço.",
+        causas=["Parâmetros do roteirizador", "Praças dispersas", "Ocorrências"],
+        dicas=["Ajuste o roteirizador.", "Defina dias por praça.", "Classifique as ocorrências."]),
     "Fiscal": dict(
         impacto="Erro fiscal atrasa a entrega e gera multa; nota rejeitada é venda que não sai.",
         causas=["Cadastro de produto ou cliente", "Certificado ou SEFAZ", "Parametrização tributária"],
@@ -284,9 +296,13 @@ _GENERICO = {
 
 
 def _texto_base(indicator):
+    from .guia_desvios_catalogo import GUIA_CATALOGO
+
     metric_key = indicator.erp_metric or ""
     if metric_key in _G:
         return _G[metric_key], "metrica"
+    if metric_key in GUIA_CATALOGO:
+        return GUIA_CATALOGO[metric_key], "metrica"
     from .metrics import get_metric
 
     metric = get_metric(metric_key) if metric_key else None

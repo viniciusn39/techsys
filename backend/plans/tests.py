@@ -63,6 +63,16 @@ class EvolucaoPlanosTests(APITestCase):
         self.assertEqual((plano["last_update_text"], plano["last_next_action"], plano["status"]), ("Fornecedor contratado", "Treinar equipe dia 20", "em_andamento"))
         self.assertEqual(len(self.client.get(f"/api/action-plans/{self.plan.id}/updates/").json()), 1)
 
+    def test_guia_cobre_todo_o_catalogo(self):
+        from erp.guia_desvios import _G
+        from erp.guia_desvios_catalogo import GUIA_CATALOGO
+        from erp.metrics import METRICS
+
+        faltam = [k for k in METRICS if k not in _G and k not in GUIA_CATALOGO]
+        self.assertEqual(faltam, [])
+        for k, v in list(_G.items()) + list(GUIA_CATALOGO.items()):
+            self.assertTrue(v["impacto"] and v["causas"] and v["dicas"], k)
+
     def test_guia_do_desvio(self):
         from datetime import date
 
