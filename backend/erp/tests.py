@@ -613,3 +613,23 @@ class MetricasTests(APITestCase):
         self.assertEqual(Decimal(r.json()["value"]), Decimal("1800.00"))
         r = self.client.post("/api/indicators/", {"code": "X", "name": "X", "erp_metric": "nao_existe"})
         self.assertEqual(r.status_code, 400)
+
+
+class FotografiaHistoricoTests(APITestCase):
+    def test_fotografia_congela_mes_passado(self):
+        from datetime import date
+
+        from erp.models import Branch, Product, StockBalance
+
+        tenant = Tenant.objects.create(name="Foto", slug="foto")
+        b = Branch.objects.create(tenant=tenant, external_id="1", code="1", name="CD")
+        p = Product.objects.create(tenant=tenant, external_id="1", code="1", name="Picanha", is_active=True)
+        StockBalance.objects.create(tenant=tenant, product=p, branch=b, quantity=10, avg_cost=5)
+        ind = Indicator.objects.create(tenant=tenant, code="ESTQ", name="Estoque", erp_metric="estoque_valor", aggregation="ultimo")
+        hoje = date.today()
+        anterior = (hoje.replace(day=1) - __import__("datetime").timedelta(days=1)).replace(day=1)
+        # valor "congelado" do mês passado (calculado quando aquele mês era o corrente)
+        IndicatorValue.objects.create(indicator=ind, period=anterior, value=Decimal("999"), source="agent")
+        calcular_indicadores_erp(tenant_id=tenant.id, meses=2)
+        self.assertEqual(IndicatorValue.objects.get(indicator=ind, period=anterior).value, Decimal("999.0000"))   # mantido
+        self.assertEqual(IndicatorValue.objects.get(indicator=ind, period=hoje.replace(day=1)).value, Decimal("50.0000"))  # hoje

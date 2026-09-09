@@ -98,7 +98,13 @@ def calcular_indicadores_erp(tenant_id=None, indicator_id=None, meses=None):
             continue
         if not all(entidade_carregada(indicator.tenant_id, e) for e in metric.entities):
             continue
+        fotografia = bool(getattr(metric.compute, "fotografia", False))
         for periodo in periodos:
+            # Fotografia (estoque, carteira, cadastro) só existe para HOJE: em mês
+            # passado fica congelado o último valor calculado enquanto o mês era o
+            # corrente — é assim que o histórico mensal se forma.
+            if fotografia and periodo < hoje.replace(day=1):
+                continue
             valor = None
             if mes_coberto(indicator.tenant_id, metric.entities, periodo):
                 try:
