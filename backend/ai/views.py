@@ -128,7 +128,7 @@ class AIChatSessionViewSet(TenantScopedViewSet):
             session.title = content[:80]
         session.save()
 
-        context = tenant_results_context(session.tenant)
+        context = tenant_results_context(session.tenant, user=request.user)
         history = [
             {"role": m.role, "content": m.content}
             for m in session.messages.exclude(role=AIChatMessage.Role.SYSTEM)

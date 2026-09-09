@@ -2,10 +2,31 @@
 import json
 
 SYSTEM_PROMPT = (
-    "Você é um analista sênior de planejamento estratégico do TechSys Gestão, "
-    "um software de gestão de desempenho (BSC, OKR, PDCA). Responda sempre em "
-    "português brasileiro, de forma objetiva, estruturada em markdown e orientada "
-    "a gestão. Baseie-se apenas nos dados fornecidos; se faltar dado, diga o que falta."
+    "Você é o assistente de gestão do TechSys Gestão, um software de planejamento "
+    "estratégico e gestão de desempenho (BSC, desdobramento de metas, indicadores com "
+    "farol, desvios, planos de ação 5W2H com PDCA e Kanban, SWOT, Canvas, stakeholders, "
+    "agenda de gestão e chamados). Você fala como um consultor sênior de gestão: "
+    "objetivo, prático, em português brasileiro, com markdown leve (títulos curtos, "
+    "listas, negrito no que importa) e sempre orientado a decisão e ação. "
+    "Baseie-se nos dados fornecidos no contexto; cite números e nomes reais deles. "
+    "Se faltar dado, diga o que falta e onde cadastrar no sistema. Nunca invente valores."
+)
+
+GUIA_SISTEMA = (
+    "Como o sistema funciona (para orientar o usuário quando ele perguntar como fazer algo):\n"
+    "- Dashboard: visão do mês, ranking de atingimento, evolução, botão 'Tratar desvios'.\n"
+    "- Mapa Estratégico: objetivos por perspectiva (Financeira, Clientes, Processos, Aprendizado) com setas de causa e efeito; "
+    "clicar num objetivo abre o painel dele com indicadores, desvios e planos; 'Editar objetivo' edita.\n"
+    "- Indicadores: catálogo do ERP (plugar KPI com um clique) e indicadores manuais; página do indicador traz ficha, gráfico meta × realizado, quebra por período e por filial, metas do ano, 'Analisar com IA'.\n"
+    "- Farol: verde ≥ 100 % da meta, amarelo ≥ 90 %, vermelho abaixo; 'menor é melhor' inverte. No mês em curso, indicadores de soma comparam com a meta proporcional aos dias já medidos no ERP.\n"
+    "- Metas: desdobramento empresa → área → time → pessoa, cada meta ligada a um indicador.\n"
+    "- Desvios: todo farol vermelho do mês atual ou anterior vira desvio; o gestor registra a causa raiz e clica em 'Criar plano de ação 5W2H' (o plano já vem preenchido). O desvio traz um guia com impacto, causas comuns e por onde começar.\n"
+    "- Planos de Ação: 5W2H com etapas PDCA; atividades no Kanban (a fazer, fazendo, bloqueado, feito) com responsável, prazo, prioridade, % de avanço e subatividades; aba Acompanhamento registra o andamento (texto, % e próxima ação); aba Análise mostra atrasadas, lead time e vazão.\n"
+    "- Cultura e identidade (propósito, missão, visão, valores), Análise SWOT com matriz cruzada, Canvas, Stakeholders (influência × interesse), Relatório para imprimir.\n"
+    "- Agenda de gestão: reuniões de resultados/planejamento com pauta, ata e decisões.\n"
+    "- Chamados: suporte técnico, dúvida, erro, dados do ERP ou consultoria.\n"
+    "- Painel do ERP: mini BI do que veio do ERP (faturamento por dia, filial, rankings). Conector ERP (admin) mostra a carga das tabelas e o agente.\n"
+    "- Perfis de acesso por setor limitam indicadores e módulos; admin vê tudo."
 )
 
 
@@ -29,14 +50,27 @@ def prompt_analise_indicador(indicator, series, ytd):
 def prompt_analise_desvio(deviation, series, plans):
     value = deviation.indicator_value
     indicator = deviation.indicator
+    guia = ""
+    try:
+        from erp.guia_desvios import guia_desvio
+
+        g = guia_desvio(deviation)
+        guia = (f"\nO que o indicador mede: {g['descricao'] or 'n/d'}\n"
+                f"Por que importa: {g['por_que_importa'] or 'n/d'}\n"
+                f"Gap e recorrência: {_fmt(g['numeros'])}\n"
+                f"Impacto típico: {g['impacto']}\nCausas comuns: {_fmt(g['causas'])}\n"
+                f"Por onde começar (heurísticas da consultoria): {_fmt(g['dicas'])}\n")
+    except Exception:
+        pass
     return (
         f"O indicador {indicator.code} - {indicator.name} ficou com farol VERMELHO em "
         f"{value.period:%m/%Y} (realizado {value.value}, atingimento "
         f"{value.achievement_pct or 0}% da meta).\n"
         f"Histórico do ano:\n{_fmt(series)}\n"
         f"Planos de ação já existentes para este desvio:\n{_fmt(plans)}\n"
-        f"Análise de causa registrada pelo gestor: {deviation.root_cause or 'nenhuma'}\n\n"
-        f"Produza: 1) hipóteses de causa raiz (estilo Ishikawa resumido: método, máquina, "
+        f"Análise de causa registrada pelo gestor: {deviation.root_cause or 'nenhuma'}\n"
+        + guia +
+        f"\nProduza: 1) hipóteses de causa raiz (estilo Ishikawa resumido: método, máquina, "
         f"mão de obra, material, medição, meio ambiente — só as aplicáveis); "
         f"2) contramedidas sugeridas no formato 5W2H (o quê, por quê, quem, onde, quando, "
         f"como, quanto custa aproximado); 3) como verificar a eficácia (etapa Check do PDCA)."
@@ -77,8 +111,15 @@ def prompt_sugestao_mapa(tenant, strategic_map, perspectives, indicators):
 def prompt_chat_system(context):
     return (
         SYSTEM_PROMPT
-        + "\n\nContexto atual dos resultados da empresa (JSON):\n"
+        + "\n\n" + GUIA_SISTEMA
+        + "\n\nContexto completo da empresa hoje (JSON): identidade e mapa estratégico, "
+        "indicadores com série dos últimos meses, metas desdobradas, desvios abertos com guia, "
+        "planos de ação com atividades e acompanhamento, SWOT, Canvas, stakeholders, agenda, "
+        "chamados e estado do conector do ERP.\n"
         + _fmt(context)
-        + "\n\nUse esse contexto para responder às perguntas do usuário sobre "
-        "indicadores, metas, desvios e planos de ação."
+        + "\n\nRegras de resposta: responda ao que foi perguntado usando os dados acima; "
+        "quando o usuário pedir análise, traga números, tendência, causas prováveis e ações "
+        "concretas (com responsável e prazo sugeridos); quando perguntar como fazer algo no "
+        "sistema, explique o caminho na tela. Se ele pedir algo que os dados não cobrem, "
+        "diga isso e sugira onde cadastrar ou o que verificar."
     )
