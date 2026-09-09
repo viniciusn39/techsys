@@ -323,7 +323,14 @@ def guia_desvio(deviation):
             seguidos += 1
         else:
             break
-    ultimos = [float(v.value) for v in reversed(anteriores[:3])]
+    # Mês em curso de um indicador de fluxo (soma) é parcial: comparar com meses
+    # cheios só assusta. A comparação vale para meses fechados ou saldos/médias.
+    hoje = date.today()
+    mes_corrente = val.period.year == hoje.year and val.period.month == hoje.month
+    from indicators.services import PRORATA_EXTRA
+
+    fluxo = ind.aggregation == "soma" or ind.erp_metric in PRORATA_EXTRA
+    ultimos = [] if (mes_corrente and fluxo) else [float(v.value) for v in reversed(anteriores[:3])]
     media_3m = sum(ultimos) / len(ultimos) if ultimos else None
     variacao_pct = ((float(val.value) - media_3m) / media_3m * 100) if media_3m else None
 
@@ -344,6 +351,6 @@ def guia_desvio(deviation):
             "meses_seguidos_vermelho": seguidos,
             "media_3m": (str(round(media_3m, 4)) if media_3m is not None else None),
             "variacao_vs_media_pct": (str(round(variacao_pct, 1)) if variacao_pct is not None else None),
-            "mes_corrente": val.period.year == date.today().year and val.period.month == date.today().month,
+            "mes_corrente": mes_corrente,
         },
     }

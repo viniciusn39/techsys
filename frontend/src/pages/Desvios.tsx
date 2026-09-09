@@ -274,6 +274,7 @@ export function Desvios() {
               )}
               {(() => {
                 const n = guia.numeros; const dec = n.decimais ?? 2; const u = n.unidade;
+                const val = (v: string | number | null) => (u === "R$" ? `R$ ${fmtNumber(v, dec)}` : `${fmtNumber(v, dec)} ${u}`);
                 const dif = n.diferenca !== null ? Number(n.diferenca) : null;
                 const faltou = dif !== null && (n.polaridade === "menor_melhor" ? dif > 0 : dif < 0);
                 return (
@@ -281,17 +282,17 @@ export function Desvios() {
                     {dif !== null && (
                       <span className="badge fw-normal" style={{ background: "var(--st-vermelho-soft, rgba(220,53,69,.12))", color: "var(--st-vermelho)" }}>
                         <i className="bi bi-arrow-down-right me-1" />
-                        {n.polaridade === "menor_melhor" ? "passou da meta em" : "faltaram"} {fmtNumber(Math.abs(dif), dec)} {u}
+                        {n.polaridade === "menor_melhor" ? "passou da meta em" : "faltaram"} {val(Math.abs(dif))}
                         {n.meta_proporcional && n.mes_corrente ? " (meta proporcional aos dias medidos)" : ""}
                       </span>
                     )}
-                    {!faltou && dif !== null && <span className="badge text-bg-light border fw-normal">meta cheia: {fmtNumber(n.meta_cheia, dec)} {u}</span>}
+                    {!faltou && dif !== null && <span className="badge text-bg-light border fw-normal">meta cheia: {val(n.meta_cheia)}</span>}
                     {n.meses_seguidos_vermelho > 1 && (
                       <span className="badge text-bg-light border fw-normal"><i className="bi bi-arrow-repeat me-1" />{n.meses_seguidos_vermelho}º mês seguido abaixo da meta</span>
                     )}
                     {n.variacao_vs_media_pct !== null && (
                       <span className="badge text-bg-light border fw-normal">
-                        {Number(n.variacao_vs_media_pct) >= 0 ? "+" : ""}{fmtNumber(n.variacao_vs_media_pct, 1)}% frente à média dos 3 meses anteriores ({fmtNumber(n.media_3m, dec)} {u})
+                        {Number(n.variacao_vs_media_pct) >= 0 ? "+" : ""}{fmtNumber(n.variacao_vs_media_pct, 1)}% frente à média dos 3 meses anteriores ({val(n.media_3m)})
                       </span>
                     )}
                   </div>
