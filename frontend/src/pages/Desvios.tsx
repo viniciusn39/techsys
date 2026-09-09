@@ -4,6 +4,7 @@ import { useNavigate } from "react-router-dom";
 import { api } from "../api/client";
 import { areaWash, vizTokens } from "../charts/theme";
 import { EChart } from "../components/EChart";
+import { Markdown } from "../components/Markdown";
 import { EmptyState, Panel, Skeleton, StatCard, StatusDot } from "../components/ui";
 import { useTheme } from "../hooks/useTheme";
 import type { AIInsight, Deviation, IndicatorSeries } from "../types";
@@ -369,7 +370,7 @@ export function Desvios() {
               {aiInsight.status === "erro" ? (
                 <div className="text-danger small">{aiInsight.error_message}</div>
               ) : (
-                <div className="markdown-body">{aiInsight.content}</div>
+                <Markdown text={aiInsight.content} />
               )}
             </Panel>
           )}

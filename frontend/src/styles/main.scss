@@ -634,10 +634,21 @@ code {
 // --- utilitários -----------------------------------------------------------
 
 .markdown-body {
-  white-space: pre-wrap;
   font-size: 0.88rem;
   line-height: 1.6;
   color: var(--ink);
+  h4, h5, h6 { font-weight: 600; margin: 0.9rem 0 0.4rem; color: var(--ink); }
+  h4 { font-size: 1rem; } h5 { font-size: 0.95rem; } h6 { font-size: 0.9rem; }
+  > :first-child { margin-top: 0; }
+  p { margin: 0 0 0.6rem; }
+  ul, ol { margin: 0 0 0.6rem; padding-left: 1.3rem; }
+  li { margin-bottom: 0.15rem; }
+  hr { margin: 0.7rem 0; border-color: var(--border); }
+  table { font-size: 0.84rem; }
+  th { font-weight: 600; white-space: nowrap; }
+  code { font-size: 0.82em; background: var(--surface-sunken); padding: 0.05rem 0.3rem; border-radius: 4px; }
+  pre { background: var(--surface-sunken); padding: 0.6rem; border-radius: 6px; white-space: pre-wrap; }
+  strong { font-weight: 600; }
 }
 
 .text-muted-2 { color: var(--ink-muted) !important; }

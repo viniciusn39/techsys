@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { Button, Form } from "react-bootstrap";
 import { api } from "../api/client";
+import { Markdown } from "../components/Markdown";
 import type { ChatSession } from "../types";
 
 const SUGESTOES = [
@@ -8,6 +9,8 @@ const SUGESTOES = [
   "Resuma o desempenho do trimestre por área.",
   "Quais riscos você vê para as metas do ano?",
   "Sugira contramedidas para o indicador com pior atingimento.",
+  "Quais planos de ação estão parados ou sem acompanhamento?",
+  "Como está o objetivo financeiro do mapa estratégico?",
 ];
 
 export function ChatIA() {
@@ -121,7 +124,7 @@ export function ChatIA() {
             Assistente de Resultados
           </strong>
           <div className="text-muted-2 small mt-1">
-            Responde com base nos indicadores, metas, desvios e planos da sua empresa.
+            Responde sobre tudo o que está no sistema: mapa estratégico, metas, indicadores, desvios, planos de ação, SWOT, agenda e chamados; e explica como usar cada tela.
           </div>
         </div>
 
@@ -149,8 +152,8 @@ export function ChatIA() {
                 key={idx}
                 className={`mb-2 ${m.role === "user" ? "chat-bubble-user" : "chat-bubble-assistant"}`}
               >
-                <div className="markdown-body" style={m.role === "user" ? { color: "#fff" } : undefined}>
-                  {m.content}
+                <div style={m.role === "user" ? { color: "#fff" } : undefined}>
+                  {m.role === "user" ? <div className="markdown-body">{m.content}</div> : <Markdown text={m.content} />}
                 </div>
               </div>
             ))

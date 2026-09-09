@@ -2,6 +2,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Button, Form, Tab, Tabs } from "react-bootstrap";
 import { Link, useParams } from "react-router-dom";
 import { api } from "../api/client";
+import { Markdown } from "../components/Markdown";
 import {
   BAR_MAX_WIDTH,
   BAR_RADIUS_V,
@@ -537,7 +538,7 @@ export function IndicadorDetalhe() {
                     {ins.status === "erro" ? (
                       <div className="text-danger small">{ins.error_message}</div>
                     ) : (
-                      <div className="markdown-body">{ins.content}</div>
+                      <Markdown text={ins.content} />
                     )}
                   </div>
                 </div>
