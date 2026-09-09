@@ -32,7 +32,7 @@ class Command(BaseCommand):
         parser.add_argument("--apenas", default="", help="só estes códigos (vírgula)")
         parser.add_argument("--plugar", default="", help="KPIs do catálogo: CODE=objetivo_id,CODE2=objetivo_id (objetivo opcional)")
         parser.add_argument("--desativar", default="", help="códigos de indicadores a desativar (vírgula)")
-        parser.add_argument("--desativar-vazios", action="store_true", help="desativa indicadores ativos sem nenhum lançamento (ficam só no catálogo)")
+        parser.add_argument("--remover-vazios", action="store_true", help="remove do tenant os indicadores do ERP sem lançamento ou só com zeros (ficam só no catálogo)")
         parser.add_argument("--limpar-desvios", action="store_true", help="apaga desvios abertos sem plano cujo valor já não é vermelho")
         parser.add_argument("--recalcular", action="store_true", help="recalcula valores do ERP e metas do ERP antes de calibrar")
         parser.add_argument("--sem-metas", action="store_true", help="não calibra metas (só pluga/desativa/limpa)")
@@ -50,11 +50,16 @@ class Command(BaseCommand):
             n = Indicator.objects.filter(tenant=tenant, code__in=codes).update(is_active=False)
             self.stdout.write(f"desativados: {n} ({', '.join(codes)})")
 
-        if o["desativar_vazios"]:
-            vazios = Indicator.objects.filter(tenant=tenant, is_active=True, values__isnull=True)
-            codes = list(vazios.values_list("code", flat=True))
-            n = Indicator.objects.filter(id__in=vazios).update(is_active=False)
-            self.stdout.write(f"desativados sem lançamento: {n} ({', '.join(codes) or '-'})")
+        if o["remover_vazios"]:
+            from django.db.models import Max
+
+            removidos = []
+            for ind in Indicator.objects.filter(tenant=tenant).annotate(maior=Max("values__value")):
+                sem_dado = ind.maior is None or (ind.erp_metric and ind.maior == 0 and not ind.values.exclude(value=0).exists())
+                if sem_dado and not ind.action_plans.exists():
+                    removidos.append(ind.code)
+                    ind.delete()
+            self.stdout.write(f"removidos sem lançamento: {len(removidos)} ({', '.join(removidos) or '-'})")
 
         if o["recalcular"]:
             from erp.tasks import calcular_indicadores_erp
