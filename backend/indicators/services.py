@@ -44,6 +44,9 @@ def compute_achievement(indicator, value, target):
     return pct, status
 
 
+PRORATA_EXTRA = {"venda_media_por_rca", "faturamento_por_funcionario", "desligamentos", "admissoes"}
+
+
 def meta_proporcional(indicator, period, target, source="manual"):
     """Meta do mês corrente proporcional aos dias já medidos.
 
@@ -58,7 +61,12 @@ def meta_proporcional(indicator, period, target, source="manual"):
 
     from .models import Indicator
 
-    if target is None or indicator.aggregation != Indicator.Aggregation.SOMA or source != "agent":
+    if target is None or source != "agent":
+        return target
+    # Métricas de média que na verdade crescem com os dias do mês (faturamento ÷ RCAs,
+    # faturamento ÷ funcionário): proporcionais como as de soma.
+    fluxo_disfarcado = indicator.erp_metric in PRORATA_EXTRA
+    if indicator.aggregation != Indicator.Aggregation.SOMA and not fluxo_disfarcado:
         return target
     hoje = date.today()
     if period.year != hoje.year or period.month != hoje.month:
