@@ -190,3 +190,23 @@ class DiagnosticoEIdentidadeTests(APITestCase):
         r = self.client.patch(f"/api/strategic-maps/{self.map.id}/", {"purpose": "Alimentar bem"}, format="json")
         self.assertEqual(r.status_code, 200, r.content)
         self.assertEqual(self.client.get("/api/strategic-maps/active/").json()["purpose"], "Alimentar bem")
+
+
+class GoalResumoTests(TestCase):
+    def test_resumo_do_indicador_ligado(self):
+        from datetime import date
+
+        from accounts.models import Tenant
+        from indicators.models import Indicator, IndicatorTarget, IndicatorValue
+        from strategy.models import Goal
+        from strategy.serializers import GoalSerializer
+
+        t = Tenant.objects.create(name="G", slug="g-resumo")
+        ind = Indicator.objects.create(tenant=t, code="FAT", name="Fat", unit="R$", decimals=2, aggregation="soma")
+        ano = date.today().year
+        for m in range(1, 13):
+            IndicatorTarget.objects.create(indicator=ind, period=date(ano, m, 1), target_value=100)
+        IndicatorValue.objects.create(indicator=ind, period=date(ano, 1, 1), value=90)
+        g = Goal.objects.create(tenant=t, name="Meta", indicator=ind)
+        r = GoalSerializer(g).data["indicator_resumo"]
+        self.assertEqual((float(r["meta_ano"]), float(r["realizado_ano"])), (1200.0, 90.0))

@@ -110,7 +110,8 @@ class GoalSerializer(serializers.ModelSerializer):
         ano = date.today().year
         ytd = compute_ytd(ind, ano)  # meta até o último mês medido (mês corrente proporcional)
         if ind.aggregation == "soma":
-            meta_ano = sum((t.target_value for t in ind.targets.filter(period__year=ano)), start=None) if ind.targets.filter(period__year=ano).exists() else None
+            metas = list(ind.targets.filter(period__year=ano).values_list("target_value", flat=True))
+            meta_ano = sum(metas) if metas else None
         else:
             meta_ano = ytd["target"]
         return {
