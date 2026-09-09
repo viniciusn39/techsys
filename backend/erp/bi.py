@@ -202,9 +202,15 @@ def foto_mes(tenant, filters, ref, meses=1):
             else:
                 atual[k] = _num(m.compute_metric(k, tenant, ref, filters))
         anterior = {}
-        for k in FLUXO:
-            metric = m.get_metric(k)
-            anterior[k] = _num(metric.compute(tenant, ini_ant, fim_ant, filters or {})) if metric else None
+        # Período anterior só compara se o espelho cobre o período inteiro; senão a
+        # variação sairia contra um pedaço (12 meses × 1 mês de dados = −94 %).
+        cobertura = m.primeiro_mes_completo(tenant.id, "sales_invoice")
+        if cobertura is None or ini_ant >= cobertura:
+            for k in FLUXO:
+                metric = m.get_metric(k)
+                anterior[k] = _num(metric.compute(tenant, ini_ant, fim_ant, filters or {})) if metric else None
+        else:
+            anterior = {k: None for k in FLUXO}
     return {"periodo": ref.replace(day=1), "meses": meses, "ini": ini, "fim": fim,
             "ini_anterior": ini_ant, "fim_anterior": fim_ant, "atual": atual, "mes_anterior": anterior}
 
