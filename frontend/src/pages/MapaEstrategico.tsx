@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Button, Dropdown, Form, Modal } from "react-bootstrap";
+import { ObjetivoDashboard } from "../components/ObjetivoDashboard";
 import { api } from "../api/client";
 import { statusKey, vizTokens, withAlpha } from "../charts/theme";
 import { EChart } from "../components/EChart";
@@ -37,6 +38,7 @@ export function MapaEstrategico() {
   const [users, setUsers] = useState<UserRow[]>([]);
   const [view, setView] = useState<View>("diagrama");
   const [editing, setEditing] = useState<Partial<Objective> | null>(null);
+  const [aberto, setAberto] = useState<Objective | null>(null);
   const [persp, setPersp] = useState<Partial<Perspective> | null>(null);
   const [creatingMap, setCreatingMap] = useState(false);
   const [mapForm, setMapForm] = useState({
@@ -133,7 +135,7 @@ export function MapaEstrategico() {
 
   const handleNodeClick = async (objective: Objective) => {
     if (!linking) {
-      setEditing(objective);
+      setAberto(objective);
       return;
     }
     if (linkSource === null) {
@@ -524,7 +526,7 @@ export function MapaEstrategico() {
                 <div className="row g-2">
                   {p.objectives?.map((o) => (
                     <div className="col-md-6 col-xl-3" key={o.id}>
-                      <div className="objective-card" onClick={() => setEditing(o)} role="button">
+                      <div className="objective-card" onClick={() => setAberto(o)} role="button">
                         <div className="title">{o.name}</div>
                         {o.owner_name && (
                           <div className="meta mt-1"><i className="bi bi-person me-1" />{o.owner_name}</div>
@@ -557,6 +559,20 @@ export function MapaEstrategico() {
       )}
 
       {/* --- Perspectiva --- */}
+      {aberto && (() => {
+        const p = map?.perspectives?.find((x) => x.id === aberto.perspective);
+        const atual = map?.perspectives?.flatMap((x) => x.objectives ?? []).find((o) => o.id === aberto.id) ?? aberto;
+        return (
+          <ObjetivoDashboard
+            objective={atual}
+            perspectiveName={p?.name}
+            perspectiveColor={p?.color}
+            onClose={() => setAberto(null)}
+            onEdit={() => { setAberto(null); setEditing(atual); }}
+          />
+        );
+      })()}
+
       <Modal show={!!persp} onHide={() => setPersp(null)} centered>
         <Modal.Header closeButton>
           <Modal.Title className="fs-6">{persp?.id ? "Editar perspectiva" : "Nova perspectiva"}</Modal.Title>
