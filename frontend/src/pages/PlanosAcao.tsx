@@ -193,7 +193,7 @@ export function PlanosAcao() {
     <div>
       <div className="row g-3 mb-3">
         <div className="col-6 col-xl-3">
-          <StatCard icon="bi-kanban" label="Planos ativos" value={(plans ?? []).filter((p) => p.status === "em_andamento").length} foot={`${plans?.length ?? 0} no total`} />
+          <StatCard icon="bi-kanban" label="Projetos ativos" value={(plans ?? []).filter((p) => p.status === "em_andamento").length} foot={`${plans?.length ?? 0} no total`} />
         </div>
         <div className="col-6 col-xl-3">
           <StatCard icon="bi-check2-circle" label="Concluídos" value={doneCount} />
@@ -224,7 +224,7 @@ export function PlanosAcao() {
               onClick={() => setView(v)}
             >
               <i className={`bi ${v === "kanban" ? "bi-kanban" : v === "lista" ? "bi-list-ul" : "bi-bar-chart-line"} me-1`} />
-              {v === "kanban" ? "Kanban" : v === "lista" ? "Planos" : "Análise"}
+              {v === "kanban" ? "Kanban" : v === "lista" ? "Projetos" : "Análise"}
             </button>
           ))}
         </div>
@@ -238,7 +238,7 @@ export function PlanosAcao() {
           <>
             <Form.Control size="sm" style={{ width: 180 }} placeholder="Buscar atividade…" value={busca} onChange={(e) => setBusca(e.target.value)} />
             <Form.Select size="sm" style={{ width: 170 }} value={fPlano} onChange={(e) => setFPlano(e.target.value)}>
-              <option value="">Todos os planos</option>
+              <option value="">Todos os projetos</option>
               {(plans ?? []).filter((p) => p.status !== "cancelado").map((p) => <option key={p.id} value={p.id}>{p.title}</option>)}
             </Form.Select>
             <Form.Select size="sm" style={{ width: 160 }} value={fResp} onChange={(e) => setFResp(e.target.value)}>
@@ -260,7 +260,7 @@ export function PlanosAcao() {
           className="ms-auto"
           onClick={() => setEditing({ status: "rascunho", pdca_stage: "plan", priority: "media", origin: "manual" })}
         >
-          <i className="bi bi-plus-lg me-1" />Novo plano (5W2H)
+          <i className="bi bi-plus-lg me-1" />Novo projeto (5W2H)
         </Button>
       </div>
 
@@ -332,7 +332,7 @@ export function PlanosAcao() {
             })}
           </div>
           <div className="mt-3">
-            <Panel title="Progresso dos planos" subtitle="Percentual de atividades concluídas">
+            <Panel title="Progresso dos projetos" subtitle="Percentual de atividades concluídas">
               {list.filter((p) => p.items_total > 0).length === 0 ? (
                 <EmptyState icon="bi-bar-chart" title="Nenhum plano com atividades" />
               ) : (
@@ -398,15 +398,15 @@ export function PlanosAcao() {
           {list.length === 0 ? (
             <EmptyState
               icon="bi-kanban"
-              title="Nenhum plano de ação"
-              hint="Crie um plano 5W2H ou trate um desvio para gerar um automaticamente."
+              title="Nenhum projeto"
+              hint="Crie um projeto 5W2H ou trate um desvio para gerar um automaticamente."
             />
           ) : (
             <div className="table-responsive">
               <table className="table table-hover align-middle">
                 <thead>
                   <tr>
-                    <th>Plano</th><th>Responsável</th><th>Prazo</th>
+                    <th>Projeto</th><th>Responsável</th><th>Prazo</th>
                     <th>PDCA</th><th style={{ width: 150 }}>Progresso</th>
                     <th>Prioridade</th><th>Status</th>
                   </tr>
@@ -462,7 +462,7 @@ export function PlanosAcao() {
       {/* --- Modal 5W2H --- */}
       <Modal show={!!editing} onHide={() => setEditing(null)} size="lg" centered>
         <Modal.Header closeButton>
-          <Modal.Title className="fs-6">{editing?.id ? "Editar plano de ação" : "Novo plano de ação (5W2H)"}</Modal.Title>
+          <Modal.Title className="fs-6">{editing?.id ? "Editar projeto" : "Novo projeto (5W2H)"}</Modal.Title>
         </Modal.Header>
         <Modal.Body>
           <div className="row g-3">
@@ -657,7 +657,7 @@ export function PlanosAcao() {
           {itemEdit && (
             <div className="row g-2">
               <div className="col-12">
-                <Form.Label className="small">Plano</Form.Label>
+                <Form.Label className="small">Projeto</Form.Label>
                 <Form.Select size="sm" value={itemEdit.plan ?? ""} onChange={(e) => setItemEdit({ ...itemEdit, plan: Number(e.target.value) })} disabled={!!itemEdit.id}>
                   <option value="">—</option>
                   {(plans ?? []).filter((p) => p.status !== "cancelado").map((p) => <option key={p.id} value={p.id}>{p.title}</option>)}

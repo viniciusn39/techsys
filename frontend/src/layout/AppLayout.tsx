@@ -41,7 +41,7 @@ const TENANT_SECTIONS: { label: string; items: MenuItem[] }[] = [
   {
     label: "Execução",
     items: [
-      { to: "/planos-acao", module: "planos", icon: "bi-kanban", label: "Planos de Ação", title: "Planos de Ação", sub: "5W2H, PDCA e Kanban", roles: ["root", "admin", "gestor", "colaborador"] },
+      { to: "/planos-acao", module: "planos", icon: "bi-kanban", label: "Projetos", title: "Projetos e planos de ação", sub: "Projetos 5W2H com etapas PDCA e Kanban de atividades", roles: ["root", "admin", "gestor", "colaborador"] },
       { to: "/agenda", module: "agenda", icon: "bi-calendar3", label: "Agenda de gestão", title: "Agenda de gestão", sub: "Reuniões de resultados, pauta, ata e decisões", roles: ["root", "admin", "gestor", "colaborador"] },
       { to: "/desvios", module: "desvios", icon: "bi-exclamation-triangle", label: "Desvios", title: "Tratamento de Desvios", sub: "Faróis vermelhos e causa raiz", roles: ["root", "admin", "gestor", "colaborador"] },
       { to: "/ia/chat", module: "ia", icon: "bi-stars", label: "Assistente IA", title: "Assistente de Resultados", sub: "Converse sobre os seus indicadores", roles: ["root", "admin", "gestor", "colaborador"] },

@@ -29,7 +29,7 @@ const TOPICOS: Topico[] = [
     "Metas: cadastre por mês ou deixe que venham do ERP quando o KPI tiver meta no WinThor.",
   ], dicas: ["Farol: verde ≥ 100 % da meta, amarelo ≥ 90 %, vermelho abaixo. 'Menor é melhor' inverte a conta.", "Indicadores do ERP não aceitam lançamento manual: o valor vem do espelho do ERP."] },
   { key: "metas", icon: "bi-bullseye", title: "Desdobramento de metas", to: "/metas", resumo: "Da meta da empresa para área, time e pessoa, cada uma ligada a um indicador.", passos: ["Crie a meta da empresa e desdobre em metas filhas.", "Vincule cada meta a um indicador para herdar o farol."] },
-  { key: "planos", icon: "bi-kanban", title: "Planos de ação e Kanban", to: "/planos-acao", resumo: "Plano 5W2H com etapas PDCA e atividades no Kanban (a fazer, fazendo, bloqueado, feito).", passos: [
+  { key: "planos", icon: "bi-kanban", title: "Projetos (5W2H) e Kanban", to: "/planos-acao", resumo: "Projeto 5W2H com etapas PDCA e atividades no Kanban (a fazer, fazendo, bloqueado, feito).", passos: [
     "Crie o plano (o quê, por quê, onde, quem, quando, como, quanto) ou gere um a partir de um desvio.",
     "Adicione atividades com responsável, prazo e prioridade; arraste entre as colunas.",
     "Use a aba Análise para ver atrasadas, lead time e vazão semanal.",
