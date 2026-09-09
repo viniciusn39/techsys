@@ -275,10 +275,18 @@ def mix_skus(tenant, ini, fim, filters=None):
     return D(_itens_venda(tenant, ini, fim, filters).values("product").distinct().count())
 
 
-@fotografia
 def carteira_pedidos(tenant, ini, fim, filters=None):
-    """Valor em pedidos pendentes (não faturados nem cancelados) hoje."""
-    qs = Order.objects.filter(tenant=tenant, status=Order.Status.PENDING, order_date__lte=fim).filter(_branch_q(filters))
+    """Valor em pedidos abertos COMO ESTAVA no fim do período: digitados até lá e ainda
+    não faturados nessa data (DTFAT). Em mês passado reconstrói a posição pela data do
+    faturamento; só vale a partir do primeiro mês inteiro de pedidos no espelho."""
+    corte = _ate(fim)
+    inicio = primeiro_mes_completo(tenant.id, "order")
+    if inicio and corte < inicio:
+        return None
+    qs = (Order.objects.filter(tenant=tenant, order_date__lte=corte).exclude(status=Order.Status.CANCELED)
+          .filter(Q(invoiced_at__isnull=True) | Q(invoiced_at__gt=corte)).filter(_branch_q(filters)))
+    if _periodo_corrente(fim):
+        qs = qs.filter(status=Order.Status.PENDING)
     return _money(_sum(qs, "total") or ZERO)
 
 
@@ -1075,10 +1083,22 @@ def clientes_bloqueados_pct(tenant, ini, fim, filters=None):
 
 
 def clientes_inativos_90_pct(tenant, ini, fim, filters=None):
-    """% da base (não bloqueada, com alguma compra) sem comprar há mais de 90 dias."""
-    qs = Customer.objects.filter(tenant=tenant, blocked=False, last_purchase_at__isnull=False)
-    n = qs.count()
-    return _pct(qs.filter(last_purchase_at__lt=fim - timedelta(days=90)).count(), n) if n else None
+    """% da base (não bloqueada, que já comprou até a data) sem nota nos 90 dias até o fim do período.
+
+    Pelas notas, e não por PCCLIENT.DTULTCOMP (campo de hoje): assim o mês passado
+    mostra quem estava inativo naquela época. Precisa de 90 dias de notas no espelho."""
+    corte = _ate(fim)
+    inicio = primeiro_mes_completo(tenant.id, "sales_invoice")
+    if inicio and corte - timedelta(days=90) < inicio:
+        return None
+    base = Customer.objects.filter(tenant=tenant, blocked=False, first_purchase_at__lte=corte)
+    n = base.count()
+    if not n:
+        return None
+    ativos = (SalesInvoice.objects.filter(tenant=tenant, issued_at__range=(corte - timedelta(days=90), corte), customer__isnull=False)
+              .filter(regras.filtro_notas_faturadas()).filter(_branch_q(filters)).values("customer_id").distinct())
+    ativos_na_base = base.filter(id__in=ativos).count()
+    return _pct(n - ativos_na_base, n)
 
 
 def clientes_cadastrados(tenant, ini, fim, filters=None):
@@ -1562,7 +1582,7 @@ def primeiro_mes_completo(tenant_id, entity):
 _FOTOGRAFIAS = (
     "estoque_valor", "ruptura_pct", "venda_perdida_qtd", "capital_parado", "capital_parado_pct",
     "itens_sem_giro_pct", "excesso_estoque", "abaixo_minimo_pct", "skus_com_estoque", "estoque_bloqueado",
-    "itens_sem_inventario_pct", "clientes_inativos_90_pct", "clientes_bloqueados_pct", "base_clientes",
+    "itens_sem_inventario_pct", "clientes_bloqueados_pct", "base_clientes",
     "credito_disponivel_carteira", "clientes_sem_credito_pct", "fila_bloqueio_valor", "pedidos_fv_pendentes",
     "rcas_flex_negativo", "pagar_sem_dupla_autorizacao", "adiantamentos_fornecedor_aberto", "cargas_em_rota",
     "wms_os_pendentes",

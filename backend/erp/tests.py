@@ -634,3 +634,37 @@ class FotografiaHistoricoTests(APITestCase):
         calcular_indicadores_erp(tenant_id=tenant.id, meses=2)
         self.assertEqual(IndicatorValue.objects.get(indicator=ind, period=anterior).value, Decimal("999.0000"))   # mantido
         self.assertEqual(IndicatorValue.objects.get(indicator=ind, period=hoje.replace(day=1)).value, Decimal("50.0000"))  # hoje
+
+
+class PosicaoNoFimDoMesTests(APITestCase):
+    """Carteira de pedidos e clientes inativos reconstroem a posição de meses passados."""
+
+    def setUp(self):
+        self.tenant = Tenant.objects.create(name="Pos", slug="pos")
+        self.b = Branch.objects.create(tenant=self.tenant, external_id="1", code="1", name="CD")
+
+    def test_carteira_de_pedidos_como_estava_no_fim_do_mes(self):
+        from erp.models import Order
+
+        # Pedidos desde janeiro: cobertura completa a partir de fevereiro.
+        Order.objects.create(tenant=self.tenant, external_id="0", branch=self.b, order_date=date(2026, 1, 2), invoiced_at=date(2026, 1, 3), total=1, status="shipped")
+        Order.objects.create(tenant=self.tenant, external_id="1", branch=self.b, order_date=date(2026, 3, 10), invoiced_at=date(2026, 4, 2), total=100, status="shipped")  # aberto no fim de março
+        Order.objects.create(tenant=self.tenant, external_id="2", branch=self.b, order_date=date(2026, 3, 20), invoiced_at=date(2026, 3, 21), total=50, status="shipped")   # faturado em março
+        Order.objects.create(tenant=self.tenant, external_id="3", branch=self.b, order_date=date(2026, 3, 25), invoiced_at=None, total=30, status="canceled")            # cancelado
+        self.assertEqual(compute_metric("carteira_pedidos", self.tenant, date(2026, 3, 1)), Decimal("100.00"))
+        self.assertEqual(compute_metric("carteira_pedidos", self.tenant, date(2026, 4, 1)), Decimal("0.00"))
+
+    def test_clientes_inativos_pelas_notas_de_cada_epoca(self):
+        c1 = Customer.objects.create(tenant=self.tenant, external_id="1", name="A", first_purchase_at=date(2025, 1, 1))
+        c2 = Customer.objects.create(tenant=self.tenant, external_id="2", name="B", first_purchase_at=date(2025, 1, 1))
+        Customer.objects.create(tenant=self.tenant, external_id="3", name="C", first_purchase_at=date(2026, 12, 1))  # ainda não comprava
+        # Notas desde outubro/2025: 90 dias cobertos a partir do fim de janeiro/2026.
+        SalesInvoice.objects.create(tenant=self.tenant, external_id="n0", branch=self.b, customer=c1, issued_at=date(2025, 10, 5), total=1, sale_type=1)
+        SalesInvoice.objects.create(tenant=self.tenant, external_id="n1", branch=self.b, customer=c1, issued_at=date(2026, 3, 15), total=1, sale_type=1)
+        SalesInvoice.objects.create(tenant=self.tenant, external_id="n2", branch=self.b, customer=c2, issued_at=date(2026, 1, 10), total=1, sale_type=1)
+        # Março: A comprou em março (ativo); B comprou em janeiro (dentro de 90 dias) → 0 % inativos.
+        self.assertEqual(compute_metric("clientes_inativos_90_pct", self.tenant, date(2026, 3, 1)), Decimal("0.00"))
+        # Maio: B sem compra há mais de 90 dias → 50 %.
+        self.assertEqual(compute_metric("clientes_inativos_90_pct", self.tenant, date(2026, 5, 1)), Decimal("50.00"))
+        # Novembro/2025: menos de 90 dias de notas no espelho → sem valor.
+        self.assertIsNone(compute_metric("clientes_inativos_90_pct", self.tenant, date(2025, 11, 1)))
