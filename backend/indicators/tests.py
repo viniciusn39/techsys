@@ -134,6 +134,15 @@ class CalibracaoTests(TestCase):
         calibrar_indicador(ind, sobrescrever=True)
         self.assertEqual(ind.targets.get(period__month=1).target_value, Decimal("9.50"))
 
+    def test_percentual_nao_passa_de_cem(self):
+        from decimal import Decimal
+
+        from .calibracao import calibrar_indicador
+
+        ind = self._ind("CONV", valores=[99.9, 99.8, 100])
+        ind.unit = "%"; ind.save(update_fields=["unit"])
+        self.assertEqual(calibrar_indicador(ind).meta, Decimal("100.00"))
+
     def test_sem_historico_e_pulado(self):
         from .calibracao import calibrar_indicador
 

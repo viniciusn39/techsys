@@ -54,6 +54,8 @@ def meta_a_partir_da_base(indicator, base, melhoria=MELHORIA_PADRAO):
         meta = base * (1 + Decimal(melhoria) / 100)
     else:
         meta = max(Decimal("0"), base * (1 - Decimal(melhoria) / 100))
+    if indicator.unit.strip() == "%" and meta > 100:
+        meta = Decimal("100")  # taxa não passa de 100 % (conversão, cobertura, autorizadas…)
     q = Decimal(1).scaleb(-int(indicator.decimals))
     return meta.quantize(q, rounding=ROUND_HALF_UP)
 
