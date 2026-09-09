@@ -192,7 +192,7 @@ class DiagnosticoEIdentidadeTests(APITestCase):
         self.assertEqual(self.client.get("/api/strategic-maps/active/").json()["purpose"], "Alimentar bem")
 
 
-class GoalResumoTests(TestCase):
+class GoalResumoTests(APITestCase):
     def test_resumo_do_indicador_ligado(self):
         from datetime import date
 
