@@ -124,7 +124,7 @@ def _diagnostico(tenant, mapa):
     swot = {}
     for s in SwotItem.objects.filter(map=mapa).select_related("objective").order_by("quadrant", "order"):
         swot.setdefault(s.get_quadrant_display(), []).append({
-            "item": s.text, "impacto_1a5": s.impact, "objetivo": s.objective.name if s.objective else None,
+            "item": s.text, "pontuacao_1a125": s.score, "departamento": s.org_unit.name if s.org_unit else None, "objetivo": s.objective.name if s.objective else None,
         })
     estrategias = [{"tipo": e.get_kind_display(), "estrategia": e.text, "objetivo": e.objective.name if e.objective else None}
                    for e in SwotStrategy.objects.filter(map=mapa).select_related("objective")]

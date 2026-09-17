@@ -124,7 +124,13 @@ class SwotItem(TenantOwnedModel):
     quadrant = models.CharField(max_length=1, choices=Quadrant.choices)
     text = models.CharField("descrição", max_length=300)
     detail = models.TextField(blank=True)
+    # Pontuação = importância × intensidade × tendência (cada uma de 1 a 5, máximo 125).
+    importance = models.PositiveSmallIntegerField("importância (1–5)", default=3)
+    intensity = models.PositiveSmallIntegerField("intensidade (1–5)", default=3)
+    trend = models.PositiveSmallIntegerField("tendência (1–5)", default=3)
+    # Resumo da pontuação na escala 1–5 (raiz cúbica): ordena a matriz cruzada e o relatório.
     impact = models.PositiveSmallIntegerField("impacto (1–5)", default=3)
+    org_unit = models.ForeignKey(OrgUnit, on_delete=models.SET_NULL, null=True, blank=True, related_name="swot_items", verbose_name="departamento")
     objective = models.ForeignKey(
         StrategicObjective, on_delete=models.SET_NULL, null=True, blank=True, related_name="swot_items",
     )
@@ -135,6 +141,14 @@ class SwotItem(TenantOwnedModel):
 
     def __str__(self):
         return f"[{self.quadrant}] {self.text}"
+
+    @property
+    def score(self):
+        return self.importance * self.intensity * self.trend
+
+    def save(self, *args, **kwargs):
+        self.impact = max(1, min(5, round(self.score ** (1 / 3))))
+        super().save(*args, **kwargs)
 
 
 class SwotStrategy(TenantOwnedModel):

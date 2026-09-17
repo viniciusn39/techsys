@@ -199,11 +199,41 @@ class _MapaDoTenant:
 class SwotItemSerializer(_MapaDoTenant, serializers.ModelSerializer):
     quadrant_label = serializers.CharField(source="get_quadrant_display", read_only=True)
     objective_name = serializers.CharField(source="objective.name", read_only=True, default="")
+    org_unit_name = serializers.CharField(source="org_unit.name", read_only=True, default="")
+    score = serializers.IntegerField(read_only=True)
+    projects_count = serializers.IntegerField(source="projects.count", read_only=True)
 
     class Meta:
         model = SwotItem
-        fields = ["id", "map", "quadrant", "quadrant_label", "text", "detail", "impact", "objective", "objective_name", "order"]
+        fields = ["id", "map", "quadrant", "quadrant_label", "text", "detail", "importance", "intensity", "trend", "score", "impact",
+                  "org_unit", "org_unit_name", "objective", "objective_name", "projects_count", "order"]
         extra_kwargs = {"map": {"required": False}}
+
+    def _de_1_a_5(self, v, nome):
+        if not 1 <= int(v) <= 5:
+            raise serializers.ValidationError(f"{nome} de 1 a 5.")
+        return v
+
+    def validate_importance(self, v):
+        return self._de_1_a_5(v, "Importância")
+
+    def validate_intensity(self, v):
+        return self._de_1_a_5(v, "Intensidade")
+
+    def validate_trend(self, v):
+        return self._de_1_a_5(v, "Tendência")
+
+    def validate_org_unit(self, value):
+        tenant = self.context.get("tenant")
+        if value is not None and tenant and value.tenant_id != tenant.id:
+            raise serializers.ValidationError("Departamento de outra empresa.")
+        return value
+
+    def validate(self, data):
+        # Quem ainda manda só "impacto" (1–5) vira três fatores iguais: a pontuação fica impacto³.
+        if "impact" in data and not {"importance", "intensity", "trend"} & set(data):
+            data["importance"] = data["intensity"] = data["trend"] = data["impact"]
+        return data
 
     def validate_impact(self, v):
         if not 1 <= int(v) <= 5:

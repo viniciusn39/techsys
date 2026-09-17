@@ -291,3 +291,21 @@ class AgendaDeTrabalhoTests(APITestCase):
         self.assertEqual(self.client.get("/api/meetings/dashboard/?de=2026-03-01&ate=2026-03-31").json()["horas"], 30)   # 3 dias × 10 h
         self.assertEqual(self.client.post("/api/meetings/", {"title": "x", "color": "marrom", "starts_at": "2026-03-09T08:00:00-03:00"}, format="json").status_code, 400)
         self.assertEqual(self.client.post("/api/meetings/", {"title": "x", "starts_at": "2026-03-09T08:00:00-03:00", "ends_at": "2026-03-08T08:00:00-03:00"}, format="json").status_code, 400)
+
+
+class SwotPontuacaoTests(APITestCase):
+    def test_pontuacao_departamento_e_compatibilidade_com_impacto(self):
+        from accounts.models import OrgUnit
+
+        tenant = Tenant.objects.create(name="Acme", slug="acme-sp")
+        admin = User.objects.create_user("sp@acme.com", "x", tenant=tenant, role=User.Role.ADMIN)
+        self.client.force_authenticate(admin)
+        self.client.post("/api/strategic-maps/", {"name": "PE", "year_start": 2026, "year_end": 2026}, format="json")
+        comercial = OrgUnit.objects.create(tenant=tenant, name="Comercial")
+        r = self.client.post("/api/swot/", {"quadrant": "T", "text": "Concorrente novo", "importance": 5, "intensity": 5, "trend": 4, "org_unit": comercial.id}, format="json")
+        self.assertEqual(r.status_code, 201, r.content)
+        self.assertEqual((r.json()["score"], r.json()["impact"], r.json()["org_unit_name"], r.json()["projects_count"]), (100, 5, "Comercial", 0))
+        antigo = self.client.post("/api/swot/", {"quadrant": "S", "text": "Marca", "impact": 2}, format="json").json()
+        self.assertEqual((antigo["score"], antigo["importance"]), (8, 2))
+        self.assertEqual(self.client.post("/api/swot/", {"quadrant": "S", "text": "x", "trend": 6}, format="json").status_code, 400)
+        self.assertEqual(len(self.client.get(f"/api/swot/?org_unit={comercial.id}").json()), 1)

@@ -347,8 +347,9 @@ class _ItemDoMapaViewSet(TenantScopedViewSet):
 
 
 class SwotItemViewSet(_ItemDoMapaViewSet):
-    queryset = SwotItem.objects.select_related("objective")
+    queryset = SwotItem.objects.select_related("objective", "org_unit").prefetch_related("projects")
     serializer_class = SwotItemSerializer
+    filterset_fields = ["quadrant", "org_unit"]
 
 
 class SwotStrategyViewSet(_ItemDoMapaViewSet):

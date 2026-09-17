@@ -78,7 +78,7 @@ const TOPICOS: Topico[] = [
     "Filtre por pessoa e etiqueta; alterne entre Mensal e Diário; o botão Painel abre os números da agenda.",
   ] },
   { key: "identidade", icon: "bi-gem", title: "Cultura, SWOT, Canvas e stakeholders", to: "/swot", resumo: "As ferramentas de planejamento: identidade, diagnóstico interno e externo, modelo de negócio e partes interessadas.", passos: [
-    "SWOT: liste forças, fraquezas, oportunidades e ameaças com impacto de 1 a 5 e ligue ao objetivo; a matriz cruzada guarda as estratégias.",
+    "SWOT: liste forças, fraquezas, oportunidades e ameaças; cada item tem departamento e pontuação (importância × intensidade × tendência, de 1 a 125). A tela soma por quadrante e por departamento, e a aba SWOT cruzada guarda as estratégias.",
     "Canvas: um post-it por item em cada um dos nove blocos.",
     "Stakeholders: influência e interesse definem a estratégia de relacionamento.",
     "Relatório: tudo isso num documento para imprimir ou salvar em PDF.",

@@ -4,7 +4,7 @@ import { Panel, Skeleton, StatusPill } from "../components/ui";
 import { fmtNumber, fmtPct } from "../utils/format";
 
 interface Mapa { id: number; name: string; year_start: number; year_end: number; purpose: string; mission: string; vision: string; values_text: string; perspectives: { id: number; name: string; color: string; objectives: { id: number; name: string; description: string; indicators?: any[] }[] }[] }
-interface Swot { quadrant: string; text: string; impact: number; objective_name: string }
+interface Swot { quadrant: string; text: string; score: number; objective_name: string }
 interface CanvasItem { block: string; block_label: string; text: string }
 interface Ind { id: number; code: string; name: string; unit: string; decimals: number; objective: number | null; last_value?: { period: string; value: string; achievement_pct: string | null; status: string } | null; erp_metric: string }
 interface Goal { id: number; name: string; level: string; children?: Goal[]; indicator_code?: string; org_unit_name?: string }
@@ -78,7 +78,7 @@ export function Relatorio() {
             {["S", "W", "O", "T"].map((q) => (
               <div className="col-md-6" key={q}>
                 <div className="fw-semibold mb-1">{QUAD[q]}</div>
-                <ul className="mb-0 ps-3">{swot.filter((s) => s.quadrant === q).map((s, i) => <li key={i}>{s.text} <span className="text-muted-2 small">(impacto {s.impact}{s.objective_name ? ` · ${s.objective_name}` : ""})</span></li>)}</ul>
+                <ul className="mb-0 ps-3">{swot.filter((s) => s.quadrant === q).map((s, i) => <li key={i}>{s.text} <span className="text-muted-2 small">({s.score} pts{s.objective_name ? ` · ${s.objective_name}` : ""})</span></li>)}</ul>
               </div>
             ))}
           </div>
