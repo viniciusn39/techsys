@@ -2,7 +2,7 @@ from django.urls import include, path
 from rest_framework.routers import DefaultRouter
 
 from .overview import OverviewView
-from .views import CanvasItemViewSet, MeetingViewSet, StakeholderViewSet, SwotItemViewSet, SwotStrategyViewSet, GoalViewSet, PerspectiveViewSet, StrategicMapViewSet, StrategicObjectiveViewSet
+from .views import AgendaCategoryViewSet, CanvasItemViewSet, MeetingViewSet, StakeholderViewSet, SwotItemViewSet, SwotStrategyViewSet, GoalViewSet, PerspectiveViewSet, StrategicMapViewSet, StrategicObjectiveViewSet
 
 router = DefaultRouter()
 router.register("strategic-maps", StrategicMapViewSet)
@@ -14,5 +14,6 @@ router.register("swot-estrategias", SwotStrategyViewSet)
 router.register("canvas", CanvasItemViewSet)
 router.register("stakeholders", StakeholderViewSet)
 router.register("meetings", MeetingViewSet)
+router.register("agenda-categorias", AgendaCategoryViewSet)
 
 urlpatterns = [path("dashboard/overview/", OverviewView.as_view()), path("", include(router.urls))]

@@ -9,9 +9,10 @@ from accounts.tenancy import TenantScopedViewSet, get_request_tenant
 from indicators.models import Indicator
 
 from .current import mapa_atual
-from .models import CanvasItem, Goal, Meeting, Perspective, Stakeholder, StrategicMap, StrategicObjective, SwotItem, SwotStrategy
+from .models import AgendaCategory, CanvasItem, Goal, Meeting, Perspective, Stakeholder, StrategicMap, StrategicObjective, SwotItem, SwotStrategy
 from .provisioning import create_default_perspectives
 from .serializers import (
+    AgendaCategorySerializer,
     CanvasItemSerializer,
     GoalSerializer,
     MeetingSerializer,
@@ -373,17 +374,42 @@ class MeetingViewSet(TenantScopedViewSet):
     permission_classes = [IsGestorOrAbove]
     pagination_class = None
 
+    def get_serializer_context(self):
+        ctx = super().get_serializer_context()
+        ctx["tenant"] = self.get_tenant()
+        return ctx
+
     def get_queryset(self):
-        qs = super().get_queryset()
-        de, ate = self.request.query_params.get("de"), self.request.query_params.get("ate")
-        if de:
-            qs = qs.filter(starts_at__date__gte=de)
-        if ate:
-            qs = qs.filter(starts_at__date__lte=ate)
-        status_ = self.request.query_params.get("status")
-        if status_:
-            qs = qs.filter(status=status_)
+        from django.db.models import Q
+        from django.db.models.functions import Coalesce
+
+        qs = super().get_queryset().select_related("category", "map", "project")
+        p = self.request.query_params
+        # Agenda pode durar vários dias: entra no período tudo que o cruza, não só o que começa nele.
+        if p.get("de"):
+            qs = qs.annotate(_fim=Coalesce("ends_at", "starts_at")).filter(_fim__date__gte=p["de"])
+        if p.get("ate"):
+            qs = qs.filter(starts_at__date__lte=p["ate"])
+        if p.get("status"):
+            qs = qs.filter(status=p["status"])
+        if p.get("pessoa", "").isdigit():
+            qs = qs.filter(Q(organizer=p["pessoa"]) | Q(participants=p["pessoa"])).distinct()
+        if p.get("categoria", "").isdigit():
+            qs = qs.filter(category=p["categoria"])
+        if p.get("etiqueta"):
+            e = p["etiqueta"]
+            qs = qs.filter(Q(title__icontains=f"({e})") | Q(title__icontains=f"[{e}]") | Q(title__icontains=f'"{e}"'))
         return qs
+
+    @action(detail=False, methods=["get"])
+    def etiquetas(self, request):
+        """Etiquetas em uso nos títulos — alimenta o filtro da agenda."""
+        vistos = {}
+        tenant = self.get_tenant()
+        for titulo in Meeting.objects.filter(tenant=tenant).values_list("title", flat=True) if tenant else []:
+            for rotulo in Meeting(title=titulo).labels:
+                vistos.setdefault(rotulo.lower(), rotulo)
+        return Response(sorted(vistos.values(), key=str.lower))
 
     @action(detail=False, methods=["get"])
     def dashboard(self, request):
@@ -417,3 +443,24 @@ class MeetingViewSet(TenantScopedViewSet):
         if tenant is None:
             raise PermissionDenied("Nenhuma empresa selecionada.")
         serializer.save(tenant=tenant, organizer=serializer.validated_data.get("organizer") or self.request.user)
+
+
+class AgendaCategoryViewSet(TenantScopedViewSet):
+    queryset = AgendaCategory.objects.all()
+    serializer_class = AgendaCategorySerializer
+    permission_classes = [IsGestorOrAbove]
+    pagination_class = None
+
+    def list(self, request, *args, **kwargs):
+        tenant = self.get_tenant()
+        if tenant is not None:
+            AgendaCategory.garantir_padrao(tenant)
+        return super().list(request, *args, **kwargs)
+
+    def perform_create(self, serializer):
+        tenant = self.get_tenant()
+        if tenant is None:
+            raise PermissionDenied("Nenhuma empresa selecionada.")
+        if AgendaCategory.objects.filter(tenant=tenant, name__iexact=serializer.validated_data["name"].strip()).exists():
+            raise ValidationError({"name": "Já existe uma categoria com esse nome."})
+        serializer.save(tenant=tenant, name=serializer.validated_data["name"].strip())

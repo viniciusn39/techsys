@@ -17,7 +17,7 @@ const TOPICOS: Topico[] = [
     "Quem tem mais de uma empresa troca de empresa no seletor 'Empresa ativa', no alto do menu. Tudo (indicadores, projetos, usuários) é separado por empresa.",
     "O administrador abre uma nova empresa em Stakeholders → Empresas → Nova empresa; ela nasce pronta e ele já entra nela.",
     "Para dar acesso a alguém que já tem cadastro em outra empresa, use Usuários → Vincular usuário de outra empresa (pelo e-mail).",
-    "Em Planejamentos, crie quantos planejamentos precisar (nome, escopo, período, parceiros e departamentos) e clique em 'Usar' — ou escolha no seletor do menu.",
+    "Em Planejamentos, crie quantos planejamentos precisar (nome, escopo, período, parceiros e departamentos) e escolha qual ver nos botões 'Planejamento' no topo das telas (ou em 'Usar', na lista).",
     "Mapa estratégico, SWOT, Canvas, Cultura e o Dashboard mostram sempre o planejamento em uso.",
   ], dicas: ["Usuário vinculado mantém o papel e o cadastro na empresa de origem; na outra só dá para desvincular.", "Indicadores, metas e planos de ação são da empresa, não de um planejamento."] },
   { key: "dashboard", icon: "bi-grid-1x2", title: "Dashboard", to: "/", resumo: "Visão geral do planejamento: objetivos alcançados, desempenho mês a mês, projetos, perspectivas do mapa, SWOT, atividades recentes e agenda.", passos: [
@@ -63,7 +63,13 @@ const TOPICOS: Topico[] = [
     "Conflito = a mesma pessoa (organizador ou participante) em duas reuniões que se sobrepõem.",
     "Clique num dia do calendário para ver as agendas dele.",
   ], dicas: ["Reunião sem hora de fim conta 1 hora. Reuniões canceladas não entram em nenhum número."] },
-  { key: "agenda", icon: "bi-calendar3", title: "Agenda de gestão", to: "/agenda", resumo: "Reuniões de resultados, planejamento e acompanhamento, com pauta, ata, decisões, participantes e indicadores revisados.", passos: ["Clique num dia e em 'Nova reunião'.", "Depois da reunião, registre ata e decisões; decisões que viram ação vão para Planos de Ação."] },
+  { key: "agenda", icon: "bi-calendar3", title: "Agendas", to: "/agenda", resumo: "Agenda de trabalho e folgas das pessoas e das reuniões de gestão, em visão mensal ou diária.", passos: [
+    "Clique em 'Nova agenda' (ou dê dois cliques num dia): título, descrição, cor, responsável, categoria, pessoas vinculadas, planejamento, projeto e início/fim — pode durar vários dias.",
+    "Etiquete pelo título: (CLIENTE), [urgente] ou \"fechamento\" viram etiquetas e aparecem no filtro.",
+    "Categorias (Trabalho, Folga…) são da empresa: edite pelo lápis ao lado do campo.",
+    "Para reunião de gestão, abra 'Reunião de gestão' no formulário: tipo, situação, local, pauta, ata, decisões e indicadores revisados.",
+    "Filtre por pessoa e etiqueta; alterne entre Mensal e Diário; o botão Painel abre os números da agenda.",
+  ] },
   { key: "identidade", icon: "bi-gem", title: "Cultura, SWOT, Canvas e stakeholders", to: "/swot", resumo: "As ferramentas de planejamento: identidade, diagnóstico interno e externo, modelo de negócio e partes interessadas.", passos: [
     "SWOT: liste forças, fraquezas, oportunidades e ameaças com impacto de 1 a 5 e ligue ao objetivo; a matriz cruzada guarda as estratégias.",
     "Canvas: um post-it por item em cada um dos nove blocos.",

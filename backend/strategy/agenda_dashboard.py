@@ -19,7 +19,13 @@ def _fim(m):
 
 
 def _horas(m):
-    return (_fim(m) - m.starts_at).total_seconds() / 3600
+    """Agenda de vários dias (ex.: 08:00 de segunda às 18:00 de quarta) conta a jornada de cada dia, não as noites."""
+    ini, fim = timezone.localtime(m.starts_at), timezone.localtime(_fim(m))
+    dias = (fim.date() - ini.date()).days
+    if dias <= 0:
+        return (fim - ini).total_seconds() / 3600
+    jornada = (datetime.combine(ini.date(), fim.time()) - datetime.combine(ini.date(), ini.time())).total_seconds() / 3600
+    return (jornada if jornada > 0 else 8) * (dias + 1)
 
 
 def _pessoas(m):

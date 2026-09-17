@@ -1,6 +1,6 @@
 from rest_framework import serializers
 
-from .models import CanvasItem, Goal, Meeting, Perspective, Stakeholder, StrategicMap, StrategicObjective, SwotItem, SwotStrategy
+from .models import AgendaCategory, CanvasItem, Goal, Meeting, Perspective, Stakeholder, StrategicMap, StrategicObjective, SwotItem, SwotStrategy
 
 
 class PerspectiveSerializer(serializers.ModelSerializer):
@@ -251,6 +251,14 @@ class StakeholderSerializer(serializers.ModelSerializer):
     validate_interest = _faixa
 
 
+class AgendaCategorySerializer(serializers.ModelSerializer):
+    meetings_count = serializers.IntegerField(source="meetings.count", read_only=True)
+
+    class Meta:
+        model = AgendaCategory
+        fields = ["id", "name", "order", "meetings_count"]
+
+
 class MeetingSerializer(serializers.ModelSerializer):
     kind_label = serializers.CharField(source="get_kind_display", read_only=True)
     status_label = serializers.CharField(source="get_status_display", read_only=True)
@@ -259,6 +267,12 @@ class MeetingSerializer(serializers.ModelSerializer):
     participant_names = serializers.SerializerMethodField()
     stakeholder_names = serializers.SerializerMethodField()
     indicator_codes = serializers.SerializerMethodField()
+    category_name = serializers.CharField(source="category.name", read_only=True, default="")
+    map_name = serializers.CharField(source="map.name", read_only=True, default="")
+    project_title = serializers.CharField(source="project.title", read_only=True, default="")
+    labels = serializers.ListField(child=serializers.CharField(), read_only=True)
+
+    CORES = ["azul", "verde", "amarelo", "vermelho", "roxo", "rosa", "ciano", "laranja", "cinza"]
 
     class Meta:
         model = Meeting
@@ -266,7 +280,35 @@ class MeetingSerializer(serializers.ModelSerializer):
             "id", "title", "kind", "kind_label", "status", "status_label", "starts_at", "ends_at", "location",
             "org_unit", "org_unit_name", "organizer", "organizer_name", "participants", "participant_names",
             "stakeholders", "stakeholder_names", "indicators", "indicator_codes", "agenda", "minutes", "decisions",
+            "description", "color", "category", "category_name", "map", "map_name", "project", "project_title", "labels",
         ]
+
+    def validate_color(self, v):
+        if v not in self.CORES:
+            raise serializers.ValidationError("Cor inválida.")
+        return v
+
+    def _da_empresa(self, value, msg):
+        tenant = self.context.get("tenant")
+        if value is not None and tenant and value.tenant_id != tenant.id:
+            raise serializers.ValidationError(msg)
+        return value
+
+    def validate_category(self, value):
+        return self._da_empresa(value, "Categoria de outra empresa.")
+
+    def validate_map(self, value):
+        return self._da_empresa(value, "Planejamento de outra empresa.")
+
+    def validate_project(self, value):
+        return self._da_empresa(value, "Projeto de outra empresa.")
+
+    def validate(self, data):
+        ini = data.get("starts_at", getattr(self.instance, "starts_at", None))
+        fim = data.get("ends_at", getattr(self.instance, "ends_at", None))
+        if ini and fim and fim < ini:
+            raise serializers.ValidationError({"ends_at": "O fim não pode ser antes do início."})
+        return data
 
     def get_participant_names(self, obj):
         return [u.get_full_name() or u.email for u in obj.participants.all()]

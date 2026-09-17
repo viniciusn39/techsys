@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import { Dropdown } from "react-bootstrap";
 import { NavLink, Outlet, useLocation, useNavigate } from "react-router-dom";
 import { AssistenteFlutuante } from "../components/AssistenteFlutuante";
+import { SeletorPlanejamento } from "../components/SeletorPlanejamento";
 import { api } from "../api/client";
 import { useAuth } from "../auth/AuthContext";
 import type { Tenant } from "../types";
@@ -53,7 +54,7 @@ const TENANT_SECTIONS: { label: string; items: MenuItem[] }[] = [
       { to: "/projetos", module: "projetos", icon: "bi-folder2-open", label: "Projetos", title: "Projetos", sub: "Projetos do planejamento, atividades, Gantt e FCA", roles: ["root", "admin", "gestor", "colaborador"] },
       { to: "/planos-acao", module: "planos", icon: "bi-kanban", label: "Planos de Ação", title: "Planos de Ação", sub: "5W2H, PDCA e Kanban", roles: ["root", "admin", "gestor", "colaborador"] },
       { to: "/painel-agenda", module: "agenda", icon: "bi-calendar2-week", label: "Painel da agenda", title: "Painel da agenda", sub: "Reuniões por pessoa e período, horas e conflitos", roles: ["root", "admin", "gestor", "colaborador"] },
-      { to: "/agenda", module: "agenda", icon: "bi-calendar3", label: "Agenda de gestão", title: "Agenda de gestão", sub: "Reuniões de resultados, pauta, ata e decisões", roles: ["root", "admin", "gestor", "colaborador"] },
+      { to: "/agenda", module: "agenda", icon: "bi-calendar3", label: "Agendas", title: "Agendas", sub: "Agendas de trabalho e folgas, e reuniões de gestão com pauta, ata e decisões", roles: ["root", "admin", "gestor", "colaborador"] },
       { to: "/desvios", module: "desvios", icon: "bi-exclamation-triangle", label: "Desvios", title: "Tratamento de Desvios", sub: "Faróis vermelhos e causa raiz", roles: ["root", "admin", "gestor", "colaborador"] },
       { to: "/ia/chat", module: "ia", icon: "bi-stars", label: "Assistente IA", title: "Assistente de Resultados", sub: "Pergunte sobre resultados, planos e como usar o sistema", roles: ["root", "admin", "gestor", "colaborador"] },
     ],
@@ -89,10 +90,13 @@ const ROOT_SECTION: { label: string; items: MenuItem[] } = {
   ],
 };
 
+/** Telas cujo conteúdo é de um planejamento: nelas aparece o seletor (quando há mais de um). */
+const PAGINAS_DO_PLANEJAMENTO = ["/", "/mapa-estrategico", "/swot", "/canvas", "/cultura", "/relatorio"];
+
 const ALL_ITEMS = [...TENANT_SECTIONS.flatMap((s) => s.items), ...ROOT_SECTION.items];
 
 export function AppLayout() {
-  const { me, logout, actAsTenant, mapId, selectMap } = useAuth();
+  const { me, logout, actAsTenant, mapId } = useAuth();
   const navigate = useNavigate();
   const location = useLocation();
   const [tenants, setTenants] = useState<Tenant[]>([]);
@@ -107,11 +111,11 @@ export function AppLayout() {
     }
   }, [isRoot]);
 
-  // Planejamentos da empresa em uso: o seletor só aparece quando há mais de um.
+  // Planejamentos da empresa em uso: alimentam o seletor que aparece dentro das páginas.
   useEffect(() => {
     if (!activeTenant) { setMapas([]); return; }
     api.get<any>("/api/strategic-maps/").then((d) => setMapas(d.results ?? d)).catch(() => setMapas([]));
-  }, [activeTenant?.id, location.pathname === "/planejamentos"]);
+  }, [activeTenant?.id, location.pathname]);
 
   if (!me) return null;
 
@@ -178,21 +182,6 @@ export function AppLayout() {
               <div className="value">{activeTenant.name}</div>
             </div>
           ))
-        )}
-
-        {activeTenant && mapas.length > 1 && (
-          <div className="px-3 pb-2">
-            <select
-              className="form-select form-select-sm"
-              aria-label="Planejamento em uso"
-              title="Planejamento em uso"
-              value={mapId && mapas.some((m) => m.id === mapId) ? mapId : ""}
-              onChange={(e) => selectMap(e.target.value ? Number(e.target.value) : null)}
-            >
-              <option value="">Planejamento padrão</option>
-              {mapas.map((m) => <option key={m.id} value={m.id}>{m.name}{m.is_active ? "" : " (inativo)"}</option>)}
-            </select>
-          </div>
         )}
 
         <nav className="sidebar-nav">
@@ -284,6 +273,7 @@ export function AppLayout() {
 
         {/* Trocar de empresa ou de planejamento remonta a tela: tudo é recarregado no novo contexto. */}
         <main className="app-content" key={`${activeTenant?.id ?? 0}-${mapId ?? 0}`}>
+          {PAGINAS_DO_PLANEJAMENTO.includes(location.pathname) && <SeletorPlanejamento mapas={mapas} />}
           <Outlet />
         </main>
         {activeTenant && (!me.modules || me.modules.includes("ia")) && <AssistenteFlutuante />}

@@ -263,3 +263,31 @@ class PainelDaAgendaTests(APITestCase):
         so_bia = self.client.get(f"/api/meetings/dashboard/?de=2026-03-01&ate=2026-03-31&participante={bia.id}&tipo=diretoria").json()
         self.assertEqual(so_bia["total"], 1)
         self.assertEqual(self.client.get("/api/meetings/dashboard/?de=2026-03-31&ate=2026-03-01").status_code, 400)
+
+
+class AgendaDeTrabalhoTests(APITestCase):
+    def setUp(self):
+        self.tenant = Tenant.objects.create(name="Acme", slug="acme-at")
+        self.ana = User.objects.create_user("ana@at.com", "x", first_name="Ana", tenant=self.tenant, role=User.Role.GESTOR)
+        self.client.force_authenticate(self.ana)
+
+    def test_categorias_cor_etiquetas_e_periodo_de_varios_dias(self):
+        cats = self.client.get("/api/agenda-categorias/").json()
+        self.assertEqual([c["name"] for c in cats], ["Trabalho", "Folga"])
+        self.assertEqual(self.client.post("/api/agenda-categorias/", {"name": "trabalho"}, format="json").status_code, 400)
+        r = self.client.post("/api/meetings/", {
+            "title": "(ATACADÃO) Implantação [urgente]", "color": "verde", "category": cats[0]["id"],
+            "starts_at": "2026-03-09T08:00:00-03:00", "ends_at": "2026-03-11T18:00:00-03:00", "description": "No cliente",
+        }, format="json")
+        self.assertEqual(r.status_code, 201, r.content)
+        self.assertEqual((r.json()["labels"], r.json()["category_name"], r.json()["color"]), (["ATACADÃO", "urgente"], "Trabalho", "verde"))
+        # cruza o período mesmo começando antes dele
+        self.assertEqual(len(self.client.get("/api/meetings/?de=2026-03-11&ate=2026-03-31").json()), 1)
+        self.assertEqual(len(self.client.get("/api/meetings/?de=2026-03-12&ate=2026-03-31").json()), 0)
+        self.assertEqual(len(self.client.get("/api/meetings/?etiqueta=urgente").json()), 1)
+        self.assertEqual(len(self.client.get("/api/meetings/?etiqueta=outra").json()), 0)
+        self.assertEqual(len(self.client.get(f"/api/meetings/?pessoa={self.ana.id}").json()), 1)
+        self.assertEqual(self.client.get("/api/meetings/etiquetas/").json(), ["ATACADÃO", "urgente"])
+        self.assertEqual(self.client.get("/api/meetings/dashboard/?de=2026-03-01&ate=2026-03-31").json()["horas"], 30)   # 3 dias × 10 h
+        self.assertEqual(self.client.post("/api/meetings/", {"title": "x", "color": "marrom", "starts_at": "2026-03-09T08:00:00-03:00"}, format="json").status_code, 400)
+        self.assertEqual(self.client.post("/api/meetings/", {"title": "x", "starts_at": "2026-03-09T08:00:00-03:00", "ends_at": "2026-03-08T08:00:00-03:00"}, format="json").status_code, 400)

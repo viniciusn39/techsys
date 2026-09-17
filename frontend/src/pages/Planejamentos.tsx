@@ -113,7 +113,7 @@ export function Planejamentos() {
     <div className="d-grid gap-3">
       <Panel
         title="Lista de planejamentos"
-        subtitle="Cada planejamento tem o seu mapa estratégico, SWOT, canvas, cultura e projetos. O que está em uso vale para todas essas telas."
+        subtitle="Cada planejamento tem o seu mapa estratégico, SWOT, canvas, cultura e projetos. Quando há mais de um, essas telas mostram no topo os botões para escolher qual ver."
         actions={
           <div className="d-flex flex-wrap gap-2">
             <Form.Control size="sm" placeholder="Buscar planejamentos…" value={busca} onChange={(e) => setBusca(e.target.value)} style={{ width: 210 }} />

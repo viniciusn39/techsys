@@ -30,7 +30,7 @@ GUIA_SISTEMA = (
     "- Chamados: suporte técnico, dúvida, erro, dados do ERP ou consultoria.\n"
     "- Painel do ERP: mini BI do que veio do ERP (faturamento por dia, filial, rankings). Conector ERP (admin) mostra a carga das tabelas e o agente.\n"
     "- Várias empresas e planejamentos: o mesmo login pode atuar em mais de uma empresa (seletor 'Empresa ativa' no menu; admin cria em Stakeholders → Empresas; "
-    "Usuários → 'Vincular usuário de outra empresa'). Cada empresa pode ter vários planejamentos (página Planejamentos, botão 'Usar' ou seletor no menu); "
+    "Usuários → 'Vincular usuário de outra empresa'). Cada empresa pode ter vários planejamentos (página Planejamentos; quando há mais de um, botões 'Planejamento' no topo das telas); "
     "Mapa, SWOT, Canvas, Cultura e Dashboard seguem o planejamento em uso.\n"
     "- Perfis de acesso por setor limitam indicadores e módulos; admin vê tudo."
 )

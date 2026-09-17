@@ -20,7 +20,7 @@ class StrategicMap(TenantOwnedModel):
     org_units = models.ManyToManyField(OrgUnit, blank=True, related_name="planejamentos", verbose_name="departamentos")
 
     class Meta:
-        ordering = ["-year_start"]
+        ordering = ["-year_start", "-id"]   # a mesma ordem de strategy.current.mapa_padrao
 
     def __str__(self):
         return self.name
@@ -228,6 +228,28 @@ class Stakeholder(TenantOwnedModel):
         return "monitorar"
 
 
+class AgendaCategory(TenantOwnedModel):
+    """Categoria da agenda (Trabalho, Folga…): cada empresa mantém as suas."""
+
+    PADRAO = ["Trabalho", "Folga"]
+
+    name = models.CharField("nome", max_length=60)
+    order = models.PositiveIntegerField(default=0)
+
+    class Meta:
+        ordering = ["order", "name"]
+        constraints = [models.UniqueConstraint(fields=["tenant", "name"], name="uniq_agenda_category")]
+
+    def __str__(self):
+        return self.name
+
+    @classmethod
+    def garantir_padrao(cls, tenant):
+        if not cls.objects.filter(tenant=tenant).exists():
+            for i, nome in enumerate(cls.PADRAO):
+                cls.objects.create(tenant=tenant, name=nome, order=i)
+
+
 class Meeting(TenantOwnedModel):
     """Ritual de gestão: reunião de resultados, de planejamento, de acompanhamento de planos."""
 
@@ -255,6 +277,12 @@ class Meeting(TenantOwnedModel):
     )
     participants = models.ManyToManyField(settings.AUTH_USER_MODEL, blank=True, related_name="meetings")
     stakeholders = models.ManyToManyField(Stakeholder, blank=True, related_name="meetings")
+    # Agenda de trabalho: o que é, de que cor aparece no calendário e a que planejamento/projeto pertence.
+    description = models.TextField("descrição", blank=True)
+    color = models.CharField("cor", max_length=10, default="azul")
+    category = models.ForeignKey(AgendaCategory, on_delete=models.SET_NULL, null=True, blank=True, related_name="meetings")
+    map = models.ForeignKey(StrategicMap, on_delete=models.SET_NULL, null=True, blank=True, related_name="meetings", verbose_name="planejamento")
+    project = models.ForeignKey("projects.Project", on_delete=models.SET_NULL, null=True, blank=True, related_name="meetings")
     agenda = models.TextField("pauta", blank=True)
     minutes = models.TextField("ata", blank=True)
     decisions = models.TextField("decisões", blank=True)
@@ -266,3 +294,17 @@ class Meeting(TenantOwnedModel):
 
     def __str__(self):
         return f"{self.title} ({self.starts_at:%d/%m/%Y})"
+
+    @property
+    def labels(self):
+        """Etiquetas escritas no título: (CLIENTE), [urgente] ou "fechamento"."""
+        import re
+
+        achadas = re.findall(r"\(([^()]+)\)|\[([^\[\]]+)\]|\"([^\"]+)\"", self.title or "")
+        vistos, saida = set(), []
+        for grupo in achadas:
+            rotulo = next(g for g in grupo if g).strip()
+            if rotulo and rotulo.lower() not in vistos:
+                vistos.add(rotulo.lower())
+                saida.append(rotulo)
+        return saida
