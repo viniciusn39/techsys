@@ -19,6 +19,7 @@ import { Organograma } from "./pages/Organograma";
 import { PainelIndicadores } from "./pages/PainelIndicadores";
 import { PerfisAcesso } from "./pages/PerfisAcesso";
 import { Agenda } from "./pages/Agenda";
+import { AgendaPainel } from "./pages/AgendaPainel";
 import { Ajuda } from "./pages/Ajuda";
 import { Chamados } from "./pages/Chamados";
 import { Servidor } from "./pages/Servidor";
@@ -103,6 +104,7 @@ export default function App() {
         <Route path="/projetos" element={<TenantRoute><Projetos /></TenantRoute>} />
         <Route path="/projetos/:id" element={<TenantRoute><ProjetoDetalhe /></TenantRoute>} />
         <Route path="/planos-acao" element={<TenantRoute><PlanosAcao /></TenantRoute>} />
+        <Route path="/painel-agenda" element={<TenantRoute><AgendaPainel /></TenantRoute>} />
         <Route path="/agenda" element={<TenantRoute><Agenda /></TenantRoute>} />
         <Route path="/chamados" element={<TenantRoute><Chamados /></TenantRoute>} />
         <Route path="/ajuda" element={<TenantRoute><Ajuda /></TenantRoute>} />

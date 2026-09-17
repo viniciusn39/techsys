@@ -241,3 +241,25 @@ class VariosPlanejamentosTests(APITestCase):
     def test_ultimo_planejamento_nao_pode_ser_excluido(self):
         a = self.client.post("/api/strategic-maps/", {"name": "Único", "year_start": 2026, "year_end": 2026}, format="json").json()
         self.assertEqual(self.client.delete(f"/api/strategic-maps/{a['id']}/").status_code, 400)
+
+
+class PainelDaAgendaTests(APITestCase):
+    def test_volume_horas_carga_e_conflito(self):
+        from django.utils import timezone
+
+        tenant = Tenant.objects.create(name="Acme", slug="acme-ag")
+        ana = User.objects.create_user("ana@ag.com", "x", first_name="Ana", tenant=tenant, role=User.Role.GESTOR)
+        bia = User.objects.create_user("bia@ag.com", "x", first_name="Bia", tenant=tenant, role=User.Role.GESTOR)
+        self.client.force_authenticate(ana)
+        h = lambda hh, mm=0: timezone.make_aware(timezone.datetime(2026, 3, 10, hh, mm))  # noqa: E731
+        for titulo, ini, fim, quem, kind in [("Resultados", h(9), h(11), [bia.id], "resultados"), ("Diretoria", h(10), h(10, 30), [bia.id], "diretoria"), ("Solo", h(15), None, [], "outra")]:
+            r = self.client.post("/api/meetings/", {"title": titulo, "kind": kind, "starts_at": ini, "ends_at": fim, "participants": quem}, format="json")
+            self.assertEqual(r.status_code, 201, r.content)
+        d = self.client.get("/api/meetings/dashboard/?de=2026-03-01&ate=2026-03-31").json()
+        self.assertEqual((d["total"], d["horas"], d["pessoas_envolvidas"], d["total_usuarios"], d["variacao_pct"]), (3, 3.5, 2, 2, None))
+        self.assertEqual([(c["nome"], c["reunioes"], c["horas"]) for c in d["carga"]], [("Ana", 3, 3.5), ("Bia", 2, 2.5)])
+        self.assertEqual(len(d["conflitos"]), 1)           # Resultados × Diretoria: o mesmo par não conta duas vezes
+        self.assertEqual(d["por_dia_semana"][1], {"dia": "Ter", "total": 3})
+        so_bia = self.client.get(f"/api/meetings/dashboard/?de=2026-03-01&ate=2026-03-31&participante={bia.id}&tipo=diretoria").json()
+        self.assertEqual(so_bia["total"], 1)
+        self.assertEqual(self.client.get("/api/meetings/dashboard/?de=2026-03-31&ate=2026-03-01").status_code, 400)

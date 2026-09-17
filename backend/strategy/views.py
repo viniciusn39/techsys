@@ -385,6 +385,33 @@ class MeetingViewSet(TenantScopedViewSet):
             qs = qs.filter(status=status_)
         return qs
 
+    @action(detail=False, methods=["get"])
+    def dashboard(self, request):
+        """Painel da agenda. Filtros: ?de=&ate= (padrão: mês corrente), ?participante=, ?tipo=."""
+        from calendar import monthrange
+        from datetime import date
+
+        from accounts.models import User
+
+        from .agenda_dashboard import painel_agenda
+
+        hoje = date.today()
+        try:
+            de = date.fromisoformat(request.query_params.get("de") or hoje.replace(day=1).isoformat())
+            ate = date.fromisoformat(request.query_params.get("ate") or hoje.replace(day=monthrange(hoje.year, hoje.month)[1]).isoformat())
+        except ValueError:
+            raise ValidationError("Datas no formato AAAA-MM-DD.")
+        if ate < de:
+            raise ValidationError("O fim do período não pode ser antes do início.")
+        tenant = self.get_tenant()
+        participante = request.query_params.get("participante")
+        return Response(painel_agenda(
+            TenantScopedViewSet.get_queryset(self), de, ate,
+            participante=int(participante) if participante and participante.isdigit() else None,
+            tipo=request.query_params.get("tipo") or None,
+            total_usuarios=User.objects.filter(tenant=tenant, is_active=True).count() if tenant else 0,
+        ))
+
     def perform_create(self, serializer):
         tenant = self.get_tenant()
         if tenant is None:

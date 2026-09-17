@@ -58,6 +58,11 @@ const TOPICOS: Topico[] = [
     "O painel é atualizado a cada 30 minutos; use 'Recalcular' para forçar.",
     "Em Conector ERP (admin) acompanhe a carga de cada tabela, o ritmo e os comandos do agente.",
   ] },
+  { key: "painel-agenda", icon: "bi-calendar2-week", title: "Painel da agenda", to: "/painel-agenda", resumo: "Quantas reuniões, quantas horas, quem está mais carregado, conflitos de horário, calendário do mês e evolução.", passos: [
+    "Filtre por pessoa, tipo de reunião e período; 'Limpar' volta ao mês corrente.",
+    "Conflito = a mesma pessoa (organizador ou participante) em duas reuniões que se sobrepõem.",
+    "Clique num dia do calendário para ver as agendas dele.",
+  ], dicas: ["Reunião sem hora de fim conta 1 hora. Reuniões canceladas não entram em nenhum número."] },
   { key: "agenda", icon: "bi-calendar3", title: "Agenda de gestão", to: "/agenda", resumo: "Reuniões de resultados, planejamento e acompanhamento, com pauta, ata, decisões, participantes e indicadores revisados.", passos: ["Clique num dia e em 'Nova reunião'.", "Depois da reunião, registre ata e decisões; decisões que viram ação vão para Planos de Ação."] },
   { key: "identidade", icon: "bi-gem", title: "Cultura, SWOT, Canvas e stakeholders", to: "/swot", resumo: "As ferramentas de planejamento: identidade, diagnóstico interno e externo, modelo de negócio e partes interessadas.", passos: [
     "SWOT: liste forças, fraquezas, oportunidades e ameaças com impacto de 1 a 5 e ligue ao objetivo; a matriz cruzada guarda as estratégias.",
