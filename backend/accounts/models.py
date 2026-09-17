@@ -6,6 +6,18 @@ class Tenant(models.Model):
     name = models.CharField("nome", max_length=200)
     slug = models.SlugField(unique=True)
     cnpj = models.CharField(max_length=18, blank=True)
+    # Dados cadastrais: "name" é o nome fantasia; o resto a própria empresa mantém em Stakeholders → Empresa.
+    legal_name = models.CharField("razão social", max_length=200, blank=True)
+    address = models.CharField("endereço", max_length=200, blank=True)
+    address_number = models.CharField("número", max_length=20, blank=True)
+    address_complement = models.CharField("complemento", max_length=100, blank=True)
+    district = models.CharField("bairro", max_length=100, blank=True)
+    city = models.CharField("município", max_length=100, blank=True)
+    state = models.CharField("UF", max_length=2, blank=True)
+    zip_code = models.CharField("CEP", max_length=9, blank=True)
+    contact_name = models.CharField("responsável", max_length=150, blank=True)
+    email = models.EmailField("e-mail", blank=True)
+    phone = models.CharField("telefone", max_length=30, blank=True)
     logo = models.FileField(upload_to="logos/", null=True, blank=True)
     is_active = models.BooleanField(default=True)
     created_at = models.DateTimeField(auto_now_add=True)
@@ -99,6 +111,7 @@ class OrgUnit(TenantOwnedModel):
         User, on_delete=models.SET_NULL, null=True, blank=True, related_name="managed_units"
     )
     order = models.PositiveIntegerField(default=0)
+    is_active = models.BooleanField("ativo", default=True)
 
     class Meta:
         ordering = ["order", "name"]

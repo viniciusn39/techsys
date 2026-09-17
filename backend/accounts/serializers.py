@@ -114,12 +114,27 @@ class UserSerializer(serializers.ModelSerializer):
         return user
 
 
+class EmpresaSerializer(serializers.ModelSerializer):
+    """Dados cadastrais da própria empresa (o que o admin do tenant pode manter)."""
+
+    class Meta:
+        model = Tenant
+        fields = [
+            "id", "name", "legal_name", "cnpj", "address", "address_number", "address_complement", "district",
+            "city", "state", "zip_code", "contact_name", "email", "phone", "is_active",
+        ]
+        read_only_fields = ["is_active"]
+
+
 class OrgUnitSerializer(serializers.ModelSerializer):
     manager_name = serializers.CharField(source="manager.first_name", read_only=True)
+    kind_label = serializers.CharField(source="get_kind_display", read_only=True)
+    parent_name = serializers.CharField(source="parent.name", read_only=True, default="")
+    users_count = serializers.IntegerField(source="members.count", read_only=True)
 
     class Meta:
         model = OrgUnit
-        fields = ["id", "parent", "name", "kind", "manager", "manager_name", "order"]
+        fields = ["id", "parent", "parent_name", "name", "kind", "kind_label", "manager", "manager_name", "order", "is_active", "users_count"]
 
     def validate_parent(self, value):
         if value is not None:

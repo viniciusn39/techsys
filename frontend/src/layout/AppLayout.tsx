@@ -28,7 +28,7 @@ const TENANT_SECTIONS: { label: string; items: MenuItem[] }[] = [
   {
     label: "Planejamento",
     items: [
-      { to: "/stakeholders", module: "stakeholders", icon: "bi-people-fill", label: "Stakeholders", title: "Stakeholders", sub: "Partes interessadas e matriz influência × interesse", roles: ["root", "admin", "gestor"] },
+      { to: "/stakeholders", module: "stakeholders", icon: "bi-people-fill", label: "Stakeholders", title: "Stakeholders", sub: "Stakeholders, departamentos e dados da empresa", roles: ["root", "admin", "gestor"] },
       { to: "/swot", module: "swot", icon: "bi-grid-3x3-gap", label: "Análise SWOT", title: "Análise SWOT", sub: "Forças, fraquezas, oportunidades e ameaças", roles: ["root", "admin", "gestor", "colaborador"] },
       { to: "/canvas", module: "canvas", icon: "bi-columns-gap", label: "Canvas", title: "Business Model Canvas", sub: "Como a empresa cria, entrega e captura valor", roles: ["root", "admin", "gestor", "colaborador"] },
       { to: "/cultura", module: "cultura", icon: "bi-gem", label: "Cultura e identidade", title: "Cultura e identidade", sub: "Propósito, missão, visão e valores", roles: ["root", "admin", "gestor", "colaborador"] },

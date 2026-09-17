@@ -268,3 +268,25 @@ class ArmazenamentoTests(APITestCase):
         adm = User.objects.create_user("a@disco.com", "x", first_name="A", tenant=tenant, role=User.Role.ADMIN)
         self.client.force_authenticate(adm)
         self.assertEqual(self.client.get(f"/api/tenants/{tenant.id}/armazenamento/").status_code, 403)
+
+
+class EmpresaEDepartamentosTests(APITestCase):
+    def setUp(self):
+        self.tenant = Tenant.objects.create(name="Acme", slug="acme-emp")
+        self.admin = User.objects.create_user("a@emp.com", "x", tenant=self.tenant, role=User.Role.ADMIN)
+        self.gestor = User.objects.create_user("g@emp.com", "x", tenant=self.tenant, role=User.Role.GESTOR)
+
+    def test_admin_mantem_os_dados_da_empresa_e_gestor_so_le(self):
+        self.client.force_authenticate(self.admin)
+        r = self.client.patch("/api/empresa/", {"legal_name": "Acme Ltda", "city": "Recife", "state": "PE", "is_active": False}, format="json")
+        self.assertEqual((r.status_code, r.json()["legal_name"], r.json()["is_active"]), (200, "Acme Ltda", True))
+        self.client.force_authenticate(self.gestor)
+        self.assertEqual(self.client.get("/api/empresa/").json()["city"], "Recife")
+        self.assertEqual(self.client.patch("/api/empresa/", {"city": "x"}, format="json").status_code, 403)
+
+    def test_departamento_pode_ser_desativado(self):
+        self.client.force_authenticate(self.admin)
+        d = self.client.post("/api/org-units/", {"name": "Marketing", "kind": "area"}, format="json").json()
+        self.assertEqual((d["is_active"], d["kind_label"], d["users_count"]), (True, "Área", 0))
+        r = self.client.patch(f"/api/org-units/{d['id']}/", {"is_active": False}, format="json")
+        self.assertFalse(r.json()["is_active"])

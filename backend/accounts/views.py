@@ -6,7 +6,7 @@ from rest_framework.views import APIView
 
 from .models import MODULOS, SETORES, AccessProfile, OrgUnit, Tenant, User, seed_access_profiles
 from .permissions import IsRoot, IsTenantAdmin
-from .serializers import AccessProfileSerializer, MeSerializer, OrgUnitSerializer, TenantSerializer, UserSerializer
+from .serializers import AccessProfileSerializer, EmpresaSerializer, MeSerializer, OrgUnitSerializer, TenantSerializer, UserSerializer
 from .tenancy import TenantScopedViewSet, get_request_tenant
 
 
@@ -151,3 +151,24 @@ def armazenamento_do_tenant(tenant):
         })
     linhas.sort(key=lambda r: -r["bytes"])
     return {"total_bytes": sum(r["bytes"] for r in linhas), "total_linhas": sum(r["linhas"] for r in linhas), "tabelas": linhas}
+
+
+class EmpresaView(APIView):
+    """Dados cadastrais da empresa em uso: todos leem, só o admin altera."""
+
+    permission_classes = [IsTenantAdmin]
+
+    def _tenant(self, request):
+        tenant = get_request_tenant(request)
+        if tenant is None:
+            raise PermissionDenied("Nenhuma empresa selecionada.")
+        return tenant
+
+    def get(self, request):
+        return Response(EmpresaSerializer(self._tenant(request)).data)
+
+    def patch(self, request):
+        ser = EmpresaSerializer(self._tenant(request), data=request.data, partial=True)
+        ser.is_valid(raise_exception=True)
+        ser.save()
+        return Response(ser.data)

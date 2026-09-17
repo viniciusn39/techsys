@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { Button, Form, Modal } from "react-bootstrap";
-import { api } from "../api/client";
+import { Alert, Button, Form, Modal, Nav } from "react-bootstrap";
+import { ApiError, api } from "../api/client";
+import { useAuth } from "../auth/AuthContext";
 import { EmptyState, Panel, Skeleton } from "../components/ui";
 
 interface Stakeholder {
@@ -8,13 +9,32 @@ interface Stakeholder {
   influence: number; interest: number; expectations: string; org_unit: number | null; org_unit_name: string; user: number | null; is_active: boolean; strategy: string;
 }
 interface Unidade { id: number; name: string }
+interface Departamento { id: number; parent: number | null; parent_name: string; name: string; kind: string; kind_label: string; manager: number | null; manager_name: string | null; is_active: boolean; users_count: number }
+interface Empresa {
+  id: number; name: string; legal_name: string; cnpj: string; address: string; address_number: string; address_complement: string;
+  district: string; city: string; state: string; zip_code: string; contact_name: string; email: string; phone: string; is_active: boolean;
+}
+interface Usuario { id: number; first_name: string; last_name?: string; email: string }
+
+const UFS = "AC AL AP AM BA CE DF ES GO MA MT MS MG PA PB PR PE PI RJ RN RS RO RR SC SP SE TO".split(" ");
+
+function Situacao({ ativo }: { ativo: boolean }) {
+  return ativo
+    ? <span className="status-pill st-verde"><i className="bi bi-check-lg" aria-hidden="true" />Ativo</span>
+    : <span className="status-pill st-neutro"><i className="bi bi-x-lg" aria-hidden="true" />Inativo</span>;
+}
+
+const erroDaApi = (e: unknown) => {
+  const d = (e as ApiError).data;
+  return d && typeof d === "object" ? Object.values(d).flat().join(" ") : (e as Error).message;
+};
 
 const ESTRATEGIA_COR: Record<string, string> = {
   "gerenciar de perto": "text-bg-danger", "manter satisfeito": "text-bg-warning", "manter informado": "text-bg-info", "monitorar": "text-bg-light border",
 };
 
-/** Partes interessadas do planejamento, com matriz influência × interesse. */
-export function Stakeholders() {
+/** Aba Stakeholders: partes interessadas do planejamento, com matriz influência × interesse. */
+function AbaStakeholders({ podeEditar, novo }: { podeEditar: boolean; novo: number }) {
   const [lista, setLista] = useState<Stakeholder[] | null>(null);
   const [unidades, setUnidades] = useState<Unidade[]>([]);
   const [editing, setEditing] = useState<Partial<Stakeholder> | null>(null);
@@ -25,6 +45,8 @@ export function Stakeholders() {
     api.get<any>("/api/org-units/").then((d) => setUnidades(d.results ?? d)).catch(() => {});
   }, []);
   useEffect(() => { load(); }, [load]);
+  // O botão "Novo stakeholder" fica no cabeçalho da página; cada clique muda o contador.
+  useEffect(() => { if (novo > 0) setEditing({ kind: "interno", influence: 3, interest: 3, is_active: true }); }, [novo]);
 
   const visiveis = useMemo(() => {
     const q = busca.trim().toLowerCase();
@@ -53,36 +75,33 @@ export function Stakeholders() {
   return (
     <div className="d-grid gap-3">
       <Panel
-        title="Stakeholders"
+        title="Lista de stakeholders"
         subtitle="Quem influencia ou é afetado pelo planejamento: sócios, diretoria, consultores, fornecedores e clientes-chave."
-        actions={
-          <div className="d-flex gap-2">
-            <Form.Control size="sm" placeholder="Buscar…" value={busca} onChange={(e) => setBusca(e.target.value)} style={{ width: 200 }} />
-            <Button size="sm" onClick={() => setEditing({ kind: "interno", influence: 3, interest: 3, is_active: true })}><i className="bi bi-plus-lg me-1" />Novo</Button>
-          </div>
-        }
+        actions={<Form.Control size="sm" placeholder="Buscar stakeholders…" value={busca} onChange={(e) => setBusca(e.target.value)} style={{ width: 220 }} />}
       >
         {lista.length === 0 ? (
           <EmptyState icon="bi-people" title="Nenhum stakeholder cadastrado" hint="Comece pelos sócios e pela diretoria; depois consultores, fornecedores e clientes-chave." />
         ) : (
           <div className="table-responsive">
-            <table className="table table-sm align-middle mb-0">
-              <thead><tr><th>Nome</th><th>Tipo</th><th>Organização / área</th><th>Papel</th><th>Contato</th><th className="text-center">Influência</th><th className="text-center">Interesse</th><th>Estratégia</th></tr></thead>
+            <table className="table table-sm table-hover align-middle mb-0">
+              <thead><tr><th>Stakeholder</th><th>Cargo</th><th>Empresa relacionada</th><th>Tipo</th><th>Contato</th><th className="text-center">Influência</th><th className="text-center">Interesse</th><th>Estratégia</th><th>Situação</th></tr></thead>
               <tbody>
                 {visiveis.map((s) => (
-                  <tr key={s.id} role="button" onClick={() => setEditing(s)} className={s.is_active ? "" : "text-muted-2"}>
-                    <td className="fw-semibold">{s.name}{!s.is_active && <span className="badge text-bg-light border ms-2">inativo</span>}</td>
-                    <td><span className={`badge ${s.kind === "interno" ? "text-bg-primary" : "text-bg-secondary"}`}>{s.kind}</span></td>
-                    <td className="small">{s.organization || s.org_unit_name || "—"}</td>
+                  <tr key={s.id} role={podeEditar ? "button" : undefined} onClick={() => podeEditar && setEditing(s)} className={s.is_active ? "" : "text-muted-2"}>
+                    <td className="fw-semibold">{s.name}</td>
                     <td className="small">{s.role || "—"}</td>
+                    <td className="small">{s.organization || s.org_unit_name || "—"}</td>
+                    <td><span className={`badge ${s.kind === "interno" ? "text-bg-primary" : "text-bg-secondary"}`}>{s.kind}</span></td>
                     <td className="small text-muted-2">{[s.email, s.phone].filter(Boolean).join(" · ") || "—"}</td>
                     <td className="text-center">{s.influence}</td>
                     <td className="text-center">{s.interest}</td>
                     <td><span className={`badge ${ESTRATEGIA_COR[s.strategy] ?? "text-bg-light"}`}>{s.strategy}</span></td>
+                    <td><Situacao ativo={s.is_active} /></td>
                   </tr>
                 ))}
               </tbody>
             </table>
+            <div className="small text-muted-2 mt-2">Mostrando {visiveis.length} stakeholder(s)</div>
           </div>
         )}
       </Panel>
@@ -118,8 +137,8 @@ export function Stakeholders() {
               <div className="col-md-6"><Form.Label>Nome</Form.Label><Form.Control autoFocus value={editing.name ?? ""} onChange={(e) => setEditing({ ...editing, name: e.target.value })} /></div>
               <div className="col-md-3"><Form.Label>Tipo</Form.Label>
                 <Form.Select value={editing.kind} onChange={(e) => setEditing({ ...editing, kind: e.target.value as any })}><option value="interno">Interno</option><option value="externo">Externo</option></Form.Select></div>
-              <div className="col-md-3"><Form.Label>Papel</Form.Label><Form.Control value={editing.role ?? ""} onChange={(e) => setEditing({ ...editing, role: e.target.value })} placeholder="Sócio, consultor…" /></div>
-              <div className="col-md-6"><Form.Label>Organização (externo)</Form.Label><Form.Control value={editing.organization ?? ""} onChange={(e) => setEditing({ ...editing, organization: e.target.value })} /></div>
+              <div className="col-md-3"><Form.Label>Cargo / papel</Form.Label><Form.Control value={editing.role ?? ""} onChange={(e) => setEditing({ ...editing, role: e.target.value })} placeholder="Sócio, consultor…" /></div>
+              <div className="col-md-6"><Form.Label>Empresa relacionada</Form.Label><Form.Control value={editing.organization ?? ""} onChange={(e) => setEditing({ ...editing, organization: e.target.value })} /></div>
               <div className="col-md-6"><Form.Label>Área (interno)</Form.Label>
                 <Form.Select value={editing.org_unit ?? ""} onChange={(e) => setEditing({ ...editing, org_unit: e.target.value ? Number(e.target.value) : null })}><option value="">—</option>{unidades.map((u) => <option key={u.id} value={u.id}>{u.name}</option>)}</Form.Select></div>
               <div className="col-md-6"><Form.Label>E-mail</Form.Label><Form.Control value={editing.email ?? ""} onChange={(e) => setEditing({ ...editing, email: e.target.value })} /></div>
@@ -137,6 +156,174 @@ export function Stakeholders() {
           <Button onClick={save}>Salvar</Button>
         </Modal.Footer>
       </Modal>
+    </div>
+  );
+}
+
+/** Aba Departamentos: as áreas da empresa em lista (a árvore continua em Administração → Organograma). */
+function AbaDepartamentos({ podeEditar, novo }: { podeEditar: boolean; novo: number }) {
+  const [lista, setLista] = useState<Departamento[] | null>(null);
+  const [usuarios, setUsuarios] = useState<Usuario[]>([]);
+  const [busca, setBusca] = useState("");
+  const [editing, setEditing] = useState<Partial<Departamento> | null>(null);
+  const [erro, setErro] = useState("");
+
+  const load = useCallback(() => {
+    api.get<any>("/api/org-units/").then((d) => setLista(d.results ?? d)).catch(() => setLista([]));
+  }, []);
+  useEffect(() => { load(); api.get<any>("/api/users/").then((d) => setUsuarios(d.results ?? d)).catch(() => {}); }, [load]);
+  useEffect(() => { if (novo > 0) { setErro(""); setEditing({ kind: "area", is_active: true }); } }, [novo]);
+
+  const visiveis = useMemo(() => {
+    const q = busca.trim().toLowerCase();
+    return (lista ?? []).filter((d) => !q || d.name.toLowerCase().includes(q)).sort((a, b) => Number(b.is_active) - Number(a.is_active) || a.name.localeCompare(b.name));
+  }, [lista, busca]);
+
+  const save = async () => {
+    if (!editing?.name?.trim()) { setErro("Dê um nome ao departamento."); return; }
+    const body = { name: editing.name, kind: editing.kind, parent: editing.parent || null, manager: editing.manager || null, is_active: editing.is_active ?? true };
+    try {
+      if (editing.id) await api.patch(`/api/org-units/${editing.id}/`, body);
+      else await api.post("/api/org-units/", body);
+      setEditing(null);
+      load();
+    } catch (e) { setErro(erroDaApi(e)); }
+  };
+
+  if (lista === null) return <Panel><Skeleton height={300} /></Panel>;
+
+  return (
+    <>
+      <Panel title="Lista de departamentos" subtitle="As áreas e os times da empresa. Departamento inativo some das escolhas, mas o histórico fica."
+        actions={<Form.Control size="sm" placeholder="Buscar departamentos…" value={busca} onChange={(e) => setBusca(e.target.value)} style={{ width: 220 }} />}>
+        {lista.length === 0 ? <EmptyState icon="bi-diagram-2" title="Nenhum departamento cadastrado" /> : (
+          <div className="table-responsive">
+            <table className="table table-sm table-hover align-middle mb-0">
+              <thead><tr><th>Departamento</th><th>Tipo</th><th>Fica em</th><th>Gestor</th><th className="num">Pessoas</th><th>Situação</th></tr></thead>
+              <tbody>
+                {visiveis.map((d) => (
+                  <tr key={d.id} role={podeEditar ? "button" : undefined} onClick={() => { if (podeEditar) { setErro(""); setEditing(d); } }} className={d.is_active ? "" : "text-muted-2"}>
+                    <td className="fw-semibold">{d.name}</td>
+                    <td className="small">{d.kind_label}</td>
+                    <td className="small">{d.parent_name || "—"}</td>
+                    <td className="small">{d.manager_name || "—"}</td>
+                    <td className="num">{d.users_count}</td>
+                    <td><Situacao ativo={d.is_active} /></td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+            <div className="small text-muted-2 mt-2">Mostrando {visiveis.length} departamento(s)</div>
+          </div>
+        )}
+      </Panel>
+
+      <Modal show={!!editing} onHide={() => setEditing(null)}>
+        <Modal.Header closeButton><Modal.Title>{editing?.id ? "Editar departamento" : "Novo departamento"}</Modal.Title></Modal.Header>
+        <Modal.Body>
+          {editing && (
+            <div className="row g-3">
+              {erro && <div className="col-12"><Alert variant="danger" className="mb-0 py-2 small">{erro}</Alert></div>}
+              <div className="col-12"><Form.Label>Nome *</Form.Label><Form.Control autoFocus value={editing.name ?? ""} onChange={(e) => setEditing({ ...editing, name: e.target.value })} /></div>
+              <div className="col-md-6"><Form.Label>Tipo</Form.Label>
+                <Form.Select value={editing.kind} onChange={(e) => setEditing({ ...editing, kind: e.target.value })}><option value="empresa">Empresa</option><option value="area">Área</option><option value="time">Time</option></Form.Select></div>
+              <div className="col-md-6"><Form.Label>Fica em</Form.Label>
+                <Form.Select value={editing.parent ?? ""} onChange={(e) => setEditing({ ...editing, parent: e.target.value ? Number(e.target.value) : null })}>
+                  <option value="">—</option>{lista.filter((d) => d.id !== editing.id).map((d) => <option key={d.id} value={d.id}>{d.name}</option>)}
+                </Form.Select></div>
+              <div className="col-md-8"><Form.Label>Gestor</Form.Label>
+                <Form.Select value={editing.manager ?? ""} onChange={(e) => setEditing({ ...editing, manager: e.target.value ? Number(e.target.value) : null })}>
+                  <option value="">—</option>{usuarios.map((u) => <option key={u.id} value={u.id}>{[u.first_name, u.last_name].filter(Boolean).join(" ") || u.email}</option>)}
+                </Form.Select></div>
+              <div className="col-md-4 d-flex align-items-end"><Form.Check type="switch" id="dep-ativo" label="Ativo" checked={editing.is_active ?? true} onChange={(e) => setEditing({ ...editing, is_active: e.target.checked })} /></div>
+            </div>
+          )}
+        </Modal.Body>
+        <Modal.Footer>
+          <Button variant="outline-secondary" onClick={() => setEditing(null)}>Cancelar</Button>
+          <Button onClick={save}>Salvar</Button>
+        </Modal.Footer>
+      </Modal>
+    </>
+  );
+}
+
+/** Aba Empresa: os dados cadastrais da empresa em uso. */
+function AbaEmpresa({ podeEditar }: { podeEditar: boolean }) {
+  const [empresa, setEmpresa] = useState<Empresa | null>(null);
+  const [msg, setMsg] = useState<{ tipo: "success" | "danger"; texto: string } | null>(null);
+  const [salvando, setSalvando] = useState(false);
+
+  useEffect(() => { api.get<Empresa>("/api/empresa/").then(setEmpresa).catch((e) => setMsg({ tipo: "danger", texto: e.message })); }, []);
+
+  const save = async () => {
+    if (!empresa) return;
+    setSalvando(true);
+    try {
+      setEmpresa(await api.patch<Empresa>("/api/empresa/", empresa));
+      setMsg({ tipo: "success", texto: "Dados da empresa salvos." });
+    } catch (e) { setMsg({ tipo: "danger", texto: erroDaApi(e) }); }
+    setSalvando(false);
+  };
+
+  if (!empresa) return <Panel>{msg ? <Alert variant="danger" className="mb-0">{msg.texto}</Alert> : <Skeleton height={260} />}</Panel>;
+
+  const campo = (rotulo: string, chave: keyof Empresa, col: string, extra: Record<string, unknown> = {}) => (
+    <div className={col}><Form.Label>{rotulo}</Form.Label>
+      <Form.Control disabled={!podeEditar} value={String(empresa[chave] ?? "")} onChange={(e) => setEmpresa({ ...empresa, [chave]: e.target.value })} {...extra} /></div>
+  );
+
+  return (
+    <Panel title="Dados da empresa" subtitle="Cadastro usado nos relatórios e na comunicação com o suporte."
+      actions={<Situacao ativo={empresa.is_active} />}>
+      <div className="row g-3">
+        {msg && <div className="col-12"><Alert variant={msg.tipo} className="mb-0 py-2 small" dismissible onClose={() => setMsg(null)}>{msg.texto}</Alert></div>}
+        {campo("Razão social", "legal_name", "col-md-5")}
+        {campo("Nome fantasia *", "name", "col-md-4")}
+        {campo("CNPJ", "cnpj", "col-md-3", { placeholder: "00.000.000/0000-00", maxLength: 18 })}
+        {campo("Endereço", "address", "col-md-6")}
+        {campo("Número", "address_number", "col-md-2")}
+        {campo("Complemento", "address_complement", "col-md-4")}
+        {campo("Bairro", "district", "col-md-4")}
+        {campo("Município", "city", "col-md-4")}
+        <div className="col-md-2"><Form.Label>UF</Form.Label>
+          <Form.Select disabled={!podeEditar} value={empresa.state} onChange={(e) => setEmpresa({ ...empresa, state: e.target.value })}><option value="">—</option>{UFS.map((uf) => <option key={uf}>{uf}</option>)}</Form.Select></div>
+        {campo("CEP", "zip_code", "col-md-2", { placeholder: "00000-000", maxLength: 9 })}
+        {campo("Responsável", "contact_name", "col-md-4")}
+        {campo("E-mail", "email", "col-md-4", { type: "email" })}
+        {campo("Telefone", "phone", "col-md-4", { placeholder: "(00) 00000-0000" })}
+        {podeEditar && <div className="col-12 text-end"><Button onClick={save} disabled={salvando || !empresa.name.trim()}>{salvando ? "Salvando…" : "Salvar"}</Button></div>}
+      </div>
+    </Panel>
+  );
+}
+
+type Aba = "stakeholders" | "departamentos" | "empresa";
+
+/** Stakeholders, departamentos e empresa numa página só, em abas. */
+export function Stakeholders() {
+  const { me } = useAuth();
+  const [aba, setAba] = useState<Aba>("stakeholders");
+  const [novo, setNovo] = useState(0);
+  const gestor = me?.role !== "colaborador";
+  const admin = me?.role === "admin" || me?.role === "root";
+  const trocar = (k: Aba) => { setNovo(0); setAba(k); };
+
+  return (
+    <div className="d-grid gap-3">
+      <div className="d-flex flex-wrap align-items-center gap-2">
+        <Nav variant="pills" activeKey={aba} onSelect={(k) => trocar(k as Aba)} className="me-auto">
+          <Nav.Item><Nav.Link eventKey="stakeholders" className="py-1 px-3 small"><i className="bi bi-people me-1" />Stakeholders</Nav.Link></Nav.Item>
+          <Nav.Item><Nav.Link eventKey="departamentos" className="py-1 px-3 small"><i className="bi bi-diagram-2 me-1" />Departamentos</Nav.Link></Nav.Item>
+          <Nav.Item><Nav.Link eventKey="empresa" className="py-1 px-3 small"><i className="bi bi-building me-1" />Empresa</Nav.Link></Nav.Item>
+        </Nav>
+        <Button size="sm" variant="outline-secondary" onClick={() => window.print()}><i className="bi bi-printer me-1" />Imprimir</Button>
+        {aba === "stakeholders" && gestor && <Button size="sm" onClick={() => setNovo((n) => n + 1)}><i className="bi bi-plus-lg me-1" />Novo stakeholder</Button>}
+        {aba === "departamentos" && admin && <Button size="sm" onClick={() => setNovo((n) => n + 1)}><i className="bi bi-plus-lg me-1" />Novo departamento</Button>}
+      </div>
+      {aba === "stakeholders" && <AbaStakeholders podeEditar={gestor} novo={novo} />}
+      {aba === "departamentos" && <AbaDepartamentos podeEditar={admin} novo={novo} />}
+      {aba === "empresa" && <AbaEmpresa podeEditar={admin} />}
     </div>
   );
 }
