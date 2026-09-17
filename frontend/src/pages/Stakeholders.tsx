@@ -248,9 +248,28 @@ function AbaDepartamentos({ podeEditar, novo }: { podeEditar: boolean; novo: num
   );
 }
 
-/** Aba Empresa: os dados cadastrais da empresa em uso. */
-function AbaEmpresa({ podeEditar }: { podeEditar: boolean }) {
+/** Aba Empresas: as empresas do cliente (ele pode ter várias) e os dados cadastrais da que está em uso. */
+function AbaEmpresa({ podeEditar, novo }: { podeEditar: boolean; novo: number }) {
+  const { me, actAsTenant } = useAuth();
+  const [empresas, setEmpresas] = useState<Empresa[]>([]);
+  const [nova, setNova] = useState<Partial<Empresa> | null>(null);
+  const [erroNova, setErroNova] = useState("");
   const [empresa, setEmpresa] = useState<Empresa | null>(null);
+  const isRoot = me?.role === "root";
+
+  const loadEmpresas = useCallback(() => { api.get<Empresa[]>("/api/empresas/").then(setEmpresas).catch(() => setEmpresas([])); }, []);
+  useEffect(() => { loadEmpresas(); }, [loadEmpresas]);
+  useEffect(() => { if (novo > 0) { setErroNova(""); setNova({}); } }, [novo]);
+
+  const criar = async () => {
+    if (!nova?.name?.trim()) { setErroNova("Informe o nome fantasia."); return; }
+    try {
+      const criada = await api.post<Empresa>("/api/empresas/", nova);
+      setNova(null);
+      await actAsTenant(criada.id); // já entra na empresa nova: a tela remonta nela
+    } catch (e) { setErroNova(erroDaApi(e)); }
+  };
+
   const [msg, setMsg] = useState<{ tipo: "success" | "danger"; texto: string } | null>(null);
   const [salvando, setSalvando] = useState(false);
 
@@ -274,7 +293,34 @@ function AbaEmpresa({ podeEditar }: { podeEditar: boolean }) {
   );
 
   return (
-    <Panel title="Dados da empresa" subtitle="Cadastro usado nos relatórios e na comunicação com o suporte."
+    <>
+    {!isRoot && (
+      <Panel title="Lista de empresas" subtitle="As empresas a que você tem acesso. Cada uma tem os seus planejamentos, indicadores, projetos e usuários.">
+        <div className="table-responsive">
+          <table className="table table-sm table-hover align-middle mb-0">
+            <thead><tr><th>Razão social</th><th>Nome fantasia</th><th>CNPJ</th><th>E-mail</th><th>Situação</th><th /></tr></thead>
+            <tbody>
+              {empresas.map((e) => (
+                <tr key={e.id}>
+                  <td className="fw-semibold">{e.legal_name || e.name}</td>
+                  <td className="small">{e.name}</td>
+                  <td className="small">{e.cnpj || "—"}</td>
+                  <td className="small">{e.email || "—"}</td>
+                  <td><Situacao ativo={e.is_active} /></td>
+                  <td className="text-end">
+                    {e.id === empresa.id
+                      ? <span className="status-pill st-verde"><i className="bi bi-check2" />em uso</span>
+                      : <Button size="sm" variant="outline-secondary" onClick={() => actAsTenant(e.id)}>Abrir</Button>}
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+          <div className="small text-muted-2 mt-2">Mostrando {empresas.length} empresa(s)</div>
+        </div>
+      </Panel>
+    )}
+    <Panel title={`Dados da empresa em uso · ${empresa.name}`} subtitle="Cadastro usado nos relatórios e na comunicação com o suporte."
       actions={<Situacao ativo={empresa.is_active} />}>
       <div className="row g-3">
         {msg && <div className="col-12"><Alert variant={msg.tipo} className="mb-0 py-2 small" dismissible onClose={() => setMsg(null)}>{msg.texto}</Alert></div>}
@@ -295,6 +341,26 @@ function AbaEmpresa({ podeEditar }: { podeEditar: boolean }) {
         {podeEditar && <div className="col-12 text-end"><Button onClick={save} disabled={salvando || !empresa.name.trim()}>{salvando ? "Salvando…" : "Salvar"}</Button></div>}
       </div>
     </Panel>
+
+    <Modal show={!!nova} onHide={() => setNova(null)}>
+      <Modal.Header closeButton><Modal.Title>Nova empresa</Modal.Title></Modal.Header>
+      <Modal.Body>
+        {nova && (
+          <div className="row g-3">
+            {erroNova && <div className="col-12"><Alert variant="danger" className="mb-0 py-2 small">{erroNova}</Alert></div>}
+            <div className="col-12 small text-muted-2">A empresa nasce pronta para uso (departamento raiz, planejamento do ano e perfis de acesso) e você já entra nela. Os demais dados cadastrais você completa em seguida.</div>
+            <div className="col-12"><Form.Label>Razão social</Form.Label><Form.Control autoFocus value={nova.legal_name ?? ""} onChange={(e) => setNova({ ...nova, legal_name: e.target.value })} /></div>
+            <div className="col-md-7"><Form.Label>Nome fantasia *</Form.Label><Form.Control value={nova.name ?? ""} onChange={(e) => setNova({ ...nova, name: e.target.value })} /></div>
+            <div className="col-md-5"><Form.Label>CNPJ</Form.Label><Form.Control value={nova.cnpj ?? ""} maxLength={18} placeholder="00.000.000/0000-00" onChange={(e) => setNova({ ...nova, cnpj: e.target.value })} /></div>
+          </div>
+        )}
+      </Modal.Body>
+      <Modal.Footer>
+        <Button variant="outline-secondary" onClick={() => setNova(null)}>Cancelar</Button>
+        <Button onClick={criar}>Criar empresa</Button>
+      </Modal.Footer>
+    </Modal>
+    </>
   );
 }
 
@@ -315,15 +381,16 @@ export function Stakeholders() {
         <Nav variant="pills" activeKey={aba} onSelect={(k) => trocar(k as Aba)} className="me-auto">
           <Nav.Item><Nav.Link eventKey="stakeholders" className="py-1 px-3 small"><i className="bi bi-people me-1" />Stakeholders</Nav.Link></Nav.Item>
           <Nav.Item><Nav.Link eventKey="departamentos" className="py-1 px-3 small"><i className="bi bi-diagram-2 me-1" />Departamentos</Nav.Link></Nav.Item>
-          <Nav.Item><Nav.Link eventKey="empresa" className="py-1 px-3 small"><i className="bi bi-building me-1" />Empresa</Nav.Link></Nav.Item>
+          <Nav.Item><Nav.Link eventKey="empresa" className="py-1 px-3 small"><i className="bi bi-building me-1" />Empresas</Nav.Link></Nav.Item>
         </Nav>
         <Button size="sm" variant="outline-secondary" onClick={() => window.print()}><i className="bi bi-printer me-1" />Imprimir</Button>
         {aba === "stakeholders" && gestor && <Button size="sm" onClick={() => setNovo((n) => n + 1)}><i className="bi bi-plus-lg me-1" />Novo stakeholder</Button>}
+        {aba === "empresa" && me?.role === "admin" && <Button size="sm" onClick={() => setNovo((n) => n + 1)}><i className="bi bi-plus-lg me-1" />Nova empresa</Button>}
         {aba === "departamentos" && admin && <Button size="sm" onClick={() => setNovo((n) => n + 1)}><i className="bi bi-plus-lg me-1" />Novo departamento</Button>}
       </div>
       {aba === "stakeholders" && <AbaStakeholders podeEditar={gestor} novo={novo} />}
       {aba === "departamentos" && <AbaDepartamentos podeEditar={admin} novo={novo} />}
-      {aba === "empresa" && <AbaEmpresa podeEditar={admin} />}
+      {aba === "empresa" && <AbaEmpresa podeEditar={admin} novo={novo} />}
     </div>
   );
 }

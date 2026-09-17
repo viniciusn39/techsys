@@ -75,6 +75,9 @@ class User(AbstractUser):
         "OrgUnit", on_delete=models.SET_NULL, null=True, blank=True, related_name="members"
     )
     cargo = models.CharField(max_length=100, blank=True)
+    # Outras empresas em que a pessoa também atua (grupo, consultor, sócio). "tenant" continua
+    # sendo a empresa de origem: é nela que o cadastro, o papel e o perfil são mantidos.
+    extra_tenants = models.ManyToManyField(Tenant, blank=True, related_name="guest_users", verbose_name="outras empresas")
     # Perfil de acesso por setor (RBAC): o que este usuário enxerga. Nulo = tudo do papel.
     access_profile = models.ForeignKey(
         "AccessProfile", on_delete=models.SET_NULL, null=True, blank=True, related_name="users",
@@ -94,6 +97,16 @@ class User(AbstractUser):
     @property
     def is_root(self):
         return self.role == self.Role.ROOT
+
+    def empresas(self):
+        """Empresas ativas em que o usuário pode atuar: a de origem primeiro, depois as vinculadas."""
+        lista = [self.tenant] if self.tenant_id and self.tenant.is_active else []
+        return lista + [t for t in self.extra_tenants.filter(is_active=True) if t.id != self.tenant_id]
+
+    def belongs_to(self, tenant):
+        if tenant is None:
+            return False
+        return self.tenant_id == tenant.id or self.extra_tenants.filter(pk=tenant.id).exists()
 
 
 class OrgUnit(TenantOwnedModel):

@@ -84,9 +84,10 @@ def _indicadores(tenant, user, meses=6):
 
 
 def _mapa(tenant):
-    from strategy.models import Goal, StrategicMap
+    from strategy.current import mapa_padrao
+    from strategy.models import Goal
 
-    mapa = StrategicMap.objects.filter(tenant=tenant, is_active=True).first()
+    mapa = mapa_padrao(tenant)
     if not mapa:
         return None, {}
     perspectivas = []

@@ -2,6 +2,7 @@
 from collections import Counter
 from datetime import date
 
+from django.db.models import Q
 from django.utils import timezone
 from rest_framework.response import Response
 from rest_framework.views import APIView
@@ -9,6 +10,7 @@ from rest_framework.views import APIView
 from accounts.access import filtrar_indicadores
 from accounts.tenancy import get_request_tenant
 
+from .current import mapa_atual
 from .models import Meeting, Perspective, StrategicMap, StrategicObjective, SwotItem
 
 TETO_ATINGIMENTO = 150   # um indicador a 900 % da meta não pode esconder os outros na média
@@ -45,7 +47,7 @@ class OverviewView(APIView):
         referencia = max((p for p in por_mes if p <= hoje), default=None)   # último mês medido
         do_mes = [v for v in valores if v["period"] == referencia]
 
-        mapa = StrategicMap.objects.filter(tenant=tenant, is_active=True).order_by("-id").first()
+        mapa = mapa_atual(request, tenant)
         perspectivas = []
         for persp in Perspective.objects.filter(map=mapa).order_by("order", "id") if mapa else []:
             pcts = [v["achievement_pct"] for v in do_mes if v["indicator__objective__perspective_id"] == persp.id]
@@ -63,7 +65,11 @@ class OverviewView(APIView):
         objetivos_ok = sum(1 for s in por_objetivo.values() if all(x == "verde" for x in s))
 
         # --- projetos ------------------------------------------------------------------
-        projetos = list(Project.objects.filter(tenant=tenant).select_related("owner"))
+        projetos_qs = Project.objects.filter(tenant=tenant)
+        if request.headers.get("X-Map-Id") and mapa is not None:
+            # Planejamento escolhido no seletor: só os projetos dele (e os antigos, sem planejamento).
+            projetos_qs = projetos_qs.filter(Q(map=mapa) | Q(map__isnull=True))
+        projetos = list(projetos_qs.select_related("owner"))
         resumos = {pid: resumo_projeto(l) for pid, l in arvores_por_projeto(projetos, hoje).items()}
         abertos = [p for p in projetos if p.status not in (Andamento.FINALIZADO, Andamento.CANCELADO)]
         atrasados = sorted(
@@ -75,10 +81,10 @@ class OverviewView(APIView):
         recentes = [
             {"id": a.id, "project": a.project_id, "project_title": a.project.title, "title": a.title,
              "status": a.status, "created_at": a.created_at}
-            for a in ProjectActivity.objects.filter(project__tenant=tenant).select_related("project").order_by("-created_at")[:6]
+            for a in ProjectActivity.objects.filter(project__in=projetos).select_related("project").order_by("-created_at")[:6]
         ]
         criadas = Counter(
-            a.strftime("%Y-%m") for a in ProjectActivity.objects.filter(project__tenant=tenant, created_at__year=ano)
+            a.strftime("%Y-%m") for a in ProjectActivity.objects.filter(project__in=projetos, created_at__year=ano)
             .values_list("created_at", flat=True)
         )
 

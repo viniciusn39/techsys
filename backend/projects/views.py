@@ -47,9 +47,9 @@ class ProjectViewSet(TenantScopedViewSet):
         ultimo = Project.objects.filter(tenant=tenant).aggregate(m=Max("code"))["m"] or 0
         extra = {}
         if "map" not in serializer.validated_data:
-            from strategy.models import StrategicMap
+            from strategy.current import mapa_atual
 
-            extra["map"] = StrategicMap.objects.filter(tenant=tenant, is_active=True).order_by("-id").first()
+            extra["map"] = mapa_atual(self.request, tenant)
         serializer.save(tenant=tenant, code=ultimo + 1, **extra)
 
     @action(detail=True, methods=["get"])

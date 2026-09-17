@@ -7,7 +7,8 @@ from .models import Tenant, User
 def get_request_tenant(request):
     """Resolve o tenant da requisição.
 
-    Usuário comum: sempre o próprio tenant. Root: pode assumir um tenant via
+    Usuário comum: o próprio tenant ou, via header X-Tenant-Id, outra empresa a que
+    ele esteja vinculado. Root: pode assumir um tenant via
     header X-Tenant-Id (seletor de empresa no frontend); sem header, None.
     """
     user = getattr(request, "user", None)
@@ -18,6 +19,13 @@ def get_request_tenant(request):
         if tenant_id:
             return Tenant.objects.filter(id=tenant_id, is_active=True).first()
         return None
+    # Usuário de várias empresas escolhe em qual está atuando pelo mesmo header —
+    # mas só entre as empresas a que ele pertence; qualquer outra coisa cai na de origem.
+    tenant_id = request.headers.get("X-Tenant-Id")
+    if tenant_id and str(user.tenant_id) != str(tenant_id):
+        outra = user.extra_tenants.filter(id=tenant_id, is_active=True).first() if str(tenant_id).isdigit() else None
+        if outra is not None:
+            return outra
     return user.tenant
 
 

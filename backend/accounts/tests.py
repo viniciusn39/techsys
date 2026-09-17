@@ -290,3 +290,43 @@ class EmpresaEDepartamentosTests(APITestCase):
         self.assertEqual((d["is_active"], d["kind_label"], d["users_count"]), (True, "Área", 0))
         r = self.client.patch(f"/api/org-units/{d['id']}/", {"is_active": False}, format="json")
         self.assertFalse(r.json()["is_active"])
+
+
+class VariasEmpresasTests(APITestCase):
+    def setUp(self):
+        self.a = Tenant.objects.create(name="Alfa", slug="alfa-me")
+        self.b = Tenant.objects.create(name="Beta", slug="beta-me")
+        self.c = Tenant.objects.create(name="Gama", slug="gama-me")
+        self.admin = User.objects.create_user("dono@alfa.com", "x", first_name="Dono", tenant=self.a, role=User.Role.ADMIN)
+        self.admin.extra_tenants.add(self.b)
+        OrgUnit.objects.create(tenant=self.b, name="Só da Beta")
+        self.client.force_authenticate(self.admin)
+
+    def test_troca_de_empresa_so_entre_as_vinculadas(self):
+        nomes = lambda **h: [u["name"] for u in self.client.get("/api/org-units/", **h).json()]  # noqa: E731
+        self.assertEqual(nomes(), [])
+        self.assertEqual(nomes(HTTP_X_TENANT_ID=str(self.b.id)), ["Só da Beta"])
+        OrgUnit.objects.create(tenant=self.c, name="Só da Gama")
+        self.assertEqual(nomes(HTTP_X_TENANT_ID=str(self.c.id)), [])          # não é dele: cai na de origem
+        me = self.client.get("/api/auth/me/", HTTP_X_TENANT_ID=str(self.b.id)).json()
+        self.assertEqual((me["acting_tenant"]["name"], [t["name"] for t in me["tenants"]]), ("Beta", ["Alfa", "Beta"]))
+
+    def test_vincular_por_email_e_cadastro_continua_na_origem(self):
+        outro = User.objects.create_user("ana@gama.com", "x", first_name="Ana", tenant=self.c, role=User.Role.GESTOR)
+        r = self.client.post("/api/users/vincular/", {"email": "ANA@gama.com"}, format="json")
+        self.assertEqual((r.status_code, r.json()["is_guest"]), (201, True))
+        self.assertTrue(outro.belongs_to(self.a))
+        self.assertEqual(self.client.patch(f"/api/users/{outro.id}/", {"role": "admin"}, format="json").status_code, 403)
+        self.assertEqual(self.client.post(f"/api/users/{outro.id}/desvincular/").status_code, 204)
+        self.assertFalse(outro.belongs_to(self.a))
+        self.assertEqual(self.client.post("/api/users/vincular/", {"email": "ninguem@x.com"}, format="json").status_code, 404)
+
+    def test_admin_abre_outra_empresa_e_ja_entra_nela(self):
+        r = self.client.post("/api/empresas/", {"name": "Alfa Filial", "cnpj": "1"}, format="json")
+        self.assertEqual(r.status_code, 201, r.content)
+        self.assertEqual([e["name"] for e in self.client.get("/api/empresas/").json()], ["Alfa", "Alfa Filial", "Beta"])
+        unidades = self.client.get("/api/org-units/", HTTP_X_TENANT_ID=str(r.json()["id"])).json()
+        self.assertEqual(len(unidades), 1)                                     # nasceu provisionada
+        gestor = User.objects.create_user("g@alfa.com", "x", tenant=self.a, role=User.Role.GESTOR)
+        self.client.force_authenticate(gestor)
+        self.assertEqual(self.client.post("/api/empresas/", {"name": "X"}, format="json").status_code, 403)

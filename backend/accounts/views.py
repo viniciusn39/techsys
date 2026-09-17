@@ -15,6 +15,12 @@ class MeView(APIView):
         data = MeSerializer(request.user).data
         tenant = get_request_tenant(request)
         data["acting_tenant"] = TenantSerializer(tenant).data if tenant else None
+        user = request.user
+        data["tenants"] = [] if user.role == User.Role.ROOT else [{"id": t.id, "name": t.name} for t in user.empresas()]
+        # Perfil de acesso é da empresa de origem; nas vinculadas vale só o papel.
+        if tenant is not None and user.tenant_id != tenant.id:
+            data["modules"] = None
+            data["sectors"] = None
         return Response(data)
 
 
@@ -50,11 +56,53 @@ class UserViewSet(TenantScopedViewSet):
         ctx["tenant"] = self.get_tenant()
         return ctx
 
+    def get_queryset(self):
+        """Quem é da empresa e quem foi vinculado a ela vindo de outra."""
+        from django.db.models import Q
+
+        tenant = self.get_tenant()
+        if tenant is None:
+            return self.queryset.none()
+        return self.queryset.filter(Q(tenant=tenant) | Q(extra_tenants=tenant)).distinct()
+
+    def _so_da_casa(self, instance):
+        if instance.tenant_id != self.get_tenant().id:
+            raise PermissionDenied("Usuário vinculado: o cadastro é mantido na empresa de origem. Aqui só dá para desvincular.")
+
+    def perform_update(self, serializer):
+        self._so_da_casa(serializer.instance)
+        serializer.save()
+
     def perform_destroy(self, instance):
         if instance == self.request.user:
             raise PermissionDenied("Você não pode excluir a si mesmo.")
+        self._so_da_casa(instance)
         instance.is_active = False
         instance.save(update_fields=["is_active"])
+
+    @action(detail=False, methods=["post"])
+    def vincular(self, request):
+        """Dá acesso a esta empresa para alguém que já tem cadastro em outra (pelo e-mail)."""
+        tenant = self.get_tenant()
+        if tenant is None:
+            raise PermissionDenied("Nenhuma empresa selecionada.")
+        email = (request.data.get("email") or "").strip().lower()
+        user = User.objects.filter(email__iexact=email, is_active=True).exclude(role=User.Role.ROOT).first()
+        if user is None:
+            return Response({"detail": "Nenhum usuário ativo com esse e-mail. Cadastre-o como novo usuário."}, status=404)
+        if user.belongs_to(tenant):
+            return Response({"detail": "Esse usuário já faz parte desta empresa."}, status=400)
+        user.extra_tenants.add(tenant)
+        return Response(UserSerializer(user, context=self.get_serializer_context()).data, status=201)
+
+    @action(detail=True, methods=["post"])
+    def desvincular(self, request, pk=None):
+        user = self.get_object()
+        tenant = self.get_tenant()
+        if user.tenant_id == tenant.id:
+            return Response({"detail": "Esta é a empresa de origem do usuário; desative-o em vez de desvincular."}, status=400)
+        user.extra_tenants.remove(tenant)
+        return Response(status=204)
 
 
 class OrgUnitViewSet(TenantScopedViewSet):
@@ -172,3 +220,34 @@ class EmpresaView(APIView):
         ser.is_valid(raise_exception=True)
         ser.save()
         return Response(ser.data)
+
+
+class EmpresasView(APIView):
+    """As empresas do próprio cliente: lista as dele e deixa o admin abrir outra (grupo econômico)."""
+
+    def get(self, request):
+        user = request.user
+        if user.role == User.Role.ROOT:
+            return Response(EmpresaSerializer(Tenant.objects.all(), many=True).data)
+        return Response(EmpresaSerializer(user.empresas(), many=True).data)
+
+    def post(self, request):
+        from django.utils.text import slugify
+
+        from strategy.provisioning import bootstrap_tenant
+
+        user = request.user
+        if user.role not in (User.Role.ADMIN, User.Role.ROOT):
+            raise PermissionDenied("Só o administrador abre uma nova empresa.")
+        ser = EmpresaSerializer(data=request.data)
+        ser.is_valid(raise_exception=True)
+        base = slugify(ser.validated_data["name"])[:40] or "empresa"
+        slug, n = base, 2
+        while Tenant.objects.filter(slug=slug).exists():
+            slug, n = f"{base}-{n}", n + 1
+        tenant = ser.save(slug=slug)
+        bootstrap_tenant(tenant)
+        seed_access_profiles(tenant)
+        if user.role != User.Role.ROOT:
+            user.extra_tenants.add(tenant)
+        return Response(EmpresaSerializer(tenant).data, status=201)

@@ -1,5 +1,5 @@
 import { createContext, useCallback, useContext, useEffect, useState } from "react";
-import { api, clearTokens, getTokens, setActingTenant, setTokens } from "../api/client";
+import { api, clearTokens, getActingMap, getTokens, setActingMap, setActingTenant, setTokens } from "../api/client";
 import type { Me } from "../types";
 
 interface AuthState {
@@ -9,6 +9,9 @@ interface AuthState {
   logout: () => void;
   refreshMe: () => Promise<void>;
   actAsTenant: (tenantId: number | null) => Promise<void>;
+  /** Planejamento em uso; null = o padrão da empresa. Trocar remonta as telas. */
+  mapId: number | null;
+  selectMap: (mapId: number | null) => void;
 }
 
 const AuthContext = createContext<AuthState>(null as any);
@@ -16,6 +19,7 @@ const AuthContext = createContext<AuthState>(null as any);
 export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [me, setMe] = useState<Me | null>(null);
   const [loading, setLoading] = useState(true);
+  const [mapId, setMapId] = useState<number | null>(getActingMap() ? Number(getActingMap()) : null);
 
   const refreshMe = useCallback(async () => {
     try {
@@ -43,16 +47,23 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
   const logout = () => {
     clearTokens();
+    setMapId(null);
     setMe(null);
   };
 
   const actAsTenant = async (tenantId: number | null) => {
     setActingTenant(tenantId ? String(tenantId) : null);
+    setMapId(null);
     await refreshMe();
   };
 
+  const selectMap = (id: number | null) => {
+    setActingMap(id ? String(id) : null);
+    setMapId(id);
+  };
+
   return (
-    <AuthContext.Provider value={{ me, loading, login, logout, refreshMe, actAsTenant }}>
+    <AuthContext.Provider value={{ me, loading, login, logout, refreshMe, actAsTenant, mapId, selectMap }}>
       {children}
     </AuthContext.Provider>
   );

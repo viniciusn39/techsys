@@ -17,6 +17,7 @@ export function Usuarios() {
   const [perfis, setPerfis] = useState<{ id: number; name: string; sectors_labels?: string[] }[]>([]);
   const [editing, setEditing] = useState<Partial<UserRow & { password?: string }> | null>(null);
   const [error, setError] = useState("");
+  const [vincular, setVincular] = useState<string | null>(null);
 
   const load = useCallback(() => {
     api.get("/api/users/").then((d) => setRows(d.results ?? d)).catch(() => setRows([]));
@@ -45,11 +46,28 @@ export function Usuarios() {
     }
   };
 
+  const vincularExistente = async () => {
+    setError("");
+    try {
+      await api.post("/api/users/vincular/", { email: vincular });
+      setVincular(null);
+      load();
+    } catch (e: any) { setError(e.data?.detail ?? e.message); }
+  };
+
+  const desvincular = async (u: UserRow) => {
+    await api.post(`/api/users/${u.id}/desvincular/`);
+    load();
+  };
+
   return (
     <div>
       <div className="filter-bar">
         <span className="text-muted-2 small">{rows?.length ?? 0} usuário(s) nesta empresa</span>
-        <Button size="sm" className="ms-auto" onClick={() => setEditing({ role: "colaborador", is_active: true })}>
+        <Button size="sm" variant="outline-secondary" className="ms-auto" onClick={() => { setError(""); setVincular(""); }}>
+          <i className="bi bi-link-45deg me-1" />Vincular usuário de outra empresa
+        </Button>
+        <Button size="sm" onClick={() => setEditing({ role: "colaborador", is_active: true })}>
           <i className="bi bi-plus-lg me-1" />Novo usuário
         </Button>
       </div>
@@ -69,7 +87,7 @@ export function Usuarios() {
               </thead>
               <tbody>
                 {rows.map((u) => (
-                  <tr key={u.id} role="button" onClick={() => setEditing({ ...u, password: "" })}>
+                  <tr key={u.id} role={u.is_guest ? undefined : "button"} onClick={() => { if (!u.is_guest) setEditing({ ...u, password: "" }); }}>
                     <td>
                       <div className="d-flex align-items-center gap-2">
                         <span
@@ -81,7 +99,10 @@ export function Usuarios() {
                           {u.first_name?.[0]?.toUpperCase() ?? "?"}
                         </span>
                         <div>
-                          <div className="fw-semibold">{u.first_name} {u.last_name}</div>
+                          <div className="fw-semibold">
+                            {u.first_name} {u.last_name}
+                            {u.is_guest && <span className="badge text-bg-light border fw-normal ms-2" title="O cadastro é mantido na empresa de origem">vinculado · {u.home_tenant_name}</span>}
+                          </div>
                           <div className="text-muted-2" style={{ fontSize: "0.74rem" }}>{u.email}</div>
                         </div>
                       </div>
@@ -98,6 +119,7 @@ export function Usuarios() {
                         <i className={`bi ${u.is_active ? "bi-check-circle-fill" : "bi-slash-circle"}`} />
                         {u.is_active ? "Ativo" : "Inativo"}
                       </span>
+                      {u.is_guest && <Button size="sm" variant="link" className="p-0 ms-2 small" onClick={() => desvincular(u)}>Desvincular</Button>}
                     </td>
                   </tr>
                 ))}
@@ -106,6 +128,20 @@ export function Usuarios() {
           </div>
         )}
       </Panel>
+
+      <Modal show={vincular !== null} onHide={() => setVincular(null)} centered>
+        <Modal.Header closeButton><Modal.Title>Vincular usuário de outra empresa</Modal.Title></Modal.Header>
+        <Modal.Body>
+          <p className="small text-muted-2">Para quem já tem cadastro em outra empresa do grupo (sócio, consultor, diretor). Ele passa a poder trocar para esta empresa no menu, com o mesmo login; o cadastro e o papel continuam na empresa de origem.</p>
+          {error && <div className="alert alert-danger py-2 small">{error}</div>}
+          <Form.Label>E-mail do usuário</Form.Label>
+          <Form.Control autoFocus type="email" value={vincular ?? ""} onChange={(e) => setVincular(e.target.value)} placeholder="nome@empresa.com.br" />
+        </Modal.Body>
+        <Modal.Footer>
+          <Button variant="outline-secondary" onClick={() => setVincular(null)}>Cancelar</Button>
+          <Button onClick={vincularExistente} disabled={!vincular?.trim()}>Vincular</Button>
+        </Modal.Footer>
+      </Modal>
 
       <Modal show={!!editing} onHide={() => setEditing(null)} centered>
         <Modal.Header closeButton>

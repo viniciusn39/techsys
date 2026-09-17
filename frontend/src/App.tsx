@@ -25,6 +25,7 @@ import { Servidor } from "./pages/Servidor";
 import { SuporteChamados } from "./pages/SuporteChamados";
 import { Canvas } from "./pages/Canvas";
 import { Cultura } from "./pages/Cultura";
+import { Planejamentos } from "./pages/Planejamentos";
 import { PlanosAcao } from "./pages/PlanosAcao";
 import { ProjetoDetalhe } from "./pages/ProjetoDetalhe";
 import { Projetos } from "./pages/Projetos";
@@ -106,6 +107,7 @@ export default function App() {
         <Route path="/chamados" element={<TenantRoute><Chamados /></TenantRoute>} />
         <Route path="/ajuda" element={<TenantRoute><Ajuda /></TenantRoute>} />
         <Route path="/cultura" element={<TenantRoute><Cultura /></TenantRoute>} />
+        <Route path="/planejamentos" element={<TenantRoute><Planejamentos /></TenantRoute>} />
         <Route path="/swot" element={<TenantRoute><Swot /></TenantRoute>} />
         <Route path="/canvas" element={<TenantRoute><Canvas /></TenantRoute>} />
         <Route path="/stakeholders" element={<TenantRoute><Stakeholders /></TenantRoute>} />

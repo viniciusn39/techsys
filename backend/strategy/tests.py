@@ -211,3 +211,33 @@ class GoalResumoTests(APITestCase):
         r = GoalSerializer(g).data["indicator_resumo"]
         self.assertEqual((float(r["meta_ano"]), float(r["realizado_ano"])), (1200.0, 90.0))
         self.assertEqual((float(r["meta_ate_hoje"]), float(r["pct_ano"])), (100.0, 90.0))
+
+
+class VariosPlanejamentosTests(APITestCase):
+    def setUp(self):
+        from accounts.models import Tenant, User
+
+        self.tenant = Tenant.objects.create(name="Acme", slug="acme-vp")
+        self.admin = User.objects.create_user("vp@acme.com", "x", first_name="Vera", tenant=self.tenant, role=User.Role.ADMIN)
+        self.client.force_authenticate(self.admin)
+
+    def test_dois_planejamentos_ativos_e_o_seletor_decide_qual_esta_em_uso(self):
+        a = self.client.post("/api/strategic-maps/", {"name": "PE Matriz", "year_start": 2026, "year_end": 2028, "scope": "Grupo", "partners": [self.admin.id]}, format="json").json()
+        b = self.client.post("/api/strategic-maps/", {"name": "PE Filial", "year_start": 2026, "year_end": 2026}, format="json").json()
+        lista = self.client.get("/api/strategic-maps/").json()
+        self.assertEqual(sorted((m["name"], m["is_active"]) for m in lista), [("PE Filial", True), ("PE Matriz", True)])
+        self.assertEqual(a["partner_names"], ["Vera"])
+        h = {"HTTP_X_MAP_ID": str(a["id"])}
+        self.client.post("/api/swot/", {"quadrant": "S", "text": "Marca forte"}, format="json", **h)
+        self.assertEqual(len(self.client.get("/api/swot/", **h).json()), 1)
+        self.assertEqual(len(self.client.get("/api/swot/", HTTP_X_MAP_ID=str(b["id"])).json()), 0)
+        self.assertEqual(self.client.get("/api/strategic-maps/active/", **h).json()["name"], "PE Matriz")
+        persp = self.client.get("/api/strategic-maps/active/", **h).json()["perspectives"][0]["id"]
+        self.client.post("/api/objectives/", {"perspective": persp, "name": "Crescer"}, format="json")
+        self.assertEqual(len(self.client.get("/api/objectives/", **h).json()), 1)
+        self.assertEqual(len(self.client.get("/api/objectives/", HTTP_X_MAP_ID=str(b["id"])).json()), 0)
+        self.assertEqual(len(self.client.get("/api/objectives/?todos=1", HTTP_X_MAP_ID=str(b["id"])).json()), 1)
+
+    def test_ultimo_planejamento_nao_pode_ser_excluido(self):
+        a = self.client.post("/api/strategic-maps/", {"name": "Único", "year_start": 2026, "year_end": 2026}, format="json").json()
+        self.assertEqual(self.client.delete(f"/api/strategic-maps/{a['id']}/").status_code, 400)

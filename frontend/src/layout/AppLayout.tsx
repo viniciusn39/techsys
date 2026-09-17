@@ -29,6 +29,7 @@ const TENANT_SECTIONS: { label: string; items: MenuItem[] }[] = [
     label: "Planejamento",
     items: [
       { to: "/stakeholders", module: "stakeholders", icon: "bi-people-fill", label: "Stakeholders", title: "Stakeholders", sub: "Stakeholders, departamentos e dados da empresa", roles: ["root", "admin", "gestor"] },
+      { to: "/planejamentos", module: "mapa", icon: "bi-journal-richtext", label: "Planejamentos", title: "Planejamentos", sub: "Os planejamentos estratégicos da empresa, com parceiros e departamentos", roles: ["root", "admin", "gestor", "colaborador"] },
       { to: "/swot", module: "swot", icon: "bi-grid-3x3-gap", label: "Análise SWOT", title: "Análise SWOT", sub: "Forças, fraquezas, oportunidades e ameaças", roles: ["root", "admin", "gestor", "colaborador"] },
       { to: "/canvas", module: "canvas", icon: "bi-columns-gap", label: "Canvas", title: "Business Model Canvas", sub: "Como a empresa cria, entrega e captura valor", roles: ["root", "admin", "gestor", "colaborador"] },
       { to: "/cultura", module: "cultura", icon: "bi-gem", label: "Cultura e identidade", title: "Cultura e identidade", sub: "Propósito, missão, visão e valores", roles: ["root", "admin", "gestor", "colaborador"] },
@@ -90,10 +91,11 @@ const ROOT_SECTION: { label: string; items: MenuItem[] } = {
 const ALL_ITEMS = [...TENANT_SECTIONS.flatMap((s) => s.items), ...ROOT_SECTION.items];
 
 export function AppLayout() {
-  const { me, logout, actAsTenant } = useAuth();
+  const { me, logout, actAsTenant, mapId, selectMap } = useAuth();
   const navigate = useNavigate();
   const location = useLocation();
   const [tenants, setTenants] = useState<Tenant[]>([]);
+  const [mapas, setMapas] = useState<{ id: number; name: string; is_active: boolean }[]>([]);
 
   const isRoot = me?.role === "root";
   const activeTenant = me?.acting_tenant ?? (isRoot ? null : me?.tenant ?? null);
@@ -103,6 +105,12 @@ export function AppLayout() {
       api.get("/api/tenants/").then((d) => setTenants(d.results ?? d)).catch(() => {});
     }
   }, [isRoot]);
+
+  // Planejamentos da empresa em uso: o seletor só aparece quando há mais de um.
+  useEffect(() => {
+    if (!activeTenant) { setMapas([]); return; }
+    api.get<any>("/api/strategic-maps/").then((d) => setMapas(d.results ?? d)).catch(() => setMapas([]));
+  }, [activeTenant?.id, location.pathname === "/planejamentos"]);
 
   if (!me) return null;
 
@@ -148,12 +156,42 @@ export function AppLayout() {
             </select>
           </div>
         ) : (
-          activeTenant && (
+          activeTenant && ((me.tenants?.length ?? 0) > 1 ? (
+            <div className="px-3 pb-2">
+              <div className="sidebar-tenant mx-0 mb-2">
+                <div className="label">Empresa ativa</div>
+                <div className="value">{activeTenant.name}</div>
+              </div>
+              <select
+                className="form-select form-select-sm"
+                aria-label="Trocar de empresa"
+                value={activeTenant.id}
+                onChange={async (e) => { await actAsTenant(Number(e.target.value)); navigate("/"); }}
+              >
+                {me.tenants!.map((t) => <option key={t.id} value={t.id}>{t.name}</option>)}
+              </select>
+            </div>
+          ) : (
             <div className="sidebar-tenant">
               <div className="label">Empresa</div>
               <div className="value">{activeTenant.name}</div>
             </div>
-          )
+          ))
+        )}
+
+        {activeTenant && mapas.length > 1 && (
+          <div className="px-3 pb-2">
+            <select
+              className="form-select form-select-sm"
+              aria-label="Planejamento em uso"
+              title="Planejamento em uso"
+              value={mapId && mapas.some((m) => m.id === mapId) ? mapId : ""}
+              onChange={(e) => selectMap(e.target.value ? Number(e.target.value) : null)}
+            >
+              <option value="">Planejamento padrão</option>
+              {mapas.map((m) => <option key={m.id} value={m.id}>{m.name}{m.is_active ? "" : " (inativo)"}</option>)}
+            </select>
+          </div>
         )}
 
         <nav className="sidebar-nav">
@@ -243,7 +281,8 @@ export function AppLayout() {
           </div>
         )}
 
-        <main className="app-content">
+        {/* Trocar de empresa ou de planejamento remonta a tela: tudo é recarregado no novo contexto. */}
+        <main className="app-content" key={`${activeTenant?.id ?? 0}-${mapId ?? 0}`}>
           <Outlet />
         </main>
         {activeTenant && (!me.modules || me.modules.includes("ia")) && <AssistenteFlutuante />}

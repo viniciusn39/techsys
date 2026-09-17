@@ -8,6 +8,7 @@ from accounts.permissions import IsGestorOrAbove, IsTenantAdmin
 from accounts.tenancy import TenantScopedViewSet, get_request_tenant
 from indicators.models import Indicator
 
+from .current import mapa_atual
 from .models import CanvasItem, Goal, Meeting, Perspective, Stakeholder, StrategicMap, StrategicObjective, SwotItem, SwotStrategy
 from .provisioning import create_default_perspectives
 from .serializers import (
@@ -25,9 +26,20 @@ from .serializers import (
 
 
 class StrategicMapViewSet(TenantScopedViewSet):
-    queryset = StrategicMap.objects.all()
+    queryset = StrategicMap.objects.prefetch_related("partners", "org_units")
     serializer_class = StrategicMapSerializer
     permission_classes = [IsTenantAdmin]
+    pagination_class = None
+
+    def get_serializer_context(self):
+        ctx = super().get_serializer_context()
+        ctx["tenant"] = self.get_tenant()
+        return ctx
+
+    def perform_destroy(self, instance):
+        if self.get_queryset().count() <= 1:
+            raise ValidationError("A empresa precisa de pelo menos um planejamento. Crie outro antes de excluir este.")
+        instance.delete()
 
     def perform_create(self, serializer):
         super().perform_create(serializer)
@@ -101,11 +113,11 @@ class StrategicMapViewSet(TenantScopedViewSet):
 
     @action(detail=False, methods=["get"])
     def active(self, request):
+        """O planejamento em uso: o escolhido no seletor (header X-Map-Id) ou o padrão da empresa."""
+        atual = mapa_atual(request, self.get_tenant())
         smap = (
-            self.get_queryset()
-            .filter(is_active=True)
-            .prefetch_related("perspectives__objectives__indicators")
-            .first()
+            self.get_queryset().filter(pk=atual.pk).prefetch_related("perspectives__objectives__indicators").first()
+            if atual else None
         )
         if smap is None:
             return Response(None)
@@ -140,9 +152,9 @@ class PerspectiveViewSet(viewsets.ModelViewSet):
         # Sem mapa explícito, entra no mapa ativo da empresa.
         smap = serializer.validated_data.get("map")
         if smap is None:
-            smap = StrategicMap.objects.filter(tenant=tenant, is_active=True).first()
+            smap = mapa_atual(self.request, tenant)
             if smap is None:
-                raise ValidationError("A empresa ainda não tem um mapa estratégico ativo.")
+                raise ValidationError("A empresa ainda não tem um planejamento.")
         elif smap.tenant_id != tenant.id:
             raise PermissionDenied("Mapa de outra empresa.")
 
@@ -183,6 +195,14 @@ class StrategicObjectiveViewSet(TenantScopedViewSet):
     permission_classes = [IsGestorOrAbove]
     filterset_fields = ["perspective"]
     pagination_class = None
+
+    def get_queryset(self):
+        """Na listagem, só os objetivos do planejamento em uso (?todos=1 traz os de todos)."""
+        qs = super().get_queryset()
+        if self.action == "list" and not self.request.query_params.get("todos"):
+            smap = mapa_atual(self.request, self.get_tenant())
+            qs = qs.filter(perspective__map=smap) if smap else qs.none()
+        return qs
 
     def get_serializer_context(self):
         ctx = super().get_serializer_context()
@@ -308,7 +328,7 @@ class _ItemDoMapaViewSet(TenantScopedViewSet):
         tenant = self.get_tenant()
         map_id = self.request.query_params.get("map") or self.request.data.get("map")
         qs = StrategicMap.objects.filter(tenant=tenant)
-        return qs.filter(pk=map_id).first() if map_id else qs.filter(is_active=True).first()
+        return qs.filter(pk=map_id).first() if map_id else mapa_atual(self.request, tenant)
 
     def get_queryset(self):
         qs = super().get_queryset()

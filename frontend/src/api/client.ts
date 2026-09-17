@@ -1,6 +1,7 @@
 const ACCESS_KEY = "ts_access";
 const REFRESH_KEY = "ts_refresh";
 const TENANT_KEY = "ts_tenant";
+const MAP_KEY = "ts_map";
 
 export function getTokens() {
   return {
@@ -18,6 +19,7 @@ export function clearTokens() {
   localStorage.removeItem(ACCESS_KEY);
   localStorage.removeItem(REFRESH_KEY);
   localStorage.removeItem(TENANT_KEY);
+  localStorage.removeItem(MAP_KEY);
 }
 
 export function getActingTenant(): string | null {
@@ -27,6 +29,17 @@ export function getActingTenant(): string | null {
 export function setActingTenant(id: string | null) {
   if (id) localStorage.setItem(TENANT_KEY, id);
   else localStorage.removeItem(TENANT_KEY);
+  localStorage.removeItem(MAP_KEY); // planejamento é da empresa: trocou de empresa, volta ao padrão dela
+}
+
+/** Planejamento em uso (uma empresa pode ter vários). Sem escolha, a API usa o padrão da empresa. */
+export function getActingMap(): string | null {
+  return localStorage.getItem(MAP_KEY);
+}
+
+export function setActingMap(id: string | null) {
+  if (id) localStorage.setItem(MAP_KEY, id);
+  else localStorage.removeItem(MAP_KEY);
 }
 
 export class ApiError extends Error {
@@ -60,6 +73,8 @@ async function request<T>(method: string, url: string, body?: any, retry = true)
   if (access) headers["Authorization"] = `Bearer ${access}`;
   const tenant = getActingTenant();
   if (tenant) headers["X-Tenant-Id"] = tenant;
+  const map = getActingMap();
+  if (map) headers["X-Map-Id"] = map;
 
   const resp = await fetch(url, {
     method,

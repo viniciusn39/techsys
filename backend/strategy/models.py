@@ -12,20 +12,18 @@ class StrategicMap(TenantOwnedModel):
     mission = models.TextField("missão", blank=True)
     vision = models.TextField("visão", blank=True)
     values_text = models.TextField("valores", blank=True)
-    is_active = models.BooleanField(default=True)
+    # Uma empresa pode tocar vários planejamentos ao mesmo tempo (matriz, filial, projeto especial):
+    # "ativo" é a situação do planejamento, não um seletor de qual está em uso.
+    is_active = models.BooleanField("ativo", default=True)
+    scope = models.TextField("escopo", blank=True)
+    partners = models.ManyToManyField(settings.AUTH_USER_MODEL, blank=True, related_name="planejamentos", verbose_name="parceiros")
+    org_units = models.ManyToManyField(OrgUnit, blank=True, related_name="planejamentos", verbose_name="departamentos")
 
     class Meta:
         ordering = ["-year_start"]
 
     def __str__(self):
         return self.name
-
-    def save(self, *args, **kwargs):
-        super().save(*args, **kwargs)
-        if self.is_active:
-            StrategicMap.objects.filter(tenant=self.tenant, is_active=True).exclude(
-                pk=self.pk
-            ).update(is_active=False)
 
 
 class Perspective(models.Model):

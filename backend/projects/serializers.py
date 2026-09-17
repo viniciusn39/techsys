@@ -61,8 +61,14 @@ class ProjectSerializer(serializers.ModelSerializer):
         self._do_tenant([value], "Planejamento de outra empresa.")
         return value
 
+    def _da_empresa(self, users):
+        tenant = self.context.get("tenant")
+        for u in users:
+            if u is not None and tenant and not u.belongs_to(tenant):
+                raise serializers.ValidationError("Usuário de outra empresa.")
+
     def validate_owner(self, value):
-        self._do_tenant([value], "Usuário de outra empresa.")
+        self._da_empresa([value])
         return value
 
     def validate_org_unit(self, value):
@@ -70,7 +76,7 @@ class ProjectSerializer(serializers.ModelSerializer):
         return value
 
     def validate_partners(self, value):
-        self._do_tenant(value, "Usuário de outra empresa.")
+        self._da_empresa(value)
         return value
 
     def validate_swot_items(self, value):
@@ -129,7 +135,7 @@ class ProjectActivitySerializer(serializers.ModelSerializer):
         if inicio and fim and fim < inicio:
             raise serializers.ValidationError({"end_date": "A data final não pode ser antes do início."})
         responsible = data.get("responsible")
-        if responsible is not None and project is not None and responsible.tenant_id != project.tenant_id:
+        if responsible is not None and project is not None and not responsible.belongs_to(project.tenant):
             raise serializers.ValidationError({"responsible": "Usuário de outra empresa."})
         return data
 
@@ -164,6 +170,6 @@ class ActivityFcaSerializer(serializers.ModelSerializer):
     def validate(self, data):
         activity = data.get("activity") or (self.instance.activity if self.instance else None)
         responsible = data.get("responsible")
-        if responsible is not None and activity is not None and responsible.tenant_id != activity.project.tenant_id:
+        if responsible is not None and activity is not None and not responsible.belongs_to(activity.project.tenant):
             raise serializers.ValidationError({"responsible": "Usuário de outra empresa."})
         return data

@@ -13,6 +13,13 @@ const TOPICOS: Topico[] = [
     "Metas: desdobre a meta da empresa por área, time e pessoa.",
     "Agenda de gestão: marque a reunião mensal de resultados e o acompanhamento semanal dos planos.",
   ] },
+  { key: "empresas-planejamentos", icon: "bi-buildings", title: "Várias empresas e vários planejamentos", to: "/planejamentos", resumo: "Um mesmo login pode atuar em várias empresas, e cada empresa pode ter vários planejamentos estratégicos.", passos: [
+    "Quem tem mais de uma empresa troca de empresa no seletor 'Empresa ativa', no alto do menu. Tudo (indicadores, projetos, usuários) é separado por empresa.",
+    "O administrador abre uma nova empresa em Stakeholders → Empresas → Nova empresa; ela nasce pronta e ele já entra nela.",
+    "Para dar acesso a alguém que já tem cadastro em outra empresa, use Usuários → Vincular usuário de outra empresa (pelo e-mail).",
+    "Em Planejamentos, crie quantos planejamentos precisar (nome, escopo, período, parceiros e departamentos) e clique em 'Usar' — ou escolha no seletor do menu.",
+    "Mapa estratégico, SWOT, Canvas, Cultura e o Dashboard mostram sempre o planejamento em uso.",
+  ], dicas: ["Usuário vinculado mantém o papel e o cadastro na empresa de origem; na outra só dá para desvincular.", "Indicadores, metas e planos de ação são da empresa, não de um planejamento."] },
   { key: "dashboard", icon: "bi-grid-1x2", title: "Dashboard", to: "/", resumo: "Visão geral do planejamento: objetivos alcançados, desempenho mês a mês, projetos, perspectivas do mapa, SWOT, atividades recentes e agenda.", passos: [
     "O desempenho geral é a média do atingimento das metas dos indicadores em cada mês; a linha tracejada marca 100 %.",
     "Objetivo alcançado = todos os indicadores dele ficaram verdes no último mês medido.",

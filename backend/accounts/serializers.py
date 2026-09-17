@@ -71,13 +71,25 @@ class UserSerializer(serializers.ModelSerializer):
     password = serializers.CharField(write_only=True, required=False)
     org_unit_name = serializers.CharField(source="org_unit.name", read_only=True)
     access_profile_name = serializers.CharField(source="access_profile.name", read_only=True, default="")
+    home_tenant_name = serializers.CharField(source="tenant.name", read_only=True, default="")
+    is_guest = serializers.SerializerMethodField()
+    tenant_names = serializers.SerializerMethodField()
 
     class Meta:
         model = User
         fields = [
             "id", "email", "first_name", "last_name", "role", "cargo",
             "org_unit", "org_unit_name", "access_profile", "access_profile_name", "is_active", "password",
+            "home_tenant_name", "is_guest", "tenant_names",
         ]
+
+    def get_is_guest(self, obj):
+        """Veio de outra empresa: aqui ele só está vinculado."""
+        tenant = self.context.get("tenant")
+        return bool(tenant and obj.tenant_id != tenant.id)
+
+    def get_tenant_names(self, obj):
+        return [t.name for t in obj.empresas()]
 
     def validate_access_profile(self, value):
         if value is not None:

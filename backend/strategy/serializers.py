@@ -67,12 +67,49 @@ class PerspectiveNestedSerializer(PerspectiveSerializer):
 
 
 class StrategicMapSerializer(serializers.ModelSerializer):
+    partner_names = serializers.SerializerMethodField()
+    org_unit_names = serializers.SerializerMethodField()
+    objectives_count = serializers.SerializerMethodField()
+    projects_count = serializers.IntegerField(source="projects.count", read_only=True)
+
     class Meta:
         model = StrategicMap
         fields = [
             "id", "name", "year_start", "year_end", "purpose", "mission", "vision",
-            "values_text", "is_active",
+            "values_text", "is_active", "scope", "partners", "partner_names", "org_units", "org_unit_names",
+            "objectives_count", "projects_count", "created_at",
         ]
+        read_only_fields = ["created_at"]
+
+    def get_partner_names(self, obj):
+        return [u.get_full_name() or u.first_name or u.email for u in obj.partners.all()]
+
+    def get_org_unit_names(self, obj):
+        return [u.name for u in obj.org_units.all()]
+
+    def get_objectives_count(self, obj):
+        return StrategicObjective.objects.filter(perspective__map=obj).count()
+
+    def validate_partners(self, value):
+        tenant = self.context.get("tenant")
+        for u in value:
+            if tenant and not u.belongs_to(tenant):
+                raise serializers.ValidationError("Usuário de outra empresa.")
+        return value
+
+    def validate_org_units(self, value):
+        tenant = self.context.get("tenant")
+        for u in value:
+            if tenant and u.tenant_id != tenant.id:
+                raise serializers.ValidationError("Departamento de outra empresa.")
+        return value
+
+    def validate(self, data):
+        ini = data.get("year_start", getattr(self.instance, "year_start", None))
+        fim = data.get("year_end", getattr(self.instance, "year_end", None))
+        if ini and fim and fim < ini:
+            raise serializers.ValidationError({"year_end": "O ano final não pode ser antes do inicial."})
+        return data
 
 
 class StrategicMapNestedSerializer(StrategicMapSerializer):

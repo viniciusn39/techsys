@@ -19,6 +19,8 @@ export interface Me {
   cargo: string;
   tenant: Tenant | null;
   acting_tenant: Tenant | null;
+  /** Empresas em que o usuário pode atuar (vazio para o root, que abre qualquer uma). */
+  tenants?: { id: number; name: string }[];
   modules?: string[] | null;
   sectors?: string[] | null;
   access_profile_name?: string;
@@ -36,6 +38,9 @@ export interface UserRow {
   access_profile?: number | null;
   access_profile_name?: string;
   is_active: boolean;
+  home_tenant_name?: string;
+  is_guest?: boolean;
+  tenant_names?: string[];
 }
 
 export interface OrgUnit {
