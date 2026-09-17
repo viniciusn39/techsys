@@ -34,6 +34,13 @@ const TOPICOS: Topico[] = [
     "Adicione atividades com responsável, prazo e prioridade; arraste entre as colunas.",
     "Use a aba Análise para ver atrasadas, lead time e vazão semanal.",
   ] },
+  { key: "projetos", icon: "bi-folder2-open", title: "Projetos do planejamento", to: "/projetos", resumo: "Projetos ligados aos objetivos do mapa e aos itens da SWOT, com atividades em níveis, Gantt, FCA e painel.", passos: [
+    "Crie o projeto com responsável, datas e departamento, e marque os objetivos do mapa e os itens da SWOT que ele trata.",
+    "Monte a estrutura: atividades, subatividades e quantos níveis precisar. A numeração (1, 1.1, 1.1.1) é automática.",
+    "Atualize o % de andamento nas atividades da ponta; o avanço das atividades-mãe e do projeto é a média das filhas.",
+    "Quando uma atividade travar, registre um FCA: o fato, a causa raiz e a ação corretiva, com prazo e responsável.",
+    "Use a aba Gantt para ver o cronograma e o Painel de projetos para a visão consolidada.",
+  ], dicas: ["Atrasada = prazo vencido e abaixo de 100 %. Atividade cancelada não entra na média.", "Plano de ação (5W2H) trata um desvio de indicador; projeto entrega uma iniciativa do planejamento."] },
   { key: "desvios", icon: "bi-exclamation-triangle", title: "Desvios", to: "/desvios", resumo: "Todo farol vermelho vira um desvio. Registre a causa raiz e crie o plano de ação já preenchido.", passos: ["Abra o desvio, escreva a causa raiz e clique em 'Criar plano'.", "Concluir o plano fecha o desvio."] },
   { key: "erp", icon: "bi-bar-chart-line", title: "Painel do ERP e conector", to: "/erp/painel", resumo: "Mini BI com o que já veio do ERP: faturamento por dia, por filial, rankings e conferência dos indicadores.", passos: [
     "O painel é atualizado a cada 30 minutos; use 'Recalcular' para forçar.",

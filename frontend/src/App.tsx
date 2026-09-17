@@ -25,6 +25,9 @@ import { SuporteChamados } from "./pages/SuporteChamados";
 import { Canvas } from "./pages/Canvas";
 import { Cultura } from "./pages/Cultura";
 import { PlanosAcao } from "./pages/PlanosAcao";
+import { ProjetoDetalhe } from "./pages/ProjetoDetalhe";
+import { Projetos } from "./pages/Projetos";
+import { ProjetosPainel } from "./pages/ProjetosPainel";
 import { Relatorio } from "./pages/Relatorio";
 import { Stakeholders } from "./pages/Stakeholders";
 import { Swot } from "./pages/Swot";
@@ -93,6 +96,9 @@ export default function App() {
         <Route path="/indicadores" element={<TenantRoute><Indicadores /></TenantRoute>} />
         <Route path="/indicadores/:id" element={<TenantRoute><IndicadorDetalhe /></TenantRoute>} />
         <Route path="/erp/painel" element={<TenantRoute><PainelErp /></TenantRoute>} />
+        <Route path="/painel-projetos" element={<TenantRoute><ProjetosPainel /></TenantRoute>} />
+        <Route path="/projetos" element={<TenantRoute><Projetos /></TenantRoute>} />
+        <Route path="/projetos/:id" element={<TenantRoute><ProjetoDetalhe /></TenantRoute>} />
         <Route path="/planos-acao" element={<TenantRoute><PlanosAcao /></TenantRoute>} />
         <Route path="/agenda" element={<TenantRoute><Agenda /></TenantRoute>} />
         <Route path="/chamados" element={<TenantRoute><Chamados /></TenantRoute>} />

@@ -251,6 +251,47 @@ class Command(BaseCommand):
             },
         )
 
+        from projects.models import ActivityFca, Andamento, Project, ProjectActivity
+
+        projeto, novo_projeto = Project.objects.get_or_create(
+            tenant=tenant, code=1,
+            defaults={
+                "title": "Implantação do BI por área", "owner": admin, "org_unit": empresa,
+                "description": "Painéis mensais por área, do banco de dados à análise automática.",
+                "map": objectives["Cultura orientada a dados"].perspective.map,
+                "start_date": date(YEAR, 7, 1), "end_date": date(YEAR, 11, 30),
+                "status": Andamento.EM_ANDAMENTO,
+            },
+        )
+        if novo_projeto:
+            projeto.objectives.add(objectives["Cultura orientada a dados"])
+            projeto.partners.add(gestor)
+
+            def atividade(titulo, pai, ini, fim, pct, fase, resp=gestor):
+                return ProjectActivity.objects.create(
+                    project=projeto, parent=pai, title=titulo, responsible=resp, phase=fase,
+                    start_date=ini, end_date=fim, progress_pct=pct,
+                    status=Andamento.FINALIZADO if pct == 100 else Andamento.EM_ANDAMENTO if pct else Andamento.NAO_INICIADO,
+                    order=ProjectActivity.objects.filter(project=projeto, parent=pai).count() + 1,
+                )
+
+            F = ProjectActivity.Phase
+            infra = atividade("Infraestrutura", None, date(YEAR, 7, 1), date(YEAR, 8, 31), 0, F.EXECUCAO, admin)
+            atividade("Banco de dados", infra, date(YEAR, 7, 1), date(YEAR, 7, 31), 100, F.EXECUCAO)
+            etl = atividade("ETL", infra, date(YEAR, 7, 15), date(YEAR, 8, 31), 0, F.EXECUCAO)
+            atividade("Extração das dimensões", etl, date(YEAR, 7, 15), date(YEAR, 8, 15), 80, F.EXECUCAO)
+            fatos = atividade("Extração dos fatos", etl, date(YEAR, 8, 1), date(YEAR, 8, 31), 60, F.EXECUCAO)
+            paineis = atividade("Painéis", None, date(YEAR, 9, 1), date(YEAR, 10, 31), 0, F.EXECUCAO, admin)
+            atividade("Painel comercial", paineis, date(YEAR, 9, 1), date(YEAR, 9, 30), 40, F.EXECUCAO)
+            atividade("Painel financeiro", paineis, date(YEAR, 10, 1), date(YEAR, 10, 31), 0, F.EXECUCAO)
+            atividade("Treinamento dos gestores", None, date(YEAR, 11, 1), date(YEAR, 11, 30), 0, F.ENCERRAMENTO, admin)
+            ProjectActivity.objects.filter(id__in=[infra.id, etl.id, paineis.id]).update(status=Andamento.EM_ANDAMENTO)
+            ActivityFca.objects.create(
+                activity=fatos, fact="Carga dos fatos de venda estoura a janela da madrugada.",
+                cause="Consulta sem filtro de data relê o histórico inteiro a cada execução.",
+                action="Carga incremental por data de alteração.", due_date=date(YEAR, 9, 30), responsible=gestor,
+            )
+
         AIInsight.objects.get_or_create(
             tenant=tenant, kind=AIInsight.Kind.ANALISE_INDICADOR,
             indicator=indicators["OTIF"], period=date(YEAR, 8, 1),

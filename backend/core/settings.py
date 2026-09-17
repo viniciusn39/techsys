@@ -24,6 +24,7 @@ INSTALLED_APPS = [
     "strategy",
     "indicators",
     "plans",
+    "projects",
     "ai",
     "support",
     "erp",

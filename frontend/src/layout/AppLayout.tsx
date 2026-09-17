@@ -20,9 +20,24 @@ interface MenuItem {
 /** Itens que só fazem sentido dentro de uma empresa. */
 const TENANT_SECTIONS: { label: string; items: MenuItem[] }[] = [
   {
-    label: "Desempenho",
+    label: "Visão geral",
     items: [
       { to: "/", module: "dashboard", icon: "bi-grid-1x2", label: "Dashboard", title: "Dashboard", sub: "Visão executiva dos resultados", roles: ["root", "admin", "gestor", "colaborador"] },
+    ],
+  },
+  {
+    label: "Planejamento",
+    items: [
+      { to: "/stakeholders", module: "stakeholders", icon: "bi-people-fill", label: "Stakeholders", title: "Stakeholders", sub: "Partes interessadas e matriz influência × interesse", roles: ["root", "admin", "gestor"] },
+      { to: "/swot", module: "swot", icon: "bi-grid-3x3-gap", label: "Análise SWOT", title: "Análise SWOT", sub: "Forças, fraquezas, oportunidades e ameaças", roles: ["root", "admin", "gestor", "colaborador"] },
+      { to: "/canvas", module: "canvas", icon: "bi-columns-gap", label: "Canvas", title: "Business Model Canvas", sub: "Como a empresa cria, entrega e captura valor", roles: ["root", "admin", "gestor", "colaborador"] },
+      { to: "/cultura", module: "cultura", icon: "bi-gem", label: "Cultura e identidade", title: "Cultura e identidade", sub: "Propósito, missão, visão e valores", roles: ["root", "admin", "gestor", "colaborador"] },
+      { to: "/relatorio", module: "relatorio", icon: "bi-file-earmark-text", label: "Relatório", title: "Relatório do planejamento", sub: "Identidade, SWOT, canvas, mapa, indicadores e metas para imprimir", roles: ["root", "admin", "gestor", "colaborador"] },
+    ],
+  },
+  {
+    label: "Desempenho",
+    items: [
       { to: "/mapa-estrategico", module: "mapa", icon: "bi-diagram-3", label: "Mapa Estratégico", title: "Mapa Estratégico", sub: "Objetivos por perspectiva BSC", roles: ["root", "admin", "gestor", "colaborador"] },
       { to: "/metas", module: "metas", icon: "bi-bullseye", label: "Metas", title: "Desdobramento de Metas", sub: "Empresa → Área → Time → Pessoa", roles: ["root", "admin", "gestor", "colaborador"] },
       { to: "/indicadores", module: "indicadores", icon: "bi-graph-up-arrow", label: "Indicadores", title: "Indicadores", sub: "KPIs, metas e farol", roles: ["root", "admin", "gestor", "colaborador"] },
@@ -30,18 +45,10 @@ const TENANT_SECTIONS: { label: string; items: MenuItem[] }[] = [
     ],
   },
   {
-    label: "Planejamento",
-    items: [
-      { to: "/cultura", module: "cultura", icon: "bi-gem", label: "Cultura e identidade", title: "Cultura e identidade", sub: "Propósito, missão, visão e valores", roles: ["root", "admin", "gestor", "colaborador"] },
-      { to: "/swot", module: "swot", icon: "bi-grid-3x3-gap", label: "Análise SWOT", title: "Análise SWOT", sub: "Forças, fraquezas, oportunidades e ameaças", roles: ["root", "admin", "gestor", "colaborador"] },
-      { to: "/canvas", module: "canvas", icon: "bi-columns-gap", label: "Canvas", title: "Business Model Canvas", sub: "Como a empresa cria, entrega e captura valor", roles: ["root", "admin", "gestor", "colaborador"] },
-      { to: "/stakeholders", module: "stakeholders", icon: "bi-people-fill", label: "Stakeholders", title: "Stakeholders", sub: "Partes interessadas e matriz influência × interesse", roles: ["root", "admin", "gestor"] },
-      { to: "/relatorio", module: "relatorio", icon: "bi-file-earmark-text", label: "Relatório", title: "Relatório do planejamento", sub: "Identidade, SWOT, canvas, mapa, indicadores e metas para imprimir", roles: ["root", "admin", "gestor", "colaborador"] },
-    ],
-  },
-  {
     label: "Execução",
     items: [
+      { to: "/painel-projetos", module: "projetos", icon: "bi-pie-chart", label: "Painel de projetos", title: "Painel de projetos", sub: "Avanço, prazos e responsáveis dos projetos", roles: ["root", "admin", "gestor", "colaborador"] },
+      { to: "/projetos", module: "projetos", icon: "bi-folder2-open", label: "Projetos", title: "Projetos", sub: "Projetos do planejamento, atividades, Gantt e FCA", roles: ["root", "admin", "gestor", "colaborador"] },
       { to: "/planos-acao", module: "planos", icon: "bi-kanban", label: "Planos de Ação", title: "Planos de Ação", sub: "5W2H, PDCA e Kanban", roles: ["root", "admin", "gestor", "colaborador"] },
       { to: "/agenda", module: "agenda", icon: "bi-calendar3", label: "Agenda de gestão", title: "Agenda de gestão", sub: "Reuniões de resultados, pauta, ata e decisões", roles: ["root", "admin", "gestor", "colaborador"] },
       { to: "/desvios", module: "desvios", icon: "bi-exclamation-triangle", label: "Desvios", title: "Tratamento de Desvios", sub: "Faróis vermelhos e causa raiz", roles: ["root", "admin", "gestor", "colaborador"] },
