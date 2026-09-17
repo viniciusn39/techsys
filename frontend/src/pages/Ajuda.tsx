@@ -13,7 +13,12 @@ const TOPICOS: Topico[] = [
     "Metas: desdobre a meta da empresa por área, time e pessoa.",
     "Agenda de gestão: marque a reunião mensal de resultados e o acompanhamento semanal dos planos.",
   ] },
-  { key: "dashboard", icon: "bi-grid-1x2", title: "Dashboard", to: "/", resumo: "Visão executiva do mês: quantos indicadores atingiram a meta, ranking por atingimento, evolução e mapa de calor.", passos: [
+  { key: "dashboard", icon: "bi-grid-1x2", title: "Dashboard", to: "/", resumo: "Visão geral do planejamento: objetivos alcançados, desempenho mês a mês, projetos, perspectivas do mapa, SWOT, atividades recentes e agenda.", passos: [
+    "O desempenho geral é a média do atingimento das metas dos indicadores em cada mês; a linha tracejada marca 100 %.",
+    "Objetivo alcançado = todos os indicadores dele ficaram verdes no último mês medido.",
+    "Clique num projeto atrasado ou numa atividade recente para abrir o projeto.",
+  ] },
+  { key: "painel-indicadores", icon: "bi-speedometer2", title: "Painel de indicadores", to: "/painel-indicadores", resumo: "Visão executiva do mês: quantos indicadores atingiram a meta, ranking por atingimento, evolução e mapa de calor.", passos: [
     "Escolha o mês e a área nos filtros do topo.",
     "O ranking mostra o % da meta de cada indicador; a linha marca 100 %.",
     "Clique em 'Tratar desvios' para ver os faróis vermelhos sem plano.",

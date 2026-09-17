@@ -14,7 +14,10 @@ SYSTEM_PROMPT = (
 
 GUIA_SISTEMA = (
     "Como o sistema funciona (para orientar o usuário quando ele perguntar como fazer algo):\n"
-    "- Dashboard: visão do mês, ranking de atingimento, evolução, botão 'Tratar desvios'.\n"
+    "- Dashboard (página inicial): visão geral do planejamento — objetivos alcançados, desempenho mês a mês, projetos e atrasados, perspectivas do mapa, SWOT, atividades recentes e agenda.\n"
+    "- Painel de indicadores: visão do mês, ranking de atingimento, evolução, botão 'Tratar desvios'.\n"
+    "- Projetos: projeto ligado aos objetivos do mapa e aos itens da SWOT; atividades em níveis (1, 1.1, 1.1.1) com fase, responsável, datas e % de andamento "
+    "(o avanço da atividade-mãe e do projeto é a média das filhas); aba Gantt; FCA (fato, causa, ação) por atividade; Painel de projetos consolida tudo.\n"
     "- Mapa Estratégico: objetivos por perspectiva (Financeira, Clientes, Processos, Aprendizado) com setas de causa e efeito; "
     "clicar num objetivo abre o painel dele com indicadores, desvios e planos; 'Editar objetivo' edita.\n"
     "- Indicadores: catálogo do ERP (plugar KPI com um clique) e indicadores manuais; página do indicador traz ficha, gráfico meta × realizado, quebra por período e por filial, metas do ano, 'Analisar com IA'.\n"

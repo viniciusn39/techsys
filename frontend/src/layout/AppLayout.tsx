@@ -22,7 +22,7 @@ const TENANT_SECTIONS: { label: string; items: MenuItem[] }[] = [
   {
     label: "Visão geral",
     items: [
-      { to: "/", module: "dashboard", icon: "bi-grid-1x2", label: "Dashboard", title: "Dashboard", sub: "Visão executiva dos resultados", roles: ["root", "admin", "gestor", "colaborador"] },
+      { to: "/", module: "dashboard", icon: "bi-grid-1x2", label: "Dashboard", title: "Dashboard", sub: "Visão geral do planejamento estratégico", roles: ["root", "admin", "gestor", "colaborador"] },
     ],
   },
   {
@@ -38,6 +38,7 @@ const TENANT_SECTIONS: { label: string; items: MenuItem[] }[] = [
   {
     label: "Desempenho",
     items: [
+      { to: "/painel-indicadores", module: "indicadores", icon: "bi-speedometer2", label: "Painel de indicadores", title: "Painel de indicadores", sub: "Visão executiva dos resultados do mês", roles: ["root", "admin", "gestor", "colaborador"] },
       { to: "/mapa-estrategico", module: "mapa", icon: "bi-diagram-3", label: "Mapa Estratégico", title: "Mapa Estratégico", sub: "Objetivos por perspectiva BSC", roles: ["root", "admin", "gestor", "colaborador"] },
       { to: "/metas", module: "metas", icon: "bi-bullseye", label: "Metas", title: "Desdobramento de Metas", sub: "Empresa → Área → Time → Pessoa", roles: ["root", "admin", "gestor", "colaborador"] },
       { to: "/indicadores", module: "indicadores", icon: "bi-graph-up-arrow", label: "Indicadores", title: "Indicadores", sub: "KPIs, metas e farol", roles: ["root", "admin", "gestor", "colaborador"] },

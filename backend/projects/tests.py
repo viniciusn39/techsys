@@ -81,3 +81,20 @@ class ProjetosTests(APITestCase):
         self.assertIn(r.status_code, (400, 403))
         r = self.client.post("/api/projects/", {"title": "x", "owner": intruso.id, "start_date": "2026-01-01", "end_date": "2026-02-01", "objectives": [self.objetivo.id]}, format="json")
         self.assertEqual(r.status_code, 400)
+
+
+class VisaoGeralTests(APITestCase):
+    def test_overview_junta_planejamento_projetos_e_indicadores(self):
+        tenant = Tenant.objects.create(name="Acme", slug="acme-ov")
+        gestor = User.objects.create_user("o@acme.com", "x", first_name="Oto", tenant=tenant, role=User.Role.GESTOR)
+        self.client.force_authenticate(gestor)
+        self.assertEqual(self.client.get("/api/dashboard/overview/").json()["mapa"], None)   # empresa vazia não quebra
+        mapa = StrategicMap.objects.create(tenant=tenant, name="PE", year_start=2026, year_end=2028)
+        persp = Perspective.objects.create(map=mapa, name="Financeira")
+        StrategicObjective.objects.create(tenant=tenant, perspective=persp, name="Margem")
+        SwotItem.objects.create(tenant=tenant, map=mapa, quadrant="S", text="Marca")
+        r = self.client.post("/api/projects/", {"title": "Velho", "owner": gestor.id, "start_date": "2020-01-01", "end_date": "2020-02-01"}, format="json").json()
+        self.client.post("/api/project-activities/", {"project": r["id"], "title": "A"}, format="json")
+        d = self.client.get("/api/dashboard/overview/").json()
+        self.assertEqual((d["mapa"]["name"], d["contagens"]["objetivos"], d["contagens"]["projetos"], d["swot"]["S"]), ("PE", 1, 1, 1))
+        self.assertEqual((d["projetos_atrasados"][0]["title"], d["perspectivas"][0]["atingimento"], len(d["atividades_recentes"])), ("Velho", None, 1))

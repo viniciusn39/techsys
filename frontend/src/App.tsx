@@ -16,6 +16,7 @@ import { Login } from "./pages/Login";
 import { MapaEstrategico } from "./pages/MapaEstrategico";
 import { Metas } from "./pages/Metas";
 import { Organograma } from "./pages/Organograma";
+import { PainelIndicadores } from "./pages/PainelIndicadores";
 import { PerfisAcesso } from "./pages/PerfisAcesso";
 import { Agenda } from "./pages/Agenda";
 import { Ajuda } from "./pages/Ajuda";
@@ -93,6 +94,7 @@ export default function App() {
         <Route path="/" element={<TenantRoute><Dashboard /></TenantRoute>} />
         <Route path="/mapa-estrategico" element={<TenantRoute><MapaEstrategico /></TenantRoute>} />
         <Route path="/metas" element={<TenantRoute><Metas /></TenantRoute>} />
+        <Route path="/painel-indicadores" element={<TenantRoute><PainelIndicadores /></TenantRoute>} />
         <Route path="/indicadores" element={<TenantRoute><Indicadores /></TenantRoute>} />
         <Route path="/indicadores/:id" element={<TenantRoute><IndicadorDetalhe /></TenantRoute>} />
         <Route path="/erp/painel" element={<TenantRoute><PainelErp /></TenantRoute>} />

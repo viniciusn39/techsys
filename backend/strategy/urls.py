@@ -1,6 +1,7 @@
 from django.urls import include, path
 from rest_framework.routers import DefaultRouter
 
+from .overview import OverviewView
 from .views import CanvasItemViewSet, MeetingViewSet, StakeholderViewSet, SwotItemViewSet, SwotStrategyViewSet, GoalViewSet, PerspectiveViewSet, StrategicMapViewSet, StrategicObjectiveViewSet
 
 router = DefaultRouter()
@@ -14,4 +15,4 @@ router.register("canvas", CanvasItemViewSet)
 router.register("stakeholders", StakeholderViewSet)
 router.register("meetings", MeetingViewSet)
 
-urlpatterns = [path("", include(router.urls))]
+urlpatterns = [path("dashboard/overview/", OverviewView.as_view()), path("", include(router.urls))]
