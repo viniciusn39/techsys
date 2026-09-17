@@ -7,6 +7,8 @@ por atividade.
 from collections import Counter, defaultdict
 from datetime import date
 
+from django.utils import timezone
+
 from .models import Andamento, ProjectActivity
 
 ENCERRADOS = (Andamento.FINALIZADO, Andamento.CANCELADO)
@@ -93,7 +95,7 @@ def painel(projects, hoje=None):
         a = l["obj"]
         if a.start_date:
             meses[a.start_date.strftime("%Y-%m")]["iniciadas"] += 1
-        fim = a.done_at.date() if a.done_at else (a.end_date if l["progress"] >= 100 else None)
+        fim = timezone.localtime(a.done_at).date() if a.done_at else (a.end_date if l["progress"] >= 100 else None)
         if fim:
             meses[fim.strftime("%Y-%m")]["finalizadas"] += 1
 

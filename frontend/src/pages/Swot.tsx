@@ -2,6 +2,7 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import { Button, Form, Modal, Nav } from "react-bootstrap";
 import { Link } from "react-router-dom";
 import { api } from "../api/client";
+import { useAuth } from "../auth/AuthContext";
 import { BAR_MAX_WIDTH, BAR_RADIUS_V, vizTokens } from "../charts/theme";
 import { EChart } from "../components/EChart";
 import { EmptyState, Panel, Skeleton } from "../components/ui";
@@ -41,6 +42,8 @@ const TENDENCIA = ["Piora muito", "Piora", "Mantém", "Melhora", "Melhora muito"
 
 /** Análise SWOT do planejamento em uso: itens pontuados (importância × intensidade × tendência), por departamento. */
 export function Swot() {
+  const { me } = useAuth();
+  const podeEditar = me?.role !== "colaborador";
   const { isDark } = useTheme();
   const t = vizTokens(isDark);
   const [itens, setItens] = useState<Item[] | null>(null);
@@ -92,15 +95,17 @@ export function Swot() {
       quadrant: editing.quadrant, text: editing.text, detail: editing.detail ?? "", org_unit: editing.org_unit || null,
       importance: editing.importance ?? 3, intensity: editing.intensity ?? 3, trend: editing.trend ?? 3, objective: editing.objective ?? null,
     };
-    if (editing.id) await api.patch(`/api/swot/${editing.id}/`, body);
-    else await api.post("/api/swot/", body);
-    setEditing(null);
-    load();
+    try {
+      if (editing.id) await api.patch(`/api/swot/${editing.id}/`, body);
+      else await api.post("/api/swot/", body);
+      setEditing(null);
+      setErro("");
+      load();
+    } catch (e: any) { setErro(e?.data && typeof e.data === "object" ? Object.values(e.data).flat().join(" ") : e.message); }
   };
 
   const remove = async (id: number) => {
-    await api.del(`/api/swot/${id}/`);
-    load();
+    try { await api.del(`/api/swot/${id}/`); setErro(""); load(); } catch (e: any) { setErro(e.message); }
   };
 
   if (itens === null) return <Panel><Skeleton height={300} /></Panel>;
@@ -135,7 +140,7 @@ export function Swot() {
                         <div className="fw-semibold">{q.label} <span className="text-muted-2 fw-normal small">· {q.lado}</span></div>
                         <div className="small text-muted-2">{q.hint}</div>
                       </div>
-                      <Button size="sm" variant="outline-secondary" className="ms-auto no-print" onClick={() => novo(q.key)}><i className="bi bi-plus-lg me-1" />Adicionar</Button>
+                      {podeEditar && <Button size="sm" variant="outline-secondary" className="ms-auto no-print" onClick={() => novo(q.key)}><i className="bi bi-plus-lg me-1" />Adicionar</Button>}
                     </div>
                     <div className="px-3 pb-3">
                       {porQuadrante[q.key].length === 0 ? <div className="small text-muted-2">Nenhum item ainda.</div> : (
@@ -149,7 +154,7 @@ export function Swot() {
                           <tbody>
                             {porQuadrante[q.key].map((i) => (
                               <tr key={i.id}>
-                                <td role="button" onClick={() => setEditing(i)}>
+                                <td role={podeEditar ? "button" : undefined} onClick={() => podeEditar && setEditing(i)}>
                                   <div className="fw-semibold small">{i.text}</div>
                                   {i.detail && <div className="small text-muted-2 text-truncate" style={{ maxWidth: 360 }}>{i.detail}</div>}
                                   {(i.org_unit_name || i.objective_name) && (
@@ -162,8 +167,12 @@ export function Swot() {
                                 <td className="num fw-semibold" title={`${i.importance} × ${i.intensity} × ${i.trend}`} style={{ color: q.color }}>{i.score}</td>
                                 <td className="num">{i.projects_count > 0 ? <Link to="/projetos" title="Projetos que tratam este item">{i.projects_count}</Link> : <span className="text-muted-2">0</span>}</td>
                                 <td className="text-end text-nowrap no-print">
-                                  <Button size="sm" variant="link" className="p-1" title="Editar" onClick={() => setEditing(i)}><i className="bi bi-pencil" /></Button>
-                                  <Button size="sm" variant="link" className="p-1 text-danger" title="Excluir" onClick={() => remove(i.id)}><i className="bi bi-trash" /></Button>
+                                  {podeEditar && (
+                                    <>
+                                      <Button size="sm" variant="link" className="p-1" title="Editar" onClick={() => setEditing(i)}><i className="bi bi-pencil" /></Button>
+                                      <Button size="sm" variant="link" className="p-1 text-danger" title="Excluir" onClick={() => remove(i.id)}><i className="bi bi-trash" /></Button>
+                                    </>
+                                  )}
                                 </td>
                               </tr>
                             ))}
@@ -239,6 +248,7 @@ export function Swot() {
         <Modal.Body>
           {editing && (
             <div className="row g-3">
+              {erro && <div className="col-12"><div className="alert alert-danger py-2 small mb-0">{erro}</div></div>}
               <div className="col-12"><Form.Label>Título *</Form.Label>
                 <Form.Control autoFocus value={editing.text ?? ""} onChange={(e) => setEditing({ ...editing, text: e.target.value })} placeholder="Ex.: Frota própria com entrega em 24 h" /></div>
               <div className="col-md-6"><Form.Label>Departamento</Form.Label>

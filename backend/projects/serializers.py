@@ -1,5 +1,7 @@
 from rest_framework import serializers
 
+from accounts.tenancy import SoDaEmpresaMixin
+
 from .models import ActivityFca, Project, ProjectActivity
 
 
@@ -9,7 +11,7 @@ def _nome(user):
     return user.get_full_name() or user.first_name or user.email
 
 
-class ProjectSerializer(serializers.ModelSerializer):
+class ProjectSerializer(SoDaEmpresaMixin, serializers.ModelSerializer):
     owner_name = serializers.SerializerMethodField()
     org_unit_name = serializers.CharField(source="org_unit.name", read_only=True, default="")
     map_name = serializers.CharField(source="map.name", read_only=True, default="")
@@ -88,6 +90,7 @@ class ProjectSerializer(serializers.ModelSerializer):
         return value
 
     def validate(self, data):
+        data = super().validate(data)
         inicio = data.get("start_date") or (self.instance.start_date if self.instance else None)
         fim = data.get("end_date") or (self.instance.end_date if self.instance else None)
         if inicio and fim and fim < inicio:
@@ -95,7 +98,7 @@ class ProjectSerializer(serializers.ModelSerializer):
         return data
 
 
-class ProjectActivitySerializer(serializers.ModelSerializer):
+class ProjectActivitySerializer(SoDaEmpresaMixin, serializers.ModelSerializer):
     responsible_name = serializers.SerializerMethodField()
     phase_label = serializers.CharField(source="get_phase_display", read_only=True)
 
@@ -117,6 +120,7 @@ class ProjectActivitySerializer(serializers.ModelSerializer):
         return v
 
     def validate(self, data):
+        data = super().validate(data)
         project = data.get("project") or (self.instance.project if self.instance else None)
         parent = data.get("parent", self.instance.parent if self.instance else None)
         if self.instance and "project" in data and data["project"].id != self.instance.project_id:
@@ -140,7 +144,7 @@ class ProjectActivitySerializer(serializers.ModelSerializer):
         return data
 
 
-class ActivityFcaSerializer(serializers.ModelSerializer):
+class ActivityFcaSerializer(SoDaEmpresaMixin, serializers.ModelSerializer):
     responsible_name = serializers.SerializerMethodField()
     activity_title = serializers.CharField(source="activity.title", read_only=True)
     alert = serializers.SerializerMethodField()
@@ -168,6 +172,7 @@ class ActivityFcaSerializer(serializers.ModelSerializer):
         return "vence_logo" if obj.due_date <= hoje + timedelta(days=7) else ""
 
     def validate(self, data):
+        data = super().validate(data)
         activity = data.get("activity") or (self.instance.activity if self.instance else None)
         responsible = data.get("responsible")
         if responsible is not None and activity is not None and not responsible.belongs_to(activity.project.tenant):

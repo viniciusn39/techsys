@@ -261,7 +261,7 @@ class AgendaCategory(TenantOwnedModel):
     def garantir_padrao(cls, tenant):
         if not cls.objects.filter(tenant=tenant).exists():
             for i, nome in enumerate(cls.PADRAO):
-                cls.objects.create(tenant=tenant, name=nome, order=i)
+                cls.objects.get_or_create(tenant=tenant, name=nome, defaults={"order": i})   # duas telas abrindo juntas
 
 
 class Meeting(TenantOwnedModel):

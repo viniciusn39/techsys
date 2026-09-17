@@ -328,6 +328,8 @@ class _ItemDoMapaViewSet(TenantScopedViewSet):
     def mapa_alvo(self):
         tenant = self.get_tenant()
         map_id = self.request.query_params.get("map") or self.request.data.get("map")
+        if map_id is not None and not str(map_id).isdigit():
+            map_id = None
         qs = StrategicMap.objects.filter(tenant=tenant)
         return qs.filter(pk=map_id).first() if map_id else mapa_atual(self.request, tenant)
 
@@ -465,3 +467,9 @@ class AgendaCategoryViewSet(TenantScopedViewSet):
         if AgendaCategory.objects.filter(tenant=tenant, name__iexact=serializer.validated_data["name"].strip()).exists():
             raise ValidationError({"name": "Já existe uma categoria com esse nome."})
         serializer.save(tenant=tenant, name=serializer.validated_data["name"].strip())
+
+    def perform_update(self, serializer):
+        nome = serializer.validated_data.get("name", serializer.instance.name).strip()
+        if AgendaCategory.objects.filter(tenant=serializer.instance.tenant, name__iexact=nome).exclude(pk=serializer.instance.pk).exists():
+            raise ValidationError({"name": "Já existe uma categoria com esse nome."})
+        serializer.save(name=nome)

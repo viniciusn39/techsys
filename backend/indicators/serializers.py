@@ -1,5 +1,7 @@
 from rest_framework import serializers
 
+from accounts.tenancy import SoDaEmpresaMixin
+
 from .models import DataSource, Indicator, IndicatorTarget, IndicatorValue
 
 
@@ -9,13 +11,13 @@ class DataSourceSerializer(serializers.ModelSerializer):
         fields = ["id", "name", "type", "config", "is_active"]
 
 
-class IndicatorTargetSerializer(serializers.ModelSerializer):
+class IndicatorTargetSerializer(SoDaEmpresaMixin, serializers.ModelSerializer):
     class Meta:
         model = IndicatorTarget
         fields = ["id", "indicator", "period", "target_value"]
 
 
-class IndicatorValueSerializer(serializers.ModelSerializer):
+class IndicatorValueSerializer(SoDaEmpresaMixin, serializers.ModelSerializer):
     entered_by_name = serializers.CharField(source="entered_by.first_name", read_only=True)
 
     class Meta:
@@ -27,7 +29,7 @@ class IndicatorValueSerializer(serializers.ModelSerializer):
         read_only_fields = ["achievement_pct", "status", "entered_by"]
 
 
-class IndicatorSerializer(serializers.ModelSerializer):
+class IndicatorSerializer(SoDaEmpresaMixin, serializers.ModelSerializer):
     org_unit_name = serializers.CharField(source="org_unit.name", read_only=True)
     owner_name = serializers.CharField(source="owner.first_name", read_only=True)
     objective_name = serializers.CharField(source="objective.name", read_only=True)

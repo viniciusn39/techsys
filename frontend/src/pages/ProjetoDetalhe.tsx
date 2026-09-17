@@ -124,9 +124,14 @@ export function ProjetoDetalhe() {
   useEffect(() => {
     load();
     api.get<any>("/api/users/").then((d) => setUsuarios(d.results ?? d)).catch(() => {});
-    api.get<any>("/api/objectives/").then((d) => setObjetivos(d.results ?? d)).catch(() => {});
-    api.get<any>("/api/swot/").then((d) => setSwot(d.results ?? d)).catch(() => {});
+    api.get<any>("/api/objectives/?todos=1").then((d) => setObjetivos(d.results ?? d)).catch(() => {});
   }, [load]);
+  // Objetivos e SWOT são do planejamento DO PROJETO, não do que está selecionado nas outras telas.
+  const mapaDoProjeto = projeto?.map ?? null;
+  useEffect(() => {
+    if (!projeto) return;
+    api.get<any>(`/api/swot/${mapaDoProjeto ? `?map=${mapaDoProjeto}` : ""}`).then((d) => setSwot(d.results ?? d)).catch(() => setSwot([]));
+  }, [mapaDoProjeto, !!projeto]);
 
   const filtrando = !!(fResp || fFase || soAtrasadas);
   const visiveis = useMemo(() => {
@@ -159,9 +164,11 @@ export function ProjetoDetalhe() {
   };
   const excluirAtiv = async () => {
     if (!ativ?.id) return;
-    await api.del(`/api/project-activities/${ativ.id}/`);
-    setAtiv(null);
-    load();
+    try {
+      await api.del(`/api/project-activities/${ativ.id}/`);
+      setAtiv(null);
+      load();
+    } catch (e) { setErro(erroDaApi(e)); }
   };
 
   const salvarFca = async () => {
@@ -176,9 +183,11 @@ export function ProjetoDetalhe() {
   };
   const excluirFca = async () => {
     if (!fca?.id) return;
-    await api.del(`/api/project-fcas/${fca.id}/`);
-    setFca(null);
-    load();
+    try {
+      await api.del(`/api/project-fcas/${fca.id}/`);
+      setFca(null);
+      load();
+    } catch (e) { setErro(erroDaApi(e)); }
   };
 
   const novaAtiv = (parent: Atividade | null) => {

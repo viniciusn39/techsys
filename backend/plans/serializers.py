@@ -1,9 +1,11 @@
 from rest_framework import serializers
 
+from accounts.tenancy import SoDaEmpresaMixin
+
 from .models import ActionPlanUpdate, ActionItem, ActionPlan, Deviation
 
 
-class DeviationSerializer(serializers.ModelSerializer):
+class DeviationSerializer(SoDaEmpresaMixin, serializers.ModelSerializer):
     indicator_code = serializers.CharField(source="indicator.code", read_only=True)
     indicator_name = serializers.CharField(source="indicator.name", read_only=True)
     period = serializers.DateField(source="indicator_value.period", read_only=True)
@@ -25,7 +27,7 @@ class DeviationSerializer(serializers.ModelSerializer):
         read_only_fields = ["indicator", "indicator_value", "detected_at"]
 
 
-class ActionItemSerializer(serializers.ModelSerializer):
+class ActionItemSerializer(SoDaEmpresaMixin, serializers.ModelSerializer):
     responsible_name = serializers.CharField(source="responsible.first_name", read_only=True)
     plan_title = serializers.CharField(source="plan.title", read_only=True)
     plan_priority = serializers.CharField(source="plan.priority", read_only=True)
@@ -54,6 +56,7 @@ class ActionItemSerializer(serializers.ModelSerializer):
         return v
 
     def validate(self, data):
+        data = super().validate(data)
         parent = data.get("parent") or (self.instance.parent if self.instance else None)
         plan = data.get("plan") or (self.instance.plan if self.instance else None)
         if parent is not None:
@@ -83,7 +86,7 @@ class ActionPlanUpdateSerializer(serializers.ModelSerializer):
         return v
 
 
-class ActionPlanSerializer(serializers.ModelSerializer):
+class ActionPlanSerializer(SoDaEmpresaMixin, serializers.ModelSerializer):
     who_name = serializers.CharField(source="who.first_name", read_only=True)
     org_unit_name = serializers.CharField(source="org_unit.name", read_only=True)
     indicator_code = serializers.CharField(source="indicator.code", read_only=True)

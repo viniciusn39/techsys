@@ -18,6 +18,7 @@ export function Usuarios() {
   const [editing, setEditing] = useState<Partial<UserRow & { password?: string }> | null>(null);
   const [error, setError] = useState("");
   const [vincular, setVincular] = useState<string | null>(null);
+  const [papelVinculo, setPapelVinculo] = useState("colaborador");
 
   const load = useCallback(() => {
     api.get("/api/users/").then((d) => setRows(d.results ?? d)).catch(() => setRows([]));
@@ -49,15 +50,18 @@ export function Usuarios() {
   const vincularExistente = async () => {
     setError("");
     try {
-      await api.post("/api/users/vincular/", { email: vincular });
+      await api.post("/api/users/vincular/", { email: vincular, role: papelVinculo });
       setVincular(null);
       load();
     } catch (e: any) { setError(e.data?.detail ?? e.message); }
   };
 
   const desvincular = async (u: UserRow) => {
-    await api.post(`/api/users/${u.id}/desvincular/`);
-    load();
+    try { await api.post(`/api/users/${u.id}/desvincular/`); load(); } catch (e: any) { setError(e.data?.detail ?? e.message); }
+  };
+
+  const mudarPapelDoVinculo = async (u: UserRow, role: string) => {
+    try { await api.post(`/api/users/${u.id}/papel-do-vinculo/`, { role }); load(); } catch (e: any) { setError(e.data?.detail ?? e.message); }
   };
 
   return (
@@ -108,9 +112,16 @@ export function Usuarios() {
                       </div>
                     </td>
                     <td>
-                      <span className="badge text-bg-light border fw-normal">
-                        <i className={`bi ${ROLE_META[u.role]?.icon} me-1`} />{ROLE_META[u.role]?.label ?? u.role}
-                      </span>
+                      {u.is_guest ? (
+                        <Form.Select size="sm" style={{ width: 150 }} value={u.role_here ?? "colaborador"} aria-label="Papel nesta empresa" title="Papel que o usuário vinculado tem nesta empresa"
+                          onClick={(e) => e.stopPropagation()} onChange={(e) => mudarPapelDoVinculo(u, e.target.value)}>
+                          {["admin", "gestor", "colaborador"].map((r) => <option key={r} value={r}>{ROLE_META[r].label}</option>)}
+                        </Form.Select>
+                      ) : (
+                        <span className="badge text-bg-light border fw-normal">
+                          <i className={`bi ${ROLE_META[u.role]?.icon} me-1`} />{ROLE_META[u.role]?.label ?? u.role}
+                        </span>
+                      )}
                     </td>
                     <td className="text-secondary-2">{u.cargo || "—"}</td>
                     <td className="text-secondary-2">{u.org_unit_name || "—"}</td>
@@ -132,10 +143,14 @@ export function Usuarios() {
       <Modal show={vincular !== null} onHide={() => setVincular(null)} centered>
         <Modal.Header closeButton><Modal.Title>Vincular usuário de outra empresa</Modal.Title></Modal.Header>
         <Modal.Body>
-          <p className="small text-muted-2">Para quem já tem cadastro em outra empresa do grupo (sócio, consultor, diretor). Ele passa a poder trocar para esta empresa no menu, com o mesmo login; o cadastro e o papel continuam na empresa de origem.</p>
+          <p className="small text-muted-2">Para quem já tem cadastro em outra empresa do grupo (sócio, consultor, diretor). Ele passa a poder trocar para esta empresa no menu, com o mesmo login. O cadastro continua na empresa de origem; o papel abaixo vale só aqui.</p>
           {error && <div className="alert alert-danger py-2 small">{error}</div>}
           <Form.Label>E-mail do usuário</Form.Label>
           <Form.Control autoFocus type="email" value={vincular ?? ""} onChange={(e) => setVincular(e.target.value)} placeholder="nome@empresa.com.br" />
+          <Form.Label className="mt-3">Papel nesta empresa</Form.Label>
+          <Form.Select value={papelVinculo} onChange={(e) => setPapelVinculo(e.target.value)}>
+            {["colaborador", "gestor", "admin"].map((r) => <option key={r} value={r}>{ROLE_META[r].label} — {ROLE_META[r].hint}</option>)}
+          </Form.Select>
         </Modal.Body>
         <Modal.Footer>
           <Button variant="outline-secondary" onClick={() => setVincular(null)}>Cancelar</Button>

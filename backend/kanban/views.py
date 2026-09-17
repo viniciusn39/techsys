@@ -88,7 +88,7 @@ class TaskViewSet(_DoTenant):
             self._evento(task, f"Prazo: {task.due_date:%d/%m/%Y}." if task.due_date else "Prazo removido.")
 
     def perform_destroy(self, instance):
-        if not role_at_least(self.request.user, User.Role.GESTOR):
+        if not role_at_least(self.request, User.Role.GESTOR):
             raise PermissionDenied("Só gestor ou administrador exclui tarefas.")
         instance.delete()
 
@@ -102,7 +102,10 @@ class TaskViewSet(_DoTenant):
         antigo = task.status
         task.status = novo
         if "order" in request.data:
-            task.order = int(request.data["order"])
+            try:
+                task.order = max(0, int(request.data["order"]))
+            except (TypeError, ValueError):
+                raise ValidationError({"order": "Posição inválida."})
         task.save(update_fields=["status", "order"])
         self._aplicar_status(task, antigo)
         return Response(TaskSerializer(task, context=self.get_serializer_context()).data)
@@ -116,6 +119,9 @@ class TaskViewSet(_DoTenant):
         task = self.get_object()
         if request.method == "GET":
             qs = task.messages.select_related("sender", "recipient").prefetch_related("replies__author")
+            if not role_at_least(request, User.Role.GESTOR):
+                # Colaborador lê só as conversas de que participa — a mesma regra da caixa de comunicação.
+                qs = qs.filter(Q(sender=request.user) | Q(recipient=request.user))
             return Response(TaskMessageSerializer(qs, many=True).data)
         ser = TaskMessageSerializer(data=request.data)
         ser.is_valid(raise_exception=True)
@@ -176,7 +182,7 @@ class TaskMessageViewSet(_DoTenant):
         qs = super().get_queryset()
         user, p = self.request.user, self.request.query_params
         # Colaborador só vê a conversa dele; gestor vê todas, ou só as dele com ?minhas=1.
-        if p.get("minhas") or not role_at_least(user, User.Role.GESTOR):
+        if p.get("minhas") or not role_at_least(self.request, User.Role.GESTOR):
             qs = qs.filter(Q(sender=user) | Q(recipient=user))
         if p.get("status") in TaskMessage.Status.values:
             qs = qs.filter(status=p["status"])
@@ -188,7 +194,7 @@ class TaskMessageViewSet(_DoTenant):
         raise ValidationError("Envie a mensagem pela tarefa.")
 
     def perform_destroy(self, instance):
-        if instance.sender_id != self.request.user.id and not role_at_least(self.request.user, User.Role.ADMIN):
+        if instance.sender_id != self.request.user.id and not role_at_least(self.request, User.Role.ADMIN):
             raise PermissionDenied("Só quem enviou pode apagar a mensagem.")
         instance.delete()
 
@@ -217,7 +223,7 @@ class TaskMessageViewSet(_DoTenant):
     @action(detail=True, methods=["post"])
     def confirmar(self, request, pk=None):
         msg = self.get_object()
-        if request.user.id != msg.sender_id and not role_at_least(request.user, User.Role.ADMIN):
+        if request.user.id != msg.sender_id and not role_at_least(request, User.Role.ADMIN):
             raise PermissionDenied("Só quem enviou a mensagem confirma a conclusão.")
         msg.status = TaskMessage.Status.CONCLUIDA
         msg.save()

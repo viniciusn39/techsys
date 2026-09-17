@@ -40,6 +40,7 @@ export interface UserRow {
   is_active: boolean;
   home_tenant_name?: string;
   is_guest?: boolean;
+  role_here?: string;
   tenant_names?: string[];
 }
 

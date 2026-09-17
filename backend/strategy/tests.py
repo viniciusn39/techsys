@@ -259,6 +259,10 @@ class PainelDaAgendaTests(APITestCase):
         self.assertEqual((d["total"], d["horas"], d["pessoas_envolvidas"], d["total_usuarios"], d["variacao_pct"]), (3, 3.5, 2, 2, None))
         self.assertEqual([(c["nome"], c["reunioes"], c["horas"]) for c in d["carga"]], [("Ana", 3, 3.5), ("Bia", 2, 2.5)])
         self.assertEqual(len(d["conflitos"]), 1)           # Resultados × Diretoria: o mesmo par não conta duas vezes
+        # reunião longa cobre duas curtas que não são vizinhas entre si
+        self.client.post("/api/meetings/", {"title": "Dia todo", "starts_at": h(8), "ends_at": h(18), "participants": []}, format="json")
+        d2 = self.client.get("/api/meetings/dashboard/?de=2026-03-01&ate=2026-03-31").json()
+        self.assertEqual(sorted((c["a"], c["b"]) for c in d2["conflitos"] if c["pessoa"] == "Ana"), [("Dia todo", "Diretoria"), ("Dia todo", "Resultados"), ("Dia todo", "Solo")])
         self.assertEqual(d["por_dia_semana"][1], {"dia": "Ter", "total": 3})
         so_bia = self.client.get(f"/api/meetings/dashboard/?de=2026-03-01&ate=2026-03-31&participante={bia.id}&tipo=diretoria").json()
         self.assertEqual(so_bia["total"], 1)

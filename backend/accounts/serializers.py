@@ -74,13 +74,14 @@ class UserSerializer(serializers.ModelSerializer):
     home_tenant_name = serializers.CharField(source="tenant.name", read_only=True, default="")
     is_guest = serializers.SerializerMethodField()
     tenant_names = serializers.SerializerMethodField()
+    role_here = serializers.SerializerMethodField()
 
     class Meta:
         model = User
         fields = [
             "id", "email", "first_name", "last_name", "role", "cargo",
             "org_unit", "org_unit_name", "access_profile", "access_profile_name", "is_active", "password",
-            "home_tenant_name", "is_guest", "tenant_names",
+            "home_tenant_name", "is_guest", "tenant_names", "role_here",
         ]
 
     def get_is_guest(self, obj):
@@ -89,7 +90,19 @@ class UserSerializer(serializers.ModelSerializer):
         return bool(tenant and obj.tenant_id != tenant.id)
 
     def get_tenant_names(self, obj):
-        return [t.name for t in obj.empresas()]
+        """Só a empresa em uso e a de origem: as demais empresas da pessoa não são da conta de quem está olhando."""
+        tenant = self.context.get("tenant")
+        nomes = [obj.tenant.name] if obj.tenant_id else []
+        if tenant and tenant.id != obj.tenant_id:
+            nomes.append(tenant.name)
+        return nomes
+
+    def get_role_here(self, obj):
+        """Papel na empresa em uso (o do vínculo, para quem veio de outra)."""
+        tenant = self.context.get("tenant")
+        if tenant is None or obj.tenant_id == tenant.id:
+            return obj.role
+        return next((m.role for m in obj.memberships.all() if m.tenant_id == tenant.id), obj.Role.COLABORADOR)
 
     def validate_access_profile(self, value):
         if value is not None:
@@ -113,7 +126,12 @@ class UserSerializer(serializers.ModelSerializer):
     def create(self, validated_data):
         password = validated_data.pop("password", None)
         user = User(**validated_data)
-        user.set_password(password or User.objects.make_random_password())
+        # Sem senha informada, o usuário nasce sem conseguir entrar até o admin definir uma
+        # (make_random_password saiu do Django 5.1 e derrubava este cadastro com erro 500).
+        if password:
+            user.set_password(password)
+        else:
+            user.set_unusable_password()
         user.save()
         return user
 
@@ -142,7 +160,7 @@ class OrgUnitSerializer(serializers.ModelSerializer):
     manager_name = serializers.CharField(source="manager.first_name", read_only=True)
     kind_label = serializers.CharField(source="get_kind_display", read_only=True)
     parent_name = serializers.CharField(source="parent.name", read_only=True, default="")
-    users_count = serializers.IntegerField(source="members.count", read_only=True)
+    users_count = serializers.IntegerField(read_only=True, default=0)
 
     class Meta:
         model = OrgUnit

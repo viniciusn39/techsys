@@ -57,6 +57,15 @@ class ProjetosTests(APITestCase):
         r = self.client.patch(f"/api/project-activities/{raiz['id']}/", {"parent": etl["id"]}, format="json")
         self.assertEqual(r.status_code, 400)
 
+    def test_atividade_finalizada_pode_ser_reaberta(self):
+        p = self._projeto()["id"]
+        a = self._ativ(p, "Banco", status="finalizado")
+        # o formulário sempre manda o % junto: 100 + "em andamento" tem de reabrir, não finalizar de novo
+        r = self.client.patch(f"/api/project-activities/{a['id']}/", {"status": "em_andamento", "progress_pct": 100}, format="json").json()
+        self.assertEqual((r["status"], r["progress_pct"], r["done_at"]), ("em_andamento", 99, None))
+        r = self.client.patch(f"/api/project-activities/{a['id']}/", {"status": "em_andamento", "progress_pct": 100}, format="json").json()
+        self.assertEqual(r["status"], "finalizado")   # agora sim: subiu para 100 estando aberta
+
     def test_fca_e_painel(self):
         p = self._projeto()["id"]
         a = self._ativ(p, "Banco", responsible=self.gestor.id, start_date="2026-07-01", end_date="2026-07-31")
@@ -98,3 +107,40 @@ class VisaoGeralTests(APITestCase):
         d = self.client.get("/api/dashboard/overview/").json()
         self.assertEqual((d["mapa"]["name"], d["contagens"]["objetivos"], d["contagens"]["projetos"], d["swot"]["S"]), ("PE", 1, 1, 1))
         self.assertEqual((d["projetos_atrasados"][0]["title"], d["perspectivas"][0]["atingimento"], len(d["atividades_recentes"])), ("Velho", None, 1))
+
+
+class NadaDeOutraEmpresaTests(APITestCase):
+    """Id de outra empresa não entra nem na criação nem na alteração — e o nome dele não volta na resposta."""
+
+    def setUp(self):
+        self.a = Tenant.objects.create(name="Alfa", slug="alfa-iso")
+        self.b = Tenant.objects.create(name="Beta", slug="beta-iso")
+        self.ana = User.objects.create_user("ana@iso.com", "x", first_name="Ana", tenant=self.a, role=User.Role.ADMIN)
+        self.bia = User.objects.create_user("bia@iso.com", "x", first_name="Bia Secreta", tenant=self.b, role=User.Role.ADMIN)
+        self.client.force_authenticate(self.ana)
+
+    def test_reuniao_fca_e_objetivo(self):
+        r = self.client.post("/api/meetings/", {"title": "x", "starts_at": "2026-03-09T08:00:00-03:00", "participants": [self.bia.id]}, format="json")
+        self.assertEqual(r.status_code, 400)
+        self.assertNotIn("Bia Secreta", r.content.decode())
+        r = self.client.post("/api/meetings/", {"title": "x", "starts_at": "2026-03-09T08:00:00-03:00", "organizer": self.bia.id}, format="json")
+        self.assertEqual(r.status_code, 400)
+
+        mapa_b = StrategicMap.objects.create(tenant=self.b, name="PE B", year_start=2026, year_end=2026)
+        persp_b = Perspective.objects.create(map=mapa_b, name="Financeira B")
+        mapa_a = StrategicMap.objects.create(tenant=self.a, name="PE A", year_start=2026, year_end=2026)
+        persp_a = Perspective.objects.create(map=mapa_a, name="Financeira")
+        obj = self.client.post("/api/objectives/", {"perspective": persp_a.id, "name": "Crescer"}, format="json").json()
+        self.assertEqual(self.client.patch(f"/api/objectives/{obj['id']}/", {"perspective": persp_b.id}, format="json").status_code, 400)
+        self.assertEqual(self.client.patch(f"/api/objectives/{obj['id']}/", {"owner": self.bia.id}, format="json").status_code, 400)
+
+        from projects.models import Project, ProjectActivity
+
+        proj_b = Project.objects.create(tenant=self.b, code=1, title="Segredo", start_date="2026-01-01", end_date="2026-02-01")
+        ativ_b = ProjectActivity.objects.create(project=proj_b, title="Atividade secreta")
+        p = self.client.post("/api/projects/", {"title": "Meu", "owner": self.ana.id, "start_date": "2026-01-01", "end_date": "2026-02-01"}, format="json").json()
+        a = self.client.post("/api/project-activities/", {"project": p["id"], "title": "Minha"}, format="json").json()
+        f = self.client.post("/api/project-fcas/", {"activity": a["id"], "fact": "x"}, format="json").json()
+        r = self.client.patch(f"/api/project-fcas/{f['id']}/", {"activity": ativ_b.id}, format="json")
+        self.assertEqual(r.status_code, 400)
+        self.assertNotIn("secreta", r.content.decode())

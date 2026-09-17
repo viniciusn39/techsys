@@ -2,6 +2,8 @@ from datetime import date
 
 from rest_framework import serializers
 
+from accounts.tenancy import SoDaEmpresaMixin
+
 from .models import Board, Task, TaskEvent, TaskMessage, TaskReply
 
 
@@ -11,7 +13,7 @@ def nome(user):
     return user.get_full_name() or user.first_name or user.email
 
 
-class BoardSerializer(serializers.ModelSerializer):
+class BoardSerializer(SoDaEmpresaMixin, serializers.ModelSerializer):
     map_name = serializers.CharField(source="map.name", read_only=True, default="")
     tasks_count = serializers.IntegerField(source="tasks.count", read_only=True)
 
@@ -26,6 +28,7 @@ class BoardSerializer(serializers.ModelSerializer):
         return value
 
     def validate(self, data):
+        data = super().validate(data)
         ini = data.get("start_date", getattr(self.instance, "start_date", None))
         fim = data.get("end_date", getattr(self.instance, "end_date", None))
         if ini and fim and fim < ini:
@@ -55,7 +58,7 @@ class TaskReplySerializer(serializers.ModelSerializer):
         return nome(obj.author)
 
 
-class TaskMessageSerializer(serializers.ModelSerializer):
+class TaskMessageSerializer(SoDaEmpresaMixin, serializers.ModelSerializer):
     sender_name = serializers.SerializerMethodField()
     recipient_name = serializers.SerializerMethodField()
     status_label = serializers.CharField(source="get_status_display", read_only=True)
@@ -77,7 +80,7 @@ class TaskMessageSerializer(serializers.ModelSerializer):
         return nome(obj.recipient)
 
 
-class TaskSerializer(serializers.ModelSerializer):
+class TaskSerializer(SoDaEmpresaMixin, serializers.ModelSerializer):
     responsible_name = serializers.SerializerMethodField()
     watcher_names = serializers.SerializerMethodField()
     board_name = serializers.CharField(source="board.name", read_only=True)
@@ -118,6 +121,8 @@ class TaskSerializer(serializers.ModelSerializer):
             raise serializers.ValidationError("Lista de itens.")
         limpa = []
         for item in value[:100]:
+            if not isinstance(item, dict):
+                item = {"text": item}
             texto = str((item or {}).get("text", "")).strip()[:250]
             if texto:
                 limpa.append({"text": texto, "done": bool(item.get("done"))})

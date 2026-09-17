@@ -1,9 +1,11 @@
 from rest_framework import serializers
 
+from accounts.tenancy import SoDaEmpresaMixin
+
 from .models import AgendaCategory, CanvasItem, Goal, Meeting, Perspective, Stakeholder, StrategicMap, StrategicObjective, SwotItem, SwotStrategy
 
 
-class PerspectiveSerializer(serializers.ModelSerializer):
+class PerspectiveSerializer(SoDaEmpresaMixin, serializers.ModelSerializer):
     objectives_count = serializers.IntegerField(source="objectives.count", read_only=True)
 
     class Meta:
@@ -18,14 +20,15 @@ class PerspectiveSerializer(serializers.ModelSerializer):
         return value
 
 
-class StrategicObjectiveSerializer(serializers.ModelSerializer):
+class StrategicObjectiveSerializer(SoDaEmpresaMixin, serializers.ModelSerializer):
     owner_name = serializers.CharField(source="owner.first_name", read_only=True)
     perspective_name = serializers.CharField(source="perspective.name", read_only=True)
+    map = serializers.IntegerField(source="perspective.map_id", read_only=True)
 
     class Meta:
         model = StrategicObjective
         fields = [
-            "id", "perspective", "perspective_name", "name", "description",
+            "id", "perspective", "perspective_name", "map", "name", "description",
             "owner", "owner_name", "order", "contributes_to", "pos_x", "pos_y",
         ]
 
@@ -67,7 +70,7 @@ class PerspectiveNestedSerializer(PerspectiveSerializer):
         fields = PerspectiveSerializer.Meta.fields + ["objectives"]
 
 
-class StrategicMapSerializer(serializers.ModelSerializer):
+class StrategicMapSerializer(SoDaEmpresaMixin, serializers.ModelSerializer):
     partner_names = serializers.SerializerMethodField()
     org_unit_names = serializers.SerializerMethodField()
     objectives_count = serializers.SerializerMethodField()
@@ -106,6 +109,7 @@ class StrategicMapSerializer(serializers.ModelSerializer):
         return value
 
     def validate(self, data):
+        data = super().validate(data)
         ini = data.get("year_start", getattr(self.instance, "year_start", None))
         fim = data.get("year_end", getattr(self.instance, "year_end", None))
         if ini and fim and fim < ini:
@@ -120,7 +124,7 @@ class StrategicMapNestedSerializer(StrategicMapSerializer):
         fields = StrategicMapSerializer.Meta.fields + ["perspectives"]
 
 
-class GoalSerializer(serializers.ModelSerializer):
+class GoalSerializer(SoDaEmpresaMixin, serializers.ModelSerializer):
     owner_name = serializers.CharField(source="owner.first_name", read_only=True)
     org_unit_name = serializers.CharField(source="org_unit.name", read_only=True)
     objective_name = serializers.CharField(source="objective.name", read_only=True)
@@ -197,7 +201,7 @@ class _MapaDoTenant:
         return value
 
 
-class SwotItemSerializer(_MapaDoTenant, serializers.ModelSerializer):
+class SwotItemSerializer(SoDaEmpresaMixin, _MapaDoTenant, serializers.ModelSerializer):
     quadrant_label = serializers.CharField(source="get_quadrant_display", read_only=True)
     objective_name = serializers.CharField(source="objective.name", read_only=True, default="")
     org_unit_name = serializers.CharField(source="org_unit.name", read_only=True, default="")
@@ -231,6 +235,7 @@ class SwotItemSerializer(_MapaDoTenant, serializers.ModelSerializer):
         return value
 
     def validate(self, data):
+        data = super().validate(data)
         # Quem ainda manda só "impacto" (1–5) vira três fatores iguais: a pontuação fica impacto³.
         if "impact" in data and not {"importance", "intensity", "trend"} & set(data):
             data["importance"] = data["intensity"] = data["trend"] = data["impact"]
@@ -242,7 +247,7 @@ class SwotItemSerializer(_MapaDoTenant, serializers.ModelSerializer):
         return v
 
 
-class SwotStrategySerializer(_MapaDoTenant, serializers.ModelSerializer):
+class SwotStrategySerializer(SoDaEmpresaMixin, _MapaDoTenant, serializers.ModelSerializer):
     kind_label = serializers.CharField(source="get_kind_display", read_only=True)
     objective_name = serializers.CharField(source="objective.name", read_only=True, default="")
 
@@ -252,7 +257,7 @@ class SwotStrategySerializer(_MapaDoTenant, serializers.ModelSerializer):
         extra_kwargs = {"map": {"required": False}}
 
 
-class CanvasItemSerializer(_MapaDoTenant, serializers.ModelSerializer):
+class CanvasItemSerializer(SoDaEmpresaMixin, _MapaDoTenant, serializers.ModelSerializer):
     block_label = serializers.CharField(source="get_block_display", read_only=True)
 
     class Meta:
@@ -261,7 +266,7 @@ class CanvasItemSerializer(_MapaDoTenant, serializers.ModelSerializer):
         extra_kwargs = {"map": {"required": False}}
 
 
-class StakeholderSerializer(serializers.ModelSerializer):
+class StakeholderSerializer(SoDaEmpresaMixin, serializers.ModelSerializer):
     strategy = serializers.CharField(read_only=True)
     org_unit_name = serializers.CharField(source="org_unit.name", read_only=True, default="")
     user_name = serializers.CharField(source="user.get_full_name", read_only=True, default="")
@@ -290,7 +295,7 @@ class AgendaCategorySerializer(serializers.ModelSerializer):
         fields = ["id", "name", "order", "meetings_count"]
 
 
-class MeetingSerializer(serializers.ModelSerializer):
+class MeetingSerializer(SoDaEmpresaMixin, serializers.ModelSerializer):
     kind_label = serializers.CharField(source="get_kind_display", read_only=True)
     status_label = serializers.CharField(source="get_status_display", read_only=True)
     organizer_name = serializers.CharField(source="organizer.get_full_name", read_only=True, default="")
@@ -335,6 +340,7 @@ class MeetingSerializer(serializers.ModelSerializer):
         return self._da_empresa(value, "Projeto de outra empresa.")
 
     def validate(self, data):
+        data = super().validate(data)
         ini = data.get("starts_at", getattr(self.instance, "starts_at", None))
         fim = data.get("ends_at", getattr(self.instance, "ends_at", None))
         if ini and fim and fim < ini:

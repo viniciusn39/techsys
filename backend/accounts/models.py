@@ -77,7 +77,9 @@ class User(AbstractUser):
     cargo = models.CharField(max_length=100, blank=True)
     # Outras empresas em que a pessoa também atua (grupo, consultor, sócio). "tenant" continua
     # sendo a empresa de origem: é nela que o cadastro, o papel e o perfil são mantidos.
-    extra_tenants = models.ManyToManyField(Tenant, blank=True, related_name="guest_users", verbose_name="outras empresas")
+    extra_tenants = models.ManyToManyField(
+        Tenant, blank=True, related_name="guest_users", verbose_name="outras empresas", through="Membership",
+    )
     # Perfil de acesso por setor (RBAC): o que este usuário enxerga. Nulo = tudo do papel.
     access_profile = models.ForeignKey(
         "AccessProfile", on_delete=models.SET_NULL, null=True, blank=True, related_name="users",
@@ -101,12 +103,40 @@ class User(AbstractUser):
     def empresas(self):
         """Empresas ativas em que o usuário pode atuar: a de origem primeiro, depois as vinculadas."""
         lista = [self.tenant] if self.tenant_id and self.tenant.is_active else []
-        return lista + [t for t in self.extra_tenants.filter(is_active=True) if t.id != self.tenant_id]
+        # .all() + filtro em Python: aproveita o prefetch das listagens de usuários.
+        return lista + [t for t in self.extra_tenants.all() if t.is_active and t.id != self.tenant_id]
 
     def belongs_to(self, tenant):
         if tenant is None:
             return False
         return self.tenant_id == tenant.id or self.extra_tenants.filter(pk=tenant.id).exists()
+
+    def role_in(self, tenant):
+        """Papel que vale dentro de `tenant`: o do cadastro na empresa de origem, o do vínculo nas outras."""
+        if self.role == self.Role.ROOT or tenant is None or self.tenant_id == tenant.id:
+            return self.role
+        vinculo = self.memberships.filter(tenant=tenant).first()
+        return vinculo.role if vinculo else self.Role.COLABORADOR
+
+
+class Membership(models.Model):
+    """Vínculo de um usuário com uma empresa que não é a de origem, com o papel que ele tem nela."""
+
+    class Role(models.TextChoices):
+        ADMIN = "admin", "Administrador"
+        GESTOR = "gestor", "Gestor"
+        COLABORADOR = "colaborador", "Colaborador"
+
+    user = models.ForeignKey("User", on_delete=models.CASCADE, related_name="memberships")
+    tenant = models.ForeignKey(Tenant, on_delete=models.CASCADE, related_name="memberships")
+    role = models.CharField(max_length=20, choices=Role.choices, default=Role.COLABORADOR)
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        constraints = [models.UniqueConstraint(fields=["user", "tenant"], name="uniq_membership")]
+
+    def __str__(self):
+        return f"{self.user_id} @ {self.tenant_id} ({self.role})"
 
 
 class OrgUnit(TenantOwnedModel):

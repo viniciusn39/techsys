@@ -35,6 +35,7 @@ export function ProjetosPainel() {
   const [projetos, setProjetos] = useState<Opcao[]>([]);
   const [fMapa, setFMapa] = useState("");
   const [fProjeto, setFProjeto] = useState("");
+  const [erro, setErro] = useState("");
 
   useEffect(() => {
     api.get<any>("/api/strategic-maps/").then((d) => setMapas(d.results ?? d)).catch(() => {});
@@ -44,11 +45,12 @@ export function ProjetosPainel() {
     const q = new URLSearchParams();
     if (fMapa) q.set("map", fMapa);
     if (fProjeto) q.set("project", fProjeto);
-    api.get<Painel>(`/api/projects/dashboard/?${q}`).then(setDados).catch(() => setDados(null));
+    api.get<Painel>(`/api/projects/dashboard/?${q}`).then((d) => { setDados(d); setErro(""); }).catch((e) => setErro(e.message));
   }, [fMapa, fProjeto]);
 
   const porProjeto = useMemo(() => [...(dados?.visao_geral ?? [])].reverse(), [dados]);
 
+  if (erro && !dados) return <Panel><EmptyState icon="bi-exclamation-circle" title="Não foi possível carregar o painel" hint={erro} /></Panel>;
   if (!dados) return <Panel><Skeleton height={320} /></Panel>;
 
   const statusComValor = Object.entries(dados.por_status).filter(([, v]) => v > 0);

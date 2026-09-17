@@ -9,7 +9,7 @@ import { fmtDate } from "../utils/format";
 
 interface Mapa { id: number; name: string; is_active: boolean }
 interface Unidade { id: number; name: string }
-interface Objetivo { id: number; name: string; perspective_name: string }
+interface Objetivo { id: number; name: string; perspective_name: string; map: number }
 interface SwotItem { id: number; quadrant: string; quadrant_label: string; text: string }
 
 /** Lista de marcar com busca: serve para parceiros, itens da SWOT e objetivos do mapa. */
@@ -44,7 +44,7 @@ function Marcar<T extends { id: number }>({ itens, marcados, onChange, rotulo, g
 
 export function Projetos() {
   const navigate = useNavigate();
-  const { me } = useAuth();
+  const { me, mapId } = useAuth();
   const podeEditar = me?.role !== "colaborador";
 
   const [lista, setLista] = useState<Projeto[] | null>(null);
@@ -68,9 +68,16 @@ export function Projetos() {
     api.get<any>("/api/strategic-maps/").then((d) => setMapas(d.results ?? d)).catch(() => {});
     api.get<any>("/api/users/").then((d) => setUsuarios(d.results ?? d)).catch(() => {});
     api.get<any>("/api/org-units/").then((d) => setUnidades(d.results ?? d)).catch(() => {});
-    api.get<any>("/api/objectives/").then((d) => setObjetivos(d.results ?? d)).catch(() => {});
-    api.get<any>("/api/swot/").then((d) => setSwot(d.results ?? d)).catch(() => {});
+    // Objetivos de todos os planejamentos: o formulário mostra os do planejamento escolhido para o projeto.
+    api.get<any>("/api/objectives/?todos=1").then((d) => setObjetivos(d.results ?? d)).catch(() => {});
   }, [load]);
+
+  // A SWOT é por planejamento: recarrega quando o planejamento do projeto em edição muda.
+  const mapaEmEdicao = editing?.map ?? null;
+  useEffect(() => {
+    if (!editing) return;
+    api.get<any>(`/api/swot/${mapaEmEdicao ? `?map=${mapaEmEdicao}` : ""}`).then((d) => setSwot(d.results ?? d)).catch(() => setSwot([]));
+  }, [mapaEmEdicao, !!editing]);
 
   const visiveis = useMemo(() => {
     const q = busca.trim().toLowerCase();
@@ -81,7 +88,7 @@ export function Projetos() {
 
   const novo = () => {
     setErro("");
-    setEditing({ status: "nao_iniciado", owner: me?.id ?? null, map: mapas.find((m) => m.is_active)?.id ?? null, partners: [], swot_items: [], objectives: [] });
+    setEditing({ status: "nao_iniciado", owner: me?.id ?? null, map: mapas.find((m) => m.id === mapId)?.id ?? mapas.find((m) => m.is_active)?.id ?? mapas[0]?.id ?? null, partners: [], swot_items: [], objectives: [] });
   };
 
   const save = async () => {
@@ -113,9 +120,11 @@ export function Projetos() {
 
   const remover = async () => {
     if (!excluir) return;
-    await api.del(`/api/projects/${excluir.id}/`);
-    setExcluir(null);
-    load();
+    try {
+      await api.del(`/api/projects/${excluir.id}/`);
+      setExcluir(null);
+      load();
+    } catch (e) { setErro((e as Error).message); }
   };
 
   if (lista === null) return <Panel><Skeleton height={300} /></Panel>;
@@ -223,11 +232,11 @@ export function Projetos() {
                   {Object.entries(ANDAMENTO).map(([k, v]) => <option key={k} value={k}>{v.label}</option>)}
                 </Form.Select></div>
               <div className="col-md-3"><Form.Label>Planejamento</Form.Label>
-                <Form.Select value={editing.map ?? ""} onChange={(e) => setEditing({ ...editing, map: e.target.value ? Number(e.target.value) : null })}>
+                <Form.Select value={editing.map ?? ""} onChange={(e) => setEditing({ ...editing, map: e.target.value ? Number(e.target.value) : null, objectives: [], swot_items: [] })}>
                   <option value="">—</option>{mapas.map((m) => <option key={m.id} value={m.id}>{m.name}</option>)}
                 </Form.Select></div>
               <div className="col-md-6"><Form.Label>Objetivos do mapa estratégico</Form.Label>
-                <Marcar itens={objetivos} marcados={editing.objectives ?? []} onChange={(ids) => setEditing({ ...editing, objectives: ids })}
+                <Marcar itens={objetivos.filter((o) => !editing.map || o.map === editing.map)} marcados={editing.objectives ?? []} onChange={(ids) => setEditing({ ...editing, objectives: ids })}
                   rotulo={(o) => o.name} grupo={(o) => o.perspective_name} vazio="Nenhum objetivo no mapa estratégico ainda." /></div>
               <div className="col-md-6"><Form.Label>Itens da SWOT que o projeto trata</Form.Label>
                 <Marcar itens={swot} marcados={editing.swot_items ?? []} onChange={(ids) => setEditing({ ...editing, swot_items: ids })}
@@ -247,6 +256,7 @@ export function Projetos() {
       <Modal show={!!excluir} onHide={() => setExcluir(null)}>
         <Modal.Header closeButton><Modal.Title>Excluir projeto</Modal.Title></Modal.Header>
         <Modal.Body>
+          {erro && <Alert variant="danger" className="py-2 small">{erro}</Alert>}
           Excluir <strong>{excluir?.title}</strong>? Vão junto {(excluir?.activities_count ?? 0) + (excluir?.subactivities_count ?? 0)} atividade(s) e os FCAs delas. Não dá para desfazer.
         </Modal.Body>
         <Modal.Footer>

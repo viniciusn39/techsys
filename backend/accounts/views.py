@@ -1,11 +1,12 @@
+from django.db.models import Count
 from rest_framework import viewsets
 from rest_framework.decorators import action
 from rest_framework.exceptions import PermissionDenied
 from rest_framework.response import Response
 from rest_framework.views import APIView
 
-from .models import MODULOS, SETORES, AccessProfile, OrgUnit, Tenant, User, seed_access_profiles
-from .permissions import IsRoot, IsTenantAdmin
+from .models import MODULOS, SETORES, AccessProfile, Membership, OrgUnit, Tenant, User, seed_access_profiles
+from .permissions import IsRoot, IsTenantAdmin, papel_efetivo
 from .serializers import AccessProfileSerializer, EmpresaSerializer, MeSerializer, OrgUnitSerializer, TenantSerializer, UserSerializer
 from .tenancy import TenantScopedViewSet, get_request_tenant
 
@@ -21,6 +22,9 @@ class MeView(APIView):
         if tenant is not None and user.tenant_id != tenant.id:
             data["modules"] = None
             data["sectors"] = None
+        # O frontend decide o que mostrar pelo papel: aqui vai o papel NA EMPRESA EM USO.
+        data["home_role"] = user.role
+        data["role"] = papel_efetivo(request)
         return Response(data)
 
 
@@ -46,10 +50,11 @@ class TenantViewSet(viewsets.ModelViewSet):
 
 
 class UserViewSet(TenantScopedViewSet):
-    queryset = User.objects.select_related("org_unit")
+    queryset = User.objects.select_related("org_unit", "tenant", "access_profile").prefetch_related("memberships")
     serializer_class = UserSerializer
     permission_classes = [IsTenantAdmin]
     search_fields = ["first_name", "last_name", "email"]
+    pagination_class = None   # a lista alimenta os seletores de pessoa de todas as telas: tem de vir inteira
 
     def get_serializer_context(self):
         ctx = super().get_serializer_context()
@@ -92,8 +97,22 @@ class UserViewSet(TenantScopedViewSet):
             return Response({"detail": "Nenhum usuário ativo com esse e-mail. Cadastre-o como novo usuário."}, status=404)
         if user.belongs_to(tenant):
             return Response({"detail": "Esse usuário já faz parte desta empresa."}, status=400)
-        user.extra_tenants.add(tenant)
+        papel = request.data.get("role") or Membership.Role.COLABORADOR
+        if papel not in Membership.Role.values:
+            return Response({"detail": "Papel inválido."}, status=400)
+        Membership.objects.create(user=user, tenant=tenant, role=papel)
         return Response(UserSerializer(user, context=self.get_serializer_context()).data, status=201)
+
+    @action(detail=True, methods=["post"], url_path="papel-do-vinculo")
+    def papel_do_vinculo(self, request, pk=None):
+        """Muda o papel que um usuário vinculado tem NESTA empresa."""
+        user, tenant = self.get_object(), self.get_tenant()
+        papel = request.data.get("role")
+        if papel not in Membership.Role.values:
+            return Response({"detail": "Papel inválido."}, status=400)
+        if not Membership.objects.filter(user=user, tenant=tenant).update(role=papel):
+            return Response({"detail": "Este usuário é da própria empresa: mude o papel no cadastro dele."}, status=400)
+        return Response(UserSerializer(self.get_queryset().get(pk=user.pk), context=self.get_serializer_context()).data)
 
     @action(detail=True, methods=["post"])
     def desvincular(self, request, pk=None):
@@ -101,12 +120,14 @@ class UserViewSet(TenantScopedViewSet):
         tenant = self.get_tenant()
         if user.tenant_id == tenant.id:
             return Response({"detail": "Esta é a empresa de origem do usuário; desative-o em vez de desvincular."}, status=400)
-        user.extra_tenants.remove(tenant)
+        if user == request.user:
+            return Response({"detail": "Você não pode desvincular a si mesmo."}, status=400)
+        Membership.objects.filter(user=user, tenant=tenant).delete()
         return Response(status=204)
 
 
 class OrgUnitViewSet(TenantScopedViewSet):
-    queryset = OrgUnit.objects.select_related("manager", "parent")
+    queryset = OrgUnit.objects.select_related("manager", "parent").annotate(users_count=Count("members", distinct=True))
     serializer_class = OrgUnitSerializer
     permission_classes = [IsTenantAdmin]
     pagination_class = None
@@ -237,6 +258,7 @@ class EmpresasView(APIView):
         from strategy.provisioning import bootstrap_tenant
 
         user = request.user
+        # Vale o papel do CADASTRO: quem é admin só por vínculo numa empresa alheia não abre empresas.
         if user.role not in (User.Role.ADMIN, User.Role.ROOT):
             raise PermissionDenied("Só o administrador abre uma nova empresa.")
         ser = EmpresaSerializer(data=request.data)
@@ -249,5 +271,5 @@ class EmpresasView(APIView):
         bootstrap_tenant(tenant)
         seed_access_profiles(tenant)
         if user.role != User.Role.ROOT:
-            user.extra_tenants.add(tenant)
+            Membership.objects.create(user=user, tenant=tenant, role=Membership.Role.ADMIN)
         return Response(EmpresaSerializer(tenant).data, status=201)

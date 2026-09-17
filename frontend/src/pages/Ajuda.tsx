@@ -19,7 +19,7 @@ const TOPICOS: Topico[] = [
     "Para dar acesso a alguém que já tem cadastro em outra empresa, use Usuários → Vincular usuário de outra empresa (pelo e-mail).",
     "Em Planejamentos, crie quantos planejamentos precisar (nome, escopo, período, parceiros e departamentos) e escolha qual ver nos botões 'Planejamento' no topo das telas (ou em 'Usar', na lista).",
     "Mapa estratégico, SWOT, Canvas, Cultura e o Dashboard mostram sempre o planejamento em uso.",
-  ], dicas: ["Usuário vinculado mantém o papel e o cadastro na empresa de origem; na outra só dá para desvincular.", "Indicadores, metas e planos de ação são da empresa, não de um planejamento."] },
+  ], dicas: ["Usuário vinculado mantém o cadastro na empresa de origem, mas o papel é por empresa: você escolhe ao vincular (colaborador, gestor ou admin) e pode mudar depois em Usuários.", "Indicadores, metas e planos de ação são da empresa, não de um planejamento."] },
   { key: "dashboard", icon: "bi-grid-1x2", title: "Dashboard", to: "/", resumo: "Visão geral do planejamento: objetivos alcançados, desempenho mês a mês, projetos, perspectivas do mapa, SWOT, atividades recentes e agenda.", passos: [
     "O desempenho geral é a média do atingimento das metas dos indicadores em cada mês; a linha tracejada marca 100 %.",
     "Objetivo alcançado = todos os indicadores dele ficaram verdes no último mês medido.",

@@ -61,13 +61,15 @@ class OverviewView(APIView):
         for v in do_mes:
             if v["indicator__objective_id"]:
                 por_objetivo.setdefault(v["indicator__objective_id"], []).append(v["status"])
-        objetivos_total = StrategicObjective.objects.filter(tenant=tenant).count()
+        objetivos_do_mapa = set(StrategicObjective.objects.filter(tenant=tenant, perspective__map=mapa).values_list("id", flat=True))
+        por_objetivo = {k: v for k, v in por_objetivo.items() if k in objetivos_do_mapa}
+        objetivos_total = len(objetivos_do_mapa)
         objetivos_ok = sum(1 for s in por_objetivo.values() if all(x == "verde" for x in s))
 
         # --- projetos ------------------------------------------------------------------
         projetos_qs = Project.objects.filter(tenant=tenant)
-        if request.headers.get("X-Map-Id") and mapa is not None:
-            # Planejamento escolhido no seletor: só os projetos dele (e os antigos, sem planejamento).
+        if mapa is not None and StrategicMap.objects.filter(tenant=tenant).count() > 1:
+            # Vários planejamentos: a tela inteira é do que está em uso (e dos projetos antigos, sem planejamento).
             projetos_qs = projetos_qs.filter(Q(map=mapa) | Q(map__isnull=True))
         projetos = list(projetos_qs.select_related("owner"))
         resumos = {pid: resumo_projeto(l) for pid, l in arvores_por_projeto(projetos, hoje).items()}
@@ -84,7 +86,7 @@ class OverviewView(APIView):
             for a in ProjectActivity.objects.filter(project__in=projetos).select_related("project").order_by("-created_at")[:6]
         ]
         criadas = Counter(
-            a.strftime("%Y-%m") for a in ProjectActivity.objects.filter(project__in=projetos, created_at__year=ano)
+            timezone.localtime(a).strftime("%Y-%m") for a in ProjectActivity.objects.filter(project__in=projetos, created_at__year=ano)
             .values_list("created_at", flat=True)
         )
 

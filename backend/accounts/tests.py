@@ -2,7 +2,7 @@ from rest_framework.test import APITestCase
 
 from indicators.models import Indicator
 
-from .models import OrgUnit, Tenant, User
+from .models import Membership, OrgUnit, Tenant, User
 
 
 class TenantIsolationTests(APITestCase):
@@ -298,7 +298,7 @@ class VariasEmpresasTests(APITestCase):
         self.b = Tenant.objects.create(name="Beta", slug="beta-me")
         self.c = Tenant.objects.create(name="Gama", slug="gama-me")
         self.admin = User.objects.create_user("dono@alfa.com", "x", first_name="Dono", tenant=self.a, role=User.Role.ADMIN)
-        self.admin.extra_tenants.add(self.b)
+        Membership.objects.create(user=self.admin, tenant=self.b, role=Membership.Role.GESTOR)
         OrgUnit.objects.create(tenant=self.b, name="Só da Beta")
         self.client.force_authenticate(self.admin)
 
@@ -310,11 +310,16 @@ class VariasEmpresasTests(APITestCase):
         self.assertEqual(nomes(HTTP_X_TENANT_ID=str(self.c.id)), [])          # não é dele: cai na de origem
         me = self.client.get("/api/auth/me/", HTTP_X_TENANT_ID=str(self.b.id)).json()
         self.assertEqual((me["acting_tenant"]["name"], [t["name"] for t in me["tenants"]]), ("Beta", ["Alfa", "Beta"]))
+        # papel é por empresa: admin na Alfa, só gestor na Beta — não mexe nos usuários de lá
+        self.assertEqual((me["role"], me["home_role"]), ("gestor", "admin"))
+        self.assertEqual(self.client.post("/api/users/", {"email": "x@beta.com", "first_name": "X", "role": "gestor"}, format="json", HTTP_X_TENANT_ID=str(self.b.id)).status_code, 403)
+        self.assertEqual(self.client.post("/api/users/", {"email": "x@alfa.com", "first_name": "X", "role": "gestor"}, format="json").status_code, 201)
 
     def test_vincular_por_email_e_cadastro_continua_na_origem(self):
         outro = User.objects.create_user("ana@gama.com", "x", first_name="Ana", tenant=self.c, role=User.Role.GESTOR)
         r = self.client.post("/api/users/vincular/", {"email": "ANA@gama.com"}, format="json")
-        self.assertEqual((r.status_code, r.json()["is_guest"]), (201, True))
+        self.assertEqual((r.status_code, r.json()["is_guest"], r.json()["role_here"], r.json()["tenant_names"]), (201, True, "colaborador", ["Gama", "Alfa"]))
+        self.assertEqual(self.client.post(f"/api/users/{outro.id}/papel-do-vinculo/", {"role": "gestor"}, format="json").json()["role_here"], "gestor")
         self.assertTrue(outro.belongs_to(self.a))
         self.assertEqual(self.client.patch(f"/api/users/{outro.id}/", {"role": "admin"}, format="json").status_code, 403)
         self.assertEqual(self.client.post(f"/api/users/{outro.id}/desvincular/").status_code, 204)

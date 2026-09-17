@@ -70,11 +70,16 @@ def painel_agenda(qs, de, ate, participante=None, tipo=None, total_usuarios=0):
     conflitos, vistos = [], set()
     for uid, lista in agenda_de.items():
         lista.sort(key=lambda m: m.starts_at)
-        for a, b in zip(lista, lista[1:]):
-            if b.starts_at < _fim(a) and (a.id, b.id) not in vistos:
-                vistos.add((a.id, b.id))
+        # Compara cada reunião com a que termina mais tarde entre as anteriores: uma reunião longa
+        # pode cobrir várias curtas, não só a vizinha.
+        longa = None
+        for m in lista:
+            if longa is not None and m.starts_at < _fim(longa) and (longa.id, m.id) not in vistos:
+                vistos.add((longa.id, m.id))
                 quem = next(n for (i, n) in carga if i == uid)
-                conflitos.append({"pessoa": quem, "a": a.title, "b": b.title, "quando": b.starts_at})
+                conflitos.append({"pessoa": quem, "a": longa.title, "b": m.title, "quando": m.starts_at})
+            if longa is None or _fim(m) > _fim(longa):
+                longa = m
 
     agora = timezone.now()
     local = timezone.localtime

@@ -43,4 +43,5 @@ def filtrar_indicadores(user, qs):
     setores = setores_permitidos(user)
     if setores is None:
         return qs
-    return qs.filter(Q(sector__in=setores) | Q(sector=""))
+    # O perfil é da empresa de origem: numa empresa vinculada vale só o papel que o vínculo dá.
+    return qs.filter(~Q(tenant_id=perfil(user).tenant_id) | Q(sector__in=setores) | Q(sector=""))

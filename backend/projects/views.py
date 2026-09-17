@@ -78,11 +78,11 @@ class ProjectViewSet(TenantScopedViewSet):
     def dashboard(self, request):
         """Painel consolidado. Filtros: ?map=, ?project=, ?objective=."""
         qs = self.get_queryset()
-        if request.query_params.get("map"):
+        if request.query_params.get("map", "").isdigit():
             qs = qs.filter(map_id=request.query_params["map"])
-        if request.query_params.get("project"):
+        if request.query_params.get("project", "").isdigit():
             qs = qs.filter(id=request.query_params["project"])
-        if request.query_params.get("objective"):
+        if request.query_params.get("objective", "").isdigit():
             qs = qs.filter(objectives=request.query_params["objective"])
         return Response(painel(list(qs.distinct())))
 
@@ -124,8 +124,13 @@ class ProjectActivityViewSet(_DoProjeto):
         atual = serializer.instance
         status = dados.get("status", atual.status if atual else Andamento.NAO_INICIADO)
         pct = dados.get("progress_pct", atual.progress_pct if atual else 0)
+        status_antigo = atual.status if atual else None
+        reabriu = atual is not None and status_antigo == Andamento.FINALIZADO and status != Andamento.FINALIZADO
         if status == Andamento.FINALIZADO:
             pct = 100
+        elif reabriu:
+            # Tirou de "finalizado" de propósito: o 100% que veio junto no formulário não pode finalizar de novo.
+            pct = min(pct, 99) if status != Andamento.NAO_INICIADO else 0
         elif pct >= 100 and "progress_pct" in dados:
             status = Andamento.FINALIZADO
         elif pct > 0 and status == Andamento.NAO_INICIADO:

@@ -39,6 +39,7 @@ function AbaStakeholders({ podeEditar, novo }: { podeEditar: boolean; novo: numb
   const [unidades, setUnidades] = useState<Unidade[]>([]);
   const [editing, setEditing] = useState<Partial<Stakeholder> | null>(null);
   const [busca, setBusca] = useState("");
+  const [erroSt, setErroSt] = useState("");
 
   const load = useCallback(() => {
     api.get<Stakeholder[]>("/api/stakeholders/").then(setLista).catch(() => setLista([]));
@@ -56,16 +57,20 @@ function AbaStakeholders({ podeEditar, novo }: { podeEditar: boolean; novo: numb
   const save = async () => {
     if (!editing?.name?.trim()) return;
     const body = { ...editing, org_unit: editing.org_unit || null, user: editing.user || null };
-    if (editing.id) await api.patch(`/api/stakeholders/${editing.id}/`, body);
-    else await api.post("/api/stakeholders/", body);
-    setEditing(null);
-    load();
+    try {
+      if (editing.id) await api.patch(`/api/stakeholders/${editing.id}/`, body);
+      else await api.post("/api/stakeholders/", body);
+      setEditing(null);
+      load();
+    } catch (e) { setErroSt(erroDaApi(e)); }
   };
   const remove = async () => {
     if (!editing?.id) return;
-    await api.del(`/api/stakeholders/${editing.id}/`);
-    setEditing(null);
-    load();
+    try {
+      await api.del(`/api/stakeholders/${editing.id}/`);
+      setEditing(null);
+      load();
+    } catch (e) { setErroSt(erroDaApi(e)); }
   };
 
   if (lista === null) return <Panel><Skeleton height={300} /></Panel>;
@@ -134,6 +139,7 @@ function AbaStakeholders({ podeEditar, novo }: { podeEditar: boolean; novo: numb
         <Modal.Body>
           {editing && (
             <div className="row g-3">
+              {erroSt && <div className="col-12"><Alert variant="danger" className="mb-0 py-2 small">{erroSt}</Alert></div>}
               <div className="col-md-6"><Form.Label>Nome</Form.Label><Form.Control autoFocus value={editing.name ?? ""} onChange={(e) => setEditing({ ...editing, name: e.target.value })} /></div>
               <div className="col-md-3"><Form.Label>Tipo</Form.Label>
                 <Form.Select value={editing.kind} onChange={(e) => setEditing({ ...editing, kind: e.target.value as any })}><option value="interno">Interno</option><option value="externo">Externo</option></Form.Select></div>
