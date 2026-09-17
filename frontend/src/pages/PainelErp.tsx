@@ -5,7 +5,7 @@ import { api } from "../api/client";
 import { useAuth } from "../auth/AuthContext";
 import { BAR_MAX_WIDTH, BAR_RADIUS_H, BAR_RADIUS_V, areaWash, vizTokens } from "../charts/theme";
 import { EChart } from "../components/EChart";
-import { ChartLegend, EmptyState, Panel, Skeleton, StatCard, StatusPill } from "../components/ui";
+import { ChartLegend, EmptyState, Panel, Skeleton, StatCard } from "../components/ui";
 import { useTheme } from "../hooks/useTheme";
 import { MONTHS_SHORT, fmtNumber, fmtPeriod } from "../utils/format";
 
@@ -20,26 +20,6 @@ interface Serie {
   recebido: number | null;
   despesas_pagas: number | null;
   compras_valor: number | null;
-}
-
-interface Conferencia {
-  id: number;
-  code: string;
-  name: string;
-  unit: string;
-  decimals: number;
-  erp_metric: string;
-  erp_metric_label: string;
-  erp_filters: { branch?: string | string[] };
-  entities: string[];
-  periodo: string;
-  valor_gravado: number | null;
-  calculado_em: string | null;
-  valor_erp: number | null;
-  meta: number | null;
-  achievement_pct: number | null;
-  status: string | null;
-  situacao: "confere" | "divergente" | "aguardando" | "sem_dados" | "sem_valor" | "metrica_invalida";
 }
 
 interface Painel {
@@ -60,18 +40,7 @@ interface Painel {
     departamentos: { name: string; valor: number | null; custo: number | null; margem_pct: number | null }[];
     produtos: { name: string; valor: number | null; quantidade: number | null }[];
   };
-  indicadores: Conferencia[];
-  resumo_conferencia: { total: number; confere: number; divergente: number; aguardando: number; sem_dados: number };
 }
-
-const SITUACAO: Record<Conferencia["situacao"], { label: string; cls: string; icon: string }> = {
-  confere: { label: "Confere", cls: "text-bg-success", icon: "bi-check-circle-fill" },
-  divergente: { label: "Divergente", cls: "text-bg-warning", icon: "bi-exclamation-triangle-fill" },
-  aguardando: { label: "Aguardando cálculo", cls: "text-bg-secondary", icon: "bi-hourglass-split" },
-  sem_dados: { label: "Sem dados no ERP", cls: "text-bg-light border", icon: "bi-database-x" },
-  sem_valor: { label: "ERP não retornou valor", cls: "text-bg-light border", icon: "bi-question-circle" },
-  metrica_invalida: { label: "Métrica inválida", cls: "text-bg-danger", icon: "bi-x-circle-fill" },
-};
 
 const money = (v: number | null | undefined, digits = 0) =>
   v === null || v === undefined ? "—" : v.toLocaleString("pt-BR", { style: "currency", currency: "BRL", maximumFractionDigits: digits, minimumFractionDigits: digits });
@@ -88,13 +57,6 @@ function moneyCompact(v: number | null | undefined) {
 
 const pct = (v: number | null | undefined, d = 1) => (v === null || v === undefined ? "—" : `${fmtNumber(v, d)}%`);
 const mesCurto = (iso: string) => `${MONTHS_SHORT[Number(iso.slice(5, 7)) - 1]}/${iso.slice(2, 4)}`;
-
-function valorFmt(v: number | null, unit: string, decimals: number) {
-  if (v === null || v === undefined) return "—";
-  if (unit === "R$") return money(v, Math.min(decimals, 2));
-  if (unit === "%") return `${fmtNumber(v, decimals)}%`;
-  return `${fmtNumber(v, decimals)} ${unit}`.trim();
-}
 
 function variacao(atual: number | null | undefined, anterior: number | null | undefined) {
   if (atual === null || atual === undefined || !anterior) return null;
@@ -114,8 +76,6 @@ export function PainelErp() {
   const [ate, setAte] = useState("");
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
-  const [notice, setNotice] = useState("");
-  const [busy, setBusy] = useState(false);
   const [aba, setAba] = useState<"vendedores" | "clientes" | "departamentos" | "produtos">("vendedores");
 
   const load = useCallback(async (refresh = false) => {
@@ -144,23 +104,6 @@ export function PainelErp() {
   useEffect(() => {
     load();
   }, [load]);
-
-  const recalcular = async () => {
-    setBusy(true);
-    try {
-      const conns = await api.get<{ id: number }[]>("/api/erp/connectors/");
-      if (conns.length === 0) {
-        setNotice("Nenhum conector configurado.");
-        return;
-      }
-      await api.post(`/api/erp/connectors/${conns[0].id}/recalcular/`, { meses });
-      setNotice("Recálculo enfileirado — os indicadores são refeitos em segundo plano; atualize em instantes.");
-    } catch (e: any) {
-      setNotice(e.message);
-    } finally {
-      setBusy(false);
-    }
-  };
 
   const serie = data?.serie ?? [];
   const meseslabels = serie.map((s) => mesCurto(s.periodo));
@@ -293,7 +236,7 @@ export function PainelErp() {
         <EmptyState
           icon="bi-database"
           title="O espelho do ERP ainda está vazio"
-          hint="Assim que o agente começar a enviar dados, este painel monta os números e a conferência dos indicadores."
+          hint="Assim que o agente começar a enviar dados, este painel monta os números."
           action={isAdmin ? <Link className="btn btn-primary" to="/admin/conector"><i className="bi bi-robot me-1" />Ver o conector</Link> : undefined}
         />
       </Panel>
@@ -302,7 +245,6 @@ export function PainelErp() {
 
   const a = data.foto.atual;
   const ant = data.foto.mes_anterior;
-  const res = data.resumo_conferencia;
   const mesRef = fmtPeriod(data.foto.periodo);
 
   const nMeses = data.foto.meses ?? 1;
@@ -350,12 +292,6 @@ export function PainelErp() {
         </span>
       </div>
 
-      {notice && (
-        <div className="alert alert-info py-2 small mb-0 d-flex align-items-center">
-          <i className="bi bi-info-circle me-2" />{notice}
-          <button className="btn-close ms-auto" onClick={() => setNotice("")} />
-        </div>
-      )}
 
       {/* Cartões do período selecionado */}
       {nMeses > 1 && (
@@ -460,65 +396,6 @@ export function PainelErp() {
         </div>
       </div>
 
-      {/* Conferência dos indicadores — o coração da página */}
-      <Panel
-        title="Conferência dos indicadores ligados ao ERP"
-        subtitle={`${res.confere} de ${res.total} conferem · ${res.divergente} divergentes · ${res.aguardando} aguardando cálculo · ${res.sem_dados} sem dados`}
-        actions={isAdmin && (
-          <Button size="sm" variant="outline-primary" onClick={recalcular} disabled={busy}>
-            <i className="bi bi-calculator me-1" />Recalcular indicadores
-          </Button>
-        )}
-      >
-        {data.indicadores.length === 0 ? (
-          <EmptyState icon="bi-link-45deg" title="Nenhum indicador ligado ao ERP" hint="Em Indicadores, vincule um KPI a uma métrica do ERP para ele ser calculado do espelho." />
-        ) : (
-          <div className="table-responsive">
-            <table className="table table-sm align-middle mb-0">
-              <thead>
-                <tr>
-                  <th>Indicador</th>
-                  <th>Métrica do ERP</th>
-                  <th>Período</th>
-                  <th className="text-end">Gravado no KPI</th>
-                  <th className="text-end">ERP agora</th>
-                  <th className="text-end">Meta</th>
-                  <th>Farol</th>
-                  <th>Situação</th>
-                </tr>
-              </thead>
-              <tbody>
-                {data.indicadores.map((c) => {
-                  const s = SITUACAO[c.situacao];
-                  const filiais = ([] as string[]).concat(c.erp_filters?.branch ?? []);
-                  const filtro = filiais.length ? ` · ${filiais.length > 1 ? "filiais" : "filial"} ${filiais.join(", ")}` : "";
-                  return (
-                    <tr key={c.id}>
-                      <td>
-                        <Link to={`/indicadores/${c.id}`} className="fw-semibold text-decoration-none">{c.code}</Link>
-                        <div className="small text-muted-2">{c.name}</div>
-                      </td>
-                      <td className="small">{c.erp_metric_label}<span className="text-muted-2">{filtro}</span></td>
-                      <td className="small text-nowrap">{fmtPeriod(c.periodo)}</td>
-                      <td className="text-end text-nowrap">
-                        {valorFmt(c.valor_gravado, c.unit, c.decimals)}
-                        {c.calculado_em && <div className="small text-muted-2">{new Date(c.calculado_em).toLocaleString("pt-BR", { day: "2-digit", month: "2-digit", hour: "2-digit", minute: "2-digit" })}</div>}
-                      </td>
-                      <td className={`text-end text-nowrap ${c.situacao === "divergente" ? "fw-semibold" : ""}`}>{valorFmt(c.valor_erp, c.unit, c.decimals)}</td>
-                      <td className="text-end text-nowrap">{valorFmt(c.meta, c.unit, c.decimals)}</td>
-                      <td>{c.status ? <StatusPill status={c.status} compact /> : <span className="text-muted-2">—</span>}</td>
-                      <td><span className={`badge ${s.cls}`}><i className={`bi ${s.icon} me-1`} />{s.label}</span></td>
-                    </tr>
-                  );
-                })}
-              </tbody>
-            </table>
-          </div>
-        )}
-        <div className="small text-muted-2 mt-2">
-          <strong>Confere</strong>: o valor do KPI é exatamente o que o espelho do ERP dá hoje. <strong>Divergente</strong>: a carga avançou desde o último cálculo (ou a regra mudou) — recalcule. <strong>Aguardando</strong>: o ERP já tem dados, mas o cálculo automático ainda não rodou (roda a cada 30 min).
-        </div>
-      </Panel>
 
     </div>
   );
