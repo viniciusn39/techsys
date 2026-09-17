@@ -115,7 +115,9 @@ def bootstrap_tenant(tenant, *, year=None):
         defaults={"name": tenant.name},
     )
 
-    strategic_map = StrategicMap.objects.filter(tenant=tenant, is_active=True).first()
+    from .current import mapa_padrao
+
+    strategic_map = mapa_padrao(tenant)   # qualquer planejamento já existente serve: não cria um segundo
     if strategic_map is None:
         strategic_map = StrategicMap.objects.create(
             tenant=tenant,

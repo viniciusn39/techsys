@@ -43,11 +43,9 @@ def gerar_insight(insight_id):
     try:
         if insight.kind == AIInsight.Kind.SUGESTAO_MAPA:
             from indicators.models import Indicator
-            from strategy.models import StrategicMap
+            from strategy.current import mapa_padrao
 
-            smap = StrategicMap.objects.filter(
-                tenant=insight.tenant, is_active=True
-            ).prefetch_related("perspectives").first()
+            smap = mapa_padrao(insight.tenant)
             if smap is None:
                 raise AIProviderError("A empresa não tem um mapa estratégico ativo.")
 

@@ -54,6 +54,7 @@ class ObjectiveNestedSerializer(StrategicObjectiveSerializer):
                 "code": i.code,
                 "name": i.name,
                 "last_status": last.status if (last := i.values.order_by("-period").first()) else None,
+                "last_achievement_pct": last.achievement_pct if last else None,
             }
             for i in obj.indicators.filter(is_active=True)
         ]

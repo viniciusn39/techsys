@@ -77,6 +77,21 @@ export function Cultura() {
           })}
         </div>
       </Panel>
+
+      <Panel title="Resumo da cultura" subtitle="Visão geral dos elementos culturais definidos">
+        <div className="row g-3 text-center">
+          {CAMPOS.filter((c) => c.key !== "values_text").map((c) => {
+            const ok = !!((mapa[c.key] as string) || "").trim();
+            return (
+              <div className="col-6 col-md-3" key={c.key}>
+                <div className="fs-4" style={{ color: ok ? "var(--st-verde)" : "var(--ink-muted)" }}><i className={`bi ${ok ? "bi-check-circle" : "bi-circle"}`} aria-label={ok ? "Definido" : "A definir"} /></div>
+                <div className="small text-muted-2">{c.label}{!ok && " · a definir"}</div>
+              </div>
+            );
+          })}
+          <div className="col-6 col-md-3"><div className="fs-4 fw-semibold">{valores.length}</div><div className="small text-muted-2">Valores</div></div>
+        </div>
+      </Panel>
     </div>
   );
 }

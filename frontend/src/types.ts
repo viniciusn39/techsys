@@ -68,7 +68,7 @@ export interface Objective {
   /** Posição no diagrama, em % da faixa. Nulo = auto-layout. */
   pos_x: number | null;
   pos_y: number | null;
-  indicators?: { id: number; code: string; name: string; last_status: Farol }[];
+  indicators?: { id: number; code: string; name: string; last_status: Farol; last_achievement_pct?: string | number | null }[];
 }
 
 export interface MapSuggestionObjective {

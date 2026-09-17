@@ -30,6 +30,19 @@ const PERSPECTIVE_COLORS = [
 
 type View = "diagrama" | "faixas";
 
+/** Atingimento médio (% da meta) dos indicadores medidos — o "K" do BSC. Teto de 150% por indicador. */
+function atingimento(objs: { indicators?: { last_achievement_pct?: string | number | null }[] }[]): number | null {
+  const pcts = objs.flatMap((o) => o.indicators ?? []).map((i) => i.last_achievement_pct).filter((v) => v !== null && v !== undefined && v !== "").map((v) => Math.min(Number(v), 150));
+  return pcts.length ? pcts.reduce((a, b) => a + b, 0) / pcts.length : null;
+}
+
+function SeloAtingimento({ pct }: { pct: number | null }) {
+  if (pct === null) return null;
+  const cls = pct >= 100 ? "st-verde" : pct >= 90 ? "st-amarelo" : "st-vermelho";
+  const icon = pct >= 100 ? "bi-check-circle" : pct >= 90 ? "bi-dash-circle" : "bi-exclamation-circle";
+  return <span className={`status-pill ${cls}`} title="Atingimento médio das metas dos indicadores"><i className={`bi ${icon}`} aria-hidden="true" />{pct.toLocaleString("pt-BR", { maximumFractionDigits: 1 })}%</span>;
+}
+
 export function MapaEstrategico() {
   const { isDark } = useTheme();
   const t = vizTokens(isDark);
@@ -492,6 +505,7 @@ export function MapaEstrategico() {
                   <div className="perspective-name">
                     <i className={`bi ${PERSPECTIVE_ICONS[p.name] ?? "bi-bookmark"} me-1`} />
                     {p.name}
+                    <span className="ms-2"><SeloAtingimento pct={atingimento(p.objectives ?? [])} /></span>
                   </div>
                   <div className="d-flex align-items-center gap-2">
                     <Button
@@ -532,6 +546,7 @@ export function MapaEstrategico() {
                           <div className="meta mt-1"><i className="bi bi-person me-1" />{o.owner_name}</div>
                         )}
                         <div className="d-flex align-items-center gap-1 mt-2 flex-wrap">
+                          <SeloAtingimento pct={atingimento([o])} />
                           {(o.indicators ?? []).map((i) => (
                             <span key={i.id} title={`${i.code} — ${i.name}`}>
                               <StatusDot status={i.last_status} />

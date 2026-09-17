@@ -70,6 +70,7 @@ export function Canvas() {
           <div key={b.key} style={{ gridArea: b.area, border: "1px solid var(--border)", borderRadius: 10, minHeight: 170, display: "flex", flexDirection: "column" }}>
             <div className="d-flex align-items-center gap-2 px-2 py-2 text-white" style={{ background: b.color, borderRadius: "10px 10px 0 0", fontSize: "0.78rem", fontWeight: 600, letterSpacing: 0.3 }}>
               <i className={`bi ${b.icon}`} />{b.label.toUpperCase()}
+              <span className="badge rounded-pill text-bg-light fw-semibold" title="Itens neste bloco">{(porBloco[b.key] ?? []).length}</span>
               <button className="btn btn-sm btn-link text-white p-0 ms-auto no-print" title="Adicionar" onClick={() => setNovo({ block: b.key, text: "" })}><i className="bi bi-plus-lg" /></button>
             </div>
             <div className="p-2 d-grid gap-2 align-content-start flex-grow-1">
