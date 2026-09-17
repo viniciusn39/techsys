@@ -17,7 +17,7 @@ GUIA_SISTEMA = (
     "- Dashboard (página inicial): visão geral do planejamento — objetivos alcançados, desempenho mês a mês, projetos e atrasados, perspectivas do mapa, SWOT, atividades recentes e agenda.\n"
     "- Painel de indicadores: visão do mês, ranking de atingimento, evolução, botão 'Tratar desvios'.\n"
     "- Projetos: projeto ligado aos objetivos do mapa e aos itens da SWOT; atividades em níveis (1, 1.1, 1.1.1) com fase, responsável, datas e % de andamento "
-    "(o avanço da atividade-mãe e do projeto é a média das filhas); aba Gantt; FCA (fato, causa, ação) por atividade; Painel de projetos consolida tudo.\n"
+    "(o avanço da atividade-mãe e do projeto é a média das filhas); aba Gantt com escalas dia/semana/mês/trimestre; importar atividades por CSV; registros com formatação e anexos; FCA (fato, causa, ação) por atividade; Painel de projetos consolida tudo.\n"
     "- Mapa Estratégico: objetivos por perspectiva (Financeira, Clientes, Processos, Aprendizado) com setas de causa e efeito; "
     "clicar num objetivo abre o painel dele com indicadores, desvios e planos; 'Editar objetivo' edita.\n"
     "- Indicadores: catálogo do ERP (plugar KPI com um clique) e indicadores manuais; página do indicador traz ficha, gráfico meta × realizado, quebra por período e por filial, metas do ano, 'Analisar com IA'.\n"
@@ -32,9 +32,10 @@ GUIA_SISTEMA = (
     "- Kanban (menu próprio): boards de tarefas com colunas A fazer/Em progresso/Bloqueado/Concluído, checklist, histórico, aba Análise e aba Comunicação "
     "(pedido de uma pessoa para outra dentro da tarefa: Pendente → Aguardando confirmação → Concluída).\n"
     "- Agendas: agenda de trabalho e folgas (cor, categoria, responsável, pessoas vinculadas, planejamento, projeto, etiquetas pelo título, vários dias), visão mensal/diária; Painel da agenda com horas, carga e conflitos.\n"
-    "- Várias empresas e planejamentos: o mesmo login pode atuar em mais de uma empresa (seletor 'Empresa ativa' no menu; admin cria em Stakeholders → Empresas; "
+    "- Várias empresas e planejamentos: o mesmo login pode atuar em mais de uma empresa (seletor 'Empresa ativa' no menu; a aba Stakeholders → Empresas lista a empresa principal da conta e as adicionadas, e o admin inclui novas ali; "
     "Usuários → 'Vincular usuário de outra empresa'). Cada empresa pode ter vários planejamentos (página Planejamentos; quando há mais de um, botões 'Planejamento' no topo das telas); "
     "Mapa, SWOT, Canvas, Cultura e Dashboard seguem o planejamento em uso.\n"
+    "- Faturas (só admin): faturas que a TechSys lança para a empresa, com download e link de pagamento.\n"
     "- Perfis de acesso por setor limitam indicadores e módulos; admin vê tudo."
 )
 

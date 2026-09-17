@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Alert, Button, Form, Modal, Nav } from "react-bootstrap";
 import { Link, useNavigate, useParams } from "react-router-dom";
 import { ApiError, api } from "../api/client";
@@ -8,6 +8,8 @@ import {
   ANDAMENTO, AndamentoPill, Avanco, FASES, FCA_STATUS, LegendaAvanco, corAvanco, nomeUsuario,
   type Atividade, type Fca, type Projeto, type Usuario,
 } from "../components/projetos";
+import { Anexos } from "../components/Anexos";
+import { EditorTexto } from "../components/EditorTexto";
 import { EmptyState, Panel, Skeleton, StatCard } from "../components/ui";
 import { useTheme } from "../hooks/useTheme";
 import { fmtDate } from "../utils/format";
@@ -25,70 +27,105 @@ const erroDaApi = (e: unknown) => {
 const DIA = 86_400_000;
 const dia = (iso: string) => new Date(`${iso}T00:00:00`).getTime();
 
+type Zoom = "dia" | "semana" | "mes" | "trimestre";
+const PX_POR_DIA: Record<Zoom, number> = { dia: 30, semana: 9, mes: 3.6, trimestre: 1.5 };
+const ZOOMS: [Zoom, string][] = [["dia", "Dia"], ["semana", "Semana"], ["mes", "Mês"], ["trimestre", "Trimestre"]];
+
 function Gantt({ projeto, linhas }: { projeto: Projeto; linhas: Atividade[] }) {
   const { isDark } = useTheme();
   const t = vizTokens(isDark);
+  const [zoom, setZoom] = useState<Zoom>("mes");
   const datas = [projeto.start_date, projeto.end_date, ...linhas.flatMap((a) => [a.start_date, a.end_date])].filter(Boolean) as string[];
   const min = new Date(Math.min(...datas.map(dia)));
   const max = new Date(Math.max(...datas.map(dia)));
   const ini = new Date(min.getFullYear(), min.getMonth(), 1).getTime();
   const fim = new Date(max.getFullYear(), max.getMonth() + 1, 1).getTime();
-  const total = fim - ini;
-  const pos = (ms: number) => ((ms - ini) / total) * 100;
+  const px = PX_POR_DIA[zoom];
+  const pos = (ms: number) => ((ms - ini) / DIA) * px;
+  const largura = pos(fim);
 
-  const meses: { label: string; left: number; width: number }[] = [];
-  for (let d = new Date(ini); d.getTime() < fim; d = new Date(d.getFullYear(), d.getMonth() + 1, 1)) {
-    const prox = new Date(d.getFullYear(), d.getMonth() + 1, 1).getTime();
-    meses.push({ label: d.toLocaleDateString("pt-BR", { month: "short", year: "2-digit" }).replace(".", ""), left: pos(d.getTime()), width: pos(prox) - pos(d.getTime()) });
+  // Marcas do cabeçalho conforme o zoom: dias, semanas (segundas), meses ou trimestres.
+  const marcas: { label: string; left: number; width: number; forte?: boolean }[] = [];
+  const mes = (d: Date) => d.toLocaleDateString("pt-BR", { month: "short", year: "2-digit" }).replace(".", "");
+  if (zoom === "dia" || zoom === "semana") {
+    for (let d = new Date(ini); d.getTime() < fim; d.setDate(d.getDate() + 1)) {
+      const segunda = d.getDay() === 1;
+      if (zoom === "dia") marcas.push({ label: String(d.getDate()), left: pos(d.getTime()), width: px, forte: d.getDate() === 1 });
+      else if (segunda) marcas.push({ label: `${String(d.getDate()).padStart(2, "0")}/${String(d.getMonth() + 1).padStart(2, "0")}`, left: pos(d.getTime()), width: px * 7 });
+    }
+  } else {
+    const passo = zoom === "mes" ? 1 : 3;
+    for (let d = new Date(new Date(ini).getFullYear(), Math.floor(new Date(ini).getMonth() / passo) * passo, 1); d.getTime() < fim; d = new Date(d.getFullYear(), d.getMonth() + passo, 1)) {
+      const prox = new Date(d.getFullYear(), d.getMonth() + passo, 1).getTime();
+      const left = Math.max(0, pos(d.getTime()));
+      marcas.push({ label: zoom === "mes" ? mes(d) : `${Math.floor(d.getMonth() / 3) + 1}º tri/${String(d.getFullYear()).slice(2)}`, left, width: Math.min(largura, pos(prox)) - left });
+    }
   }
+  const mesesTopo: { label: string; left: number; width: number }[] = [];
+  if (zoom === "dia" || zoom === "semana") {
+    for (let d = new Date(ini); d.getTime() < fim; d = new Date(d.getFullYear(), d.getMonth() + 1, 1)) {
+      const prox = new Date(d.getFullYear(), d.getMonth() + 1, 1).getTime();
+      mesesTopo.push({ label: mes(d), left: pos(d.getTime()), width: pos(prox) - pos(d.getTime()) });
+    }
+  }
+  const alturaTopo = mesesTopo.length ? 48 : 32;
   const hoje = Date.now();
-  const largura = Math.max(560, meses.length * 110);
 
   return (
-    <div className="d-flex" style={{ border: "1px solid var(--border)", borderRadius: 8, overflow: "hidden" }}>
-      <div style={{ width: 300, flexShrink: 0, borderRight: "1px solid var(--border)" }}>
-        <div className="px-2 small text-muted-2 text-uppercase fw-semibold d-flex align-items-center" style={{ height: 32, background: "var(--surface-sunken)", fontSize: "0.7rem" }}>Atividade</div>
-        {linhas.map((a) => (
-          <div key={a.id} className="px-2 d-flex align-items-center gap-2 small" style={{ height: 32, borderTop: "1px solid var(--border)" }}>
-            <span className={`text-truncate flex-grow-1 ${a.depth === 0 ? "fw-semibold" : ""}`} style={{ paddingLeft: a.depth * 12 }} title={a.title}>
-              <span className="text-muted-2 me-1">{a.wbs}</span>{a.title}
-            </span>
-            <span className="num text-muted-2">{a.progress}%</span>
-          </div>
-        ))}
+    <>
+      <div className="d-flex align-items-center gap-2 mb-2 d-print-none">
+        <span className="small text-muted-2"><i className="bi bi-zoom-in me-1" />Escala:</span>
+        <div className="btn-group btn-group-sm" role="group" aria-label="Escala do Gantt">
+          {ZOOMS.map(([k, l]) => <button key={k} type="button" className={`btn ${zoom === k ? "btn-primary" : "btn-outline-secondary"}`} onClick={() => setZoom(k)}>{l}</button>)}
+        </div>
+        <span className="small text-muted-2 ms-auto">{linhas.length} item(ns) · arraste a barra de rolagem para navegar</span>
       </div>
-      <div style={{ overflowX: "auto", flexGrow: 1 }}>
-        <div style={{ minWidth: largura, width: "100%", position: "relative" }}>
-          <div style={{ height: 32, position: "relative", background: "var(--surface-sunken)" }}>
-            {meses.map((m) => (
-              <div key={m.left} className="small text-muted-2 text-center" style={{ position: "absolute", left: `${m.left}%`, width: `${m.width}%`, lineHeight: "32px", borderLeft: "1px solid var(--border)", fontSize: "0.72rem" }}>{m.label}</div>
-            ))}
-          </div>
-          {linhas.map((a) => {
-            const temDatas = a.start_date && a.end_date;
-            const left = temDatas ? pos(dia(a.start_date!)) : 0;
-            const width = temDatas ? Math.max(0.8, pos(dia(a.end_date!) + DIA) - left) : 0;
-            const cor = corAvanco(t, a.progress, a.late);
-            return (
-              <div key={a.id} style={{ height: 32, position: "relative", borderTop: "1px solid var(--border)" }}>
-                {meses.map((m) => <div key={m.left} style={{ position: "absolute", left: `${m.left}%`, top: 0, bottom: 0, borderLeft: "1px solid var(--border)" }} />)}
-                {temDatas ? (
-                  <div title={`${a.title} · ${fmtDate(a.start_date)} a ${fmtDate(a.end_date)} · ${a.progress}%${a.late ? " · atrasada" : ""}`}
-                    style={{ position: "absolute", left: `${left}%`, width: `${width}%`, top: a.has_children ? 11 : 8, height: a.has_children ? 10 : 16, borderRadius: 4, border: `1px solid ${cor}`, background: "var(--surface)", overflow: "hidden" }}>
-                    <div style={{ width: `${a.progress}%`, height: "100%", background: cor, opacity: a.has_children ? 0.55 : 0.85 }} />
-                  </div>
-                ) : <span className="small text-muted-2" style={{ position: "absolute", left: 8, lineHeight: "32px", fontSize: "0.72rem" }}>sem datas</span>}
-              </div>
-            );
-          })}
-          {hoje >= ini && hoje <= fim && (
-            <div style={{ position: "absolute", left: `${pos(hoje)}%`, top: 0, bottom: 0, borderLeft: `2px solid ${t.status.vermelho}` }}>
-              <span className="small" style={{ position: "absolute", top: 34, left: 4, color: t.status.vermelho, background: "var(--surface)", padding: "0 2px", lineHeight: 1, fontSize: "0.68rem", fontWeight: 600 }}>hoje</span>
+      <div className="d-flex" style={{ border: "1px solid var(--border)", borderRadius: 8, overflow: "hidden" }}>
+        <div style={{ width: 300, flexShrink: 0, borderRight: "1px solid var(--border)" }}>
+          <div className="px-2 small text-muted-2 text-uppercase fw-semibold d-flex align-items-end pb-1" style={{ height: alturaTopo, background: "var(--surface-sunken)", fontSize: "0.7rem" }}>Atividade</div>
+          {linhas.map((a) => (
+            <div key={a.id} className="px-2 d-flex align-items-center gap-2 small" style={{ height: 32, borderTop: "1px solid var(--border)" }}>
+              <span className={`text-truncate flex-grow-1 ${a.depth === 0 ? "fw-semibold" : ""}`} style={{ paddingLeft: a.depth * 12 }} title={a.title}>
+                <span className="text-muted-2 me-1">{a.wbs}</span>{a.title}
+              </span>
+              <span className="num text-muted-2">{a.progress}%</span>
             </div>
-          )}
+          ))}
+        </div>
+        <div style={{ overflowX: "auto", flexGrow: 1 }}>
+          <div style={{ width: largura, minWidth: "100%", position: "relative" }}>
+            <div style={{ height: alturaTopo, position: "relative", background: "var(--surface-sunken)" }}>
+              {mesesTopo.map((m) => <div key={`t${m.left}`} className="text-muted-2 fw-semibold text-capitalize" style={{ position: "absolute", left: m.left, width: m.width, top: 0, lineHeight: "20px", paddingLeft: 6, borderLeft: "1px solid var(--border)", fontSize: "0.72rem", overflow: "hidden", whiteSpace: "nowrap" }}>{m.label}</div>)}
+              {marcas.map((m) => (
+                <div key={m.left} className="text-muted-2 text-center text-capitalize" style={{ position: "absolute", left: m.left, width: m.width, bottom: 0, lineHeight: mesesTopo.length ? "26px" : "32px", borderLeft: `1px solid ${m.forte ? "var(--ink-muted)" : "var(--border)"}`, fontSize: "0.7rem", overflow: "hidden", whiteSpace: "nowrap" }}>{m.label}</div>
+              ))}
+            </div>
+            {linhas.map((a) => {
+              const temDatas = a.start_date && a.end_date;
+              const left = temDatas ? pos(dia(a.start_date!)) : 0;
+              const width = temDatas ? Math.max(6, pos(dia(a.end_date!) + DIA) - left) : 0;
+              const cor = corAvanco(t, a.progress, a.late);
+              return (
+                <div key={a.id} style={{ height: 32, position: "relative", borderTop: "1px solid var(--border)" }}>
+                  {(zoom === "dia" ? marcas.filter((m) => m.forte) : marcas).map((m) => <div key={m.left} style={{ position: "absolute", left: m.left, top: 0, bottom: 0, borderLeft: "1px solid var(--border)" }} />)}
+                  {temDatas ? (
+                    <div title={`${a.title} · ${fmtDate(a.start_date)} a ${fmtDate(a.end_date)} · ${a.progress}%${a.late ? " · atrasada" : ""}`}
+                      style={{ position: "absolute", left, width, top: a.has_children ? 11 : 8, height: a.has_children ? 10 : 16, borderRadius: 4, border: `1px solid ${cor}`, background: "var(--surface)", overflow: "hidden" }}>
+                      <div style={{ width: `${a.progress}%`, height: "100%", background: cor, opacity: a.has_children ? 0.55 : 0.85 }} />
+                    </div>
+                  ) : <span className="small text-muted-2" style={{ position: "absolute", left: 8, lineHeight: "32px", fontSize: "0.72rem" }}>sem datas</span>}
+                </div>
+              );
+            })}
+            {hoje >= ini && hoje <= fim && (
+              <div style={{ position: "absolute", left: pos(hoje), top: alturaTopo, bottom: 0, borderLeft: `2px solid ${t.status.vermelho}` }}>
+                <span className="small" style={{ position: "absolute", top: 2, left: 4, color: t.status.vermelho, background: "var(--surface)", padding: "0 2px", lineHeight: 1, fontSize: "0.68rem", fontWeight: 600 }}>hoje</span>
+              </div>
+            )}
+          </div>
         </div>
       </div>
-    </div>
+    </>
   );
 }
 
@@ -115,6 +152,9 @@ export function ProjetoDetalhe() {
   const [ativ, setAtiv] = useState<Partial<Atividade> | null>(null);
   const [fca, setFca] = useState<Partial<Fca> | null>(null);
   const [erro, setErro] = useState("");
+  const [importacao, setImportacao] = useState<{ criadas?: number; avisos?: string[]; erro?: string; enviando?: boolean } | null>(null);
+  const [confirmaExcluir, setConfirmaExcluir] = useState(false);
+  const arquivoCsv = useRef<HTMLInputElement>(null);
 
   const load = useCallback(() => {
     api.get<Projeto>(`/api/projects/${id}/`).then(setProjeto).catch(() => setNaoAchou(true));
@@ -196,6 +236,19 @@ export function ProjetoDetalhe() {
   };
   const novoFca = (a: Atividade | null) => { setErro(""); setFca({ activity: a?.id, status: "em_andamento", responsible: a?.responsible ?? me?.id ?? null }); };
 
+  const importar = async (arquivo: File | undefined) => {
+    if (!arquivo) return;
+    setImportacao({ enviando: true });
+    const form = new FormData();
+    form.append("file", arquivo);
+    try {
+      const r = await api.upload<{ criadas: number; avisos: string[] }>(`/api/projects/${id}/importar/`, form);
+      setImportacao(r);
+      load();
+    } catch (e) { setImportacao({ erro: erroDaApi(e) }); }
+    if (arquivoCsv.current) arquivoCsv.current.value = "";
+  };
+
   const exportar = () => {
     const cel = (v: unknown) => `"${String(v ?? "").replace(/"/g, '""')}"`;
     const csv = [["EAP", "Atividade", "Responsável", "Fase", "Início", "Fim", "Situação", "Avanço %", "Atrasada"],
@@ -270,6 +323,7 @@ export function ProjetoDetalhe() {
                 </Form.Select>
                 <Form.Check type="switch" id="so-atrasadas" className="small" label="Só atrasadas" checked={soAtrasadas} onChange={(e) => setSoAtrasadas(e.target.checked)} />
                 <Button size="sm" variant="outline-secondary" onClick={exportar} disabled={linhas.length === 0} title="Exportar CSV"><i className="bi bi-download" /></Button>
+                {podeEditar && <Button size="sm" variant="outline-secondary" onClick={() => setImportacao({})} title="Importar atividades de uma planilha (CSV)"><i className="bi bi-upload" /></Button>}
                 <Button size="sm" variant="outline-secondary" onClick={() => window.print()} title="Imprimir"><i className="bi bi-printer" /></Button>
               </>
             )}
@@ -355,7 +409,7 @@ export function ProjetoDetalhe() {
         ))}
       </Panel>
 
-      <Modal show={!!ativ} onHide={() => setAtiv(null)} size="lg" scrollable>
+      <Modal show={!!ativ} onHide={() => { setAtiv(null); setConfirmaExcluir(false); }} size="lg" scrollable>
         <Modal.Header closeButton><Modal.Title>{ativ?.id ? `Atividade ${ativ.wbs ?? ""}` : ativ?.parent ? "Nova subatividade" : "Nova atividade"}</Modal.Title></Modal.Header>
         <Modal.Body>
           {ativ && (
@@ -384,15 +438,37 @@ export function ProjetoDetalhe() {
                   ? <div className="pt-1"><Avanco progress={ativ.progress ?? 0} late={ativ.late} width={220} /></div>
                   : <Form.Range min={0} max={100} step={5} value={ativ.progress_pct ?? 0} onChange={(e) => setAtiv({ ...ativ, progress_pct: Number(e.target.value) })} />}
               </div>
-              <div className="col-12"><Form.Label>Registros (o que foi feito, decisões, pendências)</Form.Label><Form.Control as="textarea" rows={4} value={ativ.notes ?? ""} onChange={(e) => setAtiv({ ...ativ, notes: e.target.value })} /></div>
+              <div className="col-12"><Form.Label>Registros (o que foi feito, decisões, pendências)</Form.Label>
+                <EditorTexto value={ativ.notes ?? ""} onChange={(v) => setAtiv({ ...ativ, notes: v })} rows={5} placeholder="Use a barra para títulos, negrito e listas" /></div>
+              <div className="col-12"><Anexos kind="project_activity" objectId={ativ.id} podeEnviar={podeEditar} /></div>
             </div>
           )}
         </Modal.Body>
         <Modal.Footer>
-          {ativ?.id && <Button variant="outline-danger" className="me-auto" onClick={excluirAtiv} title={ativ.has_children ? "Exclui também as subatividades" : undefined}>Excluir{ativ.has_children ? " com subatividades" : ""}</Button>}
+          {ativ?.id && (confirmaExcluir
+            ? <span className="me-auto d-flex align-items-center gap-2 small"><span style={{ color: "var(--st-vermelho)" }}>Excluir{ativ.has_children ? " com todas as subatividades," : ""} FCAs e anexos?</span><Button size="sm" variant="danger" onClick={() => { setConfirmaExcluir(false); excluirAtiv(); }}>Sim, excluir</Button><Button size="sm" variant="outline-secondary" onClick={() => setConfirmaExcluir(false)}>Não</Button></span>
+            : <Button variant="outline-danger" className="me-auto" onClick={() => setConfirmaExcluir(true)}>Excluir{ativ.has_children ? " com subatividades" : ""}</Button>)}
           <Button variant="outline-secondary" onClick={() => setAtiv(null)}>Cancelar</Button>
           <Button onClick={salvarAtiv}>Salvar</Button>
         </Modal.Footer>
+      </Modal>
+
+      <Modal show={!!importacao} onHide={() => setImportacao(null)}>
+        <Modal.Header closeButton><Modal.Title>Importar atividades</Modal.Title></Modal.Header>
+        <Modal.Body>
+          <p className="small">Envie um arquivo <strong>CSV</strong> (separado por ponto e vírgula) com as colunas: <code>EAP; Atividade; Responsável; Fase; Início; Fim; Situação; Avanço %</code>. Só “Atividade” é obrigatória. A hierarquia vem da coluna EAP (1, 1.1, 1.1.1…).</p>
+          <p className="small text-muted-2">O jeito mais fácil: use <Button variant="link" size="sm" className="p-0 align-baseline" onClick={exportar} disabled={linhas.length === 0}>Exportar</Button> para baixar o modelo, edite no Excel e salve como CSV. As atividades importadas são acrescentadas às que já existem.</p>
+          <input ref={arquivoCsv} type="file" accept=".csv,text/csv" className="form-control" disabled={importacao?.enviando} onChange={(e) => importar(e.target.files?.[0])} />
+          {importacao?.enviando && <div className="small text-muted-2 mt-2">Importando…</div>}
+          {importacao?.erro && <Alert variant="danger" className="mt-3 mb-0 py-2 small">{importacao.erro}</Alert>}
+          {importacao?.criadas !== undefined && (
+            <Alert variant={importacao.avisos?.length ? "warning" : "success"} className="mt-3 mb-0 py-2 small">
+              <strong>{importacao.criadas} atividade(s) importada(s).</strong>
+              {!!importacao.avisos?.length && <ul className="mb-0 mt-1 ps-3">{importacao.avisos.map((a, i) => <li key={i}>{a}</li>)}</ul>}
+            </Alert>
+          )}
+        </Modal.Body>
+        <Modal.Footer><Button variant="outline-secondary" onClick={() => setImportacao(null)}>Fechar</Button></Modal.Footer>
       </Modal>
 
       <Modal show={!!fca} onHide={() => setFca(null)} size="lg">

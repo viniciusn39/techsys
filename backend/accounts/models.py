@@ -19,6 +19,8 @@ class Tenant(models.Model):
     email = models.EmailField("e-mail", blank=True)
     phone = models.CharField("telefone", max_length=30, blank=True)
     logo = models.FileField(upload_to="logos/", null=True, blank=True)
+    # Conta: a empresa principal (parent nulo) e as empresas que o cliente adicionou a ela.
+    parent = models.ForeignKey("self", on_delete=models.PROTECT, null=True, blank=True, related_name="children", verbose_name="empresa principal")
     is_active = models.BooleanField(default=True)
     created_at = models.DateTimeField(auto_now_add=True)
 
@@ -27,6 +29,11 @@ class Tenant(models.Model):
 
     def __str__(self):
         return self.name
+
+    @property
+    def conta(self):
+        """A empresa principal da conta a que esta empresa pertence (ela mesma, se for a principal)."""
+        return self.parent or self
 
 
 class TenantOwnedModel(models.Model):

@@ -329,7 +329,10 @@ class VariasEmpresasTests(APITestCase):
     def test_admin_abre_outra_empresa_e_ja_entra_nela(self):
         r = self.client.post("/api/empresas/", {"name": "Alfa Filial", "cnpj": "1"}, format="json")
         self.assertEqual(r.status_code, 201, r.content)
-        self.assertEqual([e["name"] for e in self.client.get("/api/empresas/").json()], ["Alfa", "Alfa Filial", "Beta"])
+        self.assertEqual([(e["name"], e["is_main"]) for e in self.client.get("/api/empresas/").json()], [("Alfa", True), ("Alfa Filial", False)])   # Beta é outra conta
+        filial = r.json()["id"]
+        self.assertEqual(self.client.patch(f"/api/empresas/{filial}/", {"city": "Recife"}, format="json").json()["city"], "Recife")
+        self.assertEqual(self.client.patch(f"/api/empresas/{self.b.id}/", {"city": "x"}, format="json").status_code, 403)
         unidades = self.client.get("/api/org-units/", HTTP_X_TENANT_ID=str(r.json()["id"])).json()
         self.assertEqual(len(unidades), 1)                                     # nasceu provisionada
         gestor = User.objects.create_user("g@alfa.com", "x", tenant=self.a, role=User.Role.GESTOR)

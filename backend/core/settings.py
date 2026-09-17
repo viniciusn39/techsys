@@ -26,6 +26,8 @@ INSTALLED_APPS = [
     "plans",
     "projects",
     "kanban",
+    "files",
+    "billing",
     "ai",
     "support",
     "erp",

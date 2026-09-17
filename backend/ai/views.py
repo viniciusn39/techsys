@@ -128,7 +128,9 @@ class AIChatSessionViewSet(TenantScopedViewSet):
             session.title = content[:80]
         session.save()
 
-        context = tenant_results_context(session.tenant, user=request.user)
+        from strategy.current import mapa_atual
+
+        context = tenant_results_context(session.tenant, user=request.user, mapa=mapa_atual(request, session.tenant))
         history = [
             {"role": m.role, "content": m.content}
             for m in session.messages.exclude(role=AIChatMessage.Role.SYSTEM)

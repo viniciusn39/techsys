@@ -144,3 +144,29 @@ class NadaDeOutraEmpresaTests(APITestCase):
         r = self.client.patch(f"/api/project-fcas/{f['id']}/", {"activity": ativ_b.id}, format="json")
         self.assertEqual(r.status_code, 400)
         self.assertNotIn("secreta", r.content.decode())
+
+
+class ImportarPlanilhaTests(APITestCase):
+    def test_importa_a_eap_do_csv_exportado(self):
+        from django.core.files.uploadedfile import SimpleUploadedFile
+
+        tenant = Tenant.objects.create(name="Acme", slug="acme-imp")
+        gil = User.objects.create_user("gil@imp.com", "x", first_name="Gil", last_name="Souza", tenant=tenant, role=User.Role.GESTOR)
+        self.client.force_authenticate(gil)
+        p = self.client.post("/api/projects/", {"title": "P", "owner": gil.id, "start_date": "2026-01-01", "end_date": "2026-12-31"}, format="json").json()["id"]
+        csv = ('\ufeff"EAP";"Atividade";"Responsável";"Fase";"Início";"Fim";"Situação";"Avanço %"\r\n'
+               '"1";"Infraestrutura";"Gil Souza";"Execução";"01/07/2026";"31/08/2026";"Em andamento";"0"\r\n'
+               '"1.1";"Banco";"gil@imp.com";"Execução";"01/07/2026";"31/07/2026";"Finalizado";"40"\r\n'
+               '"1.2";"ETL";"Fulano";"Planejamento";"32/13/2026";"";"";"60%"\r\n'
+               '"";"";"";"";"";"";"";""\r\n'
+               '"7.1";"Órfã";"";"";"";"";"";""\r\n').encode("utf-8")
+        r = self.client.post(f"/api/projects/{p}/importar/", {"file": SimpleUploadedFile("eap.csv", csv)}, format="multipart")
+        self.assertEqual(r.status_code, 200, r.content)
+        self.assertEqual(r.json()["criadas"], 4)
+        self.assertEqual(len(r.json()["avisos"]), 3)      # responsável desconhecido, data inválida, mãe não encontrada
+        linhas = self.client.get(f"/api/projects/{p}/atividades/").json()
+        self.assertEqual([(l["wbs"], l["title"], l["progress"], l["responsible_name"]) for l in linhas],
+                         [("1", "Infraestrutura", 80, "Gil Souza"), ("1.1", "Banco", 100, "Gil Souza"), ("1.2", "ETL", 60, ""), ("2", "Órfã", 0, "")])
+        self.assertEqual(linhas[2]["phase"], "planejamento")
+        ruim = self.client.post(f"/api/projects/{p}/importar/", {"file": SimpleUploadedFile("x.csv", b"a;b\n1;2\n")}, format="multipart")
+        self.assertEqual(ruim.status_code, 400)

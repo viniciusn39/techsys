@@ -154,14 +154,19 @@ export function Agenda() {
       setErro(d && typeof d === "object" ? Object.values(d).flat().join(" ") : (e as Error).message);
     }
   };
-  const remove = async () => { if (editing?.id) { await api.del(`/api/meetings/${editing.id}/`); setEditing(null); load(); } };
+  const remove = async () => {
+    if (!editing?.id) return;
+    try { await api.del(`/api/meetings/${editing.id}/`); setEditing(null); load(); } catch (e) { setErro((e as Error).message); }
+  };
 
   const criarCat = async () => {
     if (!novaCat.trim()) return;
     try { await api.post("/api/agenda-categorias/", { name: novaCat.trim(), order: categorias.length }); setNovaCat(""); loadCats(); }
     catch (e) { setErro((e as ApiError).data?.name?.[0] ?? (e as Error).message); }
   };
-  const excluirCat = async (c: Categoria) => { await api.del(`/api/agenda-categorias/${c.id}/`); loadCats(); load(); };
+  const excluirCat = async (c: Categoria) => {
+    try { await api.del(`/api/agenda-categorias/${c.id}/`); loadCats(); load(); } catch (e) { setErro((e as Error).message); }
+  };
 
   const alternar = (vals: number[] | undefined, id: number) => { const s = new Set(vals ?? []); s.has(id) ? s.delete(id) : s.add(id); return Array.from(s); };
 

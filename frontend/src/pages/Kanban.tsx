@@ -3,6 +3,7 @@ import { Alert, Button, Dropdown, Form, Modal, Nav } from "react-bootstrap";
 import { ApiError, api } from "../api/client";
 import { useAuth } from "../auth/AuthContext";
 import { BAR_MAX_WIDTH, BAR_RADIUS_H, BAR_RADIUS_V, vizTokens } from "../charts/theme";
+import { Anexos } from "../components/Anexos";
 import { EChart } from "../components/EChart";
 import { EmptyState, Meter, Panel, Skeleton, StatCard } from "../components/ui";
 import { useTheme } from "../hooks/useTheme";
@@ -112,6 +113,7 @@ export function Kanban() {
   const [novaMsg, setNovaMsg] = useState<{ recipient: string; text: string }>({ recipient: "", text: "" });
   const [novoItem, setNovoItem] = useState("");
   const [erro, setErro] = useState("");
+  const [confirma, setConfirma] = useState<"board" | "task" | null>(null);
   // Análise e comunicação
   const [analise, setAnalise] = useState<Analise | null>(null);
   const [fBoardAnalise, setFBoardAnalise] = useState("");
@@ -169,10 +171,12 @@ export function Kanban() {
   };
   const excluirBoard = async () => {
     if (!editBoard?.id) return;
-    await api.del(`/api/kanban-boards/${editBoard.id}/`);
-    setEditBoard(null);
-    setBoardId(null);
-    loadBoards();
+    try {
+      await api.del(`/api/kanban-boards/${editBoard.id}/`);
+      setEditBoard(null);
+      setBoardId(null);
+      loadBoards();
+    } catch (e) { setErro(erroDaApi(e)); }
   };
 
   // --- tarefa
@@ -194,7 +198,10 @@ export function Kanban() {
       if (fechar) { setTask(null); loadTasks(); } else await recarregarTask(salvo.id);
     } catch (e) { setErro(erroDaApi(e)); }
   };
-  const excluirTask = async () => { if (task?.id) { await api.del(`/api/kanban-tasks/${task.id}/`); setTask(null); loadTasks(); loadResumo(); } };
+  const excluirTask = async () => {
+    if (!task?.id) return;
+    try { await api.del(`/api/kanban-tasks/${task.id}/`); setTask(null); loadTasks(); loadResumo(); } catch (e) { setErro(erroDaApi(e)); }
+  };
   const mover = async (x: Task, status: string) => {
     if (x.status === status) return;
     setTasks((l) => l.map((y) => (y.id === x.id ? { ...y, status } : y)));
@@ -388,7 +395,9 @@ export function Kanban() {
           )}
         </Modal.Body>
         <Modal.Footer>
-          {editBoard?.id && <Button variant="outline-danger" className="me-auto" onClick={excluirBoard} title="Exclui o board e todas as tarefas dele">Excluir board{editBoard.tasks_count ? ` e ${editBoard.tasks_count} tarefa(s)` : ""}</Button>}
+          {editBoard?.id && (confirma === "board"
+            ? <span className="me-auto d-flex align-items-center gap-2 small"><span style={{ color: "var(--st-vermelho)" }}>Excluir o board{editBoard.tasks_count ? `, ${editBoard.tasks_count} tarefa(s)` : ""} e as conversas?</span><Button size="sm" variant="danger" onClick={() => { setConfirma(null); excluirBoard(); }}>Sim, excluir</Button><Button size="sm" variant="outline-secondary" onClick={() => setConfirma(null)}>Não</Button></span>
+            : <Button variant="outline-danger" className="me-auto" onClick={() => setConfirma("board")}>Excluir board</Button>)}
           <Button variant="outline-secondary" onClick={() => setEditBoard(null)}>Cancelar</Button>
           <Button onClick={salvarBoard}>Salvar</Button>
         </Modal.Footer>
@@ -429,6 +438,7 @@ export function Kanban() {
                       <Button size="sm" variant="outline-secondary" disabled={!novoItem.trim()} onClick={() => { mudarChecklist([...(task.checklist ?? []), { text: novoItem.trim(), done: false }]); setNovoItem(""); }}>Adicionar</Button>
                     </div>
                   </div>
+                  <div className="col-12"><Anexos kind="kanban_task" objectId={task.id} /></div>
                 </div>
               </div>
 
@@ -460,7 +470,9 @@ export function Kanban() {
           )}
         </Modal.Body>
         <Modal.Footer>
-          {task?.id && gestor && <Button variant="outline-danger" className="me-auto" onClick={excluirTask}>Excluir tarefa</Button>}
+          {task?.id && gestor && (confirma === "task"
+            ? <span className="me-auto d-flex align-items-center gap-2 small"><span style={{ color: "var(--st-vermelho)" }}>Excluir a tarefa, o histórico e as conversas?</span><Button size="sm" variant="danger" onClick={() => { setConfirma(null); excluirTask(); }}>Sim, excluir</Button><Button size="sm" variant="outline-secondary" onClick={() => setConfirma(null)}>Não</Button></span>
+            : <Button variant="outline-danger" className="me-auto" onClick={() => setConfirma("task")}>Excluir tarefa</Button>)}
           <Button variant="outline-secondary" onClick={() => { setTask(null); loadTasks(); }}>Fechar</Button>
           <Button onClick={() => salvarTask(true)}>{task?.id ? "Salvar" : "Criar"}</Button>
         </Modal.Footer>

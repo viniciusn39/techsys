@@ -8,6 +8,7 @@ import { PainelErp } from "./pages/PainelErp";
 import { CatalogoTecnico } from "./pages/CatalogoTecnico";
 import { Dashboard } from "./pages/Dashboard";
 import { Desvios } from "./pages/Desvios";
+import { Faturas } from "./pages/Faturas";
 import { IndicadorDetalhe } from "./pages/IndicadorDetalhe";
 import { Indicadores } from "./pages/Indicadores";
 import { Instalador } from "./pages/Instalador";
@@ -108,6 +109,7 @@ export default function App() {
         <Route path="/planos-acao" element={<TenantRoute><PlanosAcao /></TenantRoute>} />
         <Route path="/painel-agenda" element={<TenantRoute><AgendaPainel /></TenantRoute>} />
         <Route path="/agenda" element={<TenantRoute><Agenda /></TenantRoute>} />
+        <Route path="/faturas" element={<TenantRoute><Faturas /></TenantRoute>} />
         <Route path="/chamados" element={<TenantRoute><Chamados /></TenantRoute>} />
         <Route path="/ajuda" element={<TenantRoute><Ajuda /></TenantRoute>} />
         <Route path="/cultura" element={<TenantRoute><Cultura /></TenantRoute>} />
@@ -126,6 +128,7 @@ export default function App() {
         <Route path="/root/integracoes" element={<RootRoute><Integracoes /></RootRoute>} />
         <Route path="/root/instalador" element={<RootRoute><Instalador /></RootRoute>} />
         <Route path="/root/catalogo" element={<RootRoute><CatalogoTecnico /></RootRoute>} />
+        <Route path="/root/faturas" element={<RootRoute><Faturas gestao /></RootRoute>} />
         <Route path="/root/chamados" element={<RootRoute><SuporteChamados /></RootRoute>} />
         <Route path="/root/servidor" element={<RootRoute><Servidor /></RootRoute>} />
         <Route path="*" element={<Navigate to={homeForRole} />} />

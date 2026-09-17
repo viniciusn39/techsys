@@ -68,6 +68,23 @@ class ProjectViewSet(TenantScopedViewSet):
             saida.append(d)
         return Response(saida)
 
+    @action(detail=True, methods=["post"])
+    def importar(self, request, pk=None):
+        """Importa atividades de um CSV (multipart: file) — o mesmo formato do botão Exportar."""
+        from rest_framework.exceptions import ValidationError
+
+        from .importer import importar_atividades
+
+        arquivo = request.FILES.get("file")
+        if arquivo is None:
+            raise ValidationError({"file": "Envie a planilha em CSV."})
+        if arquivo.size > 2 * 1024 * 1024:
+            raise ValidationError({"file": "Planilha acima de 2 MB."})
+        try:
+            return Response(importar_atividades(self.get_object(), arquivo.read()))
+        except ValueError as e:
+            raise ValidationError({"file": str(e)})
+
     @action(detail=True, methods=["get"])
     def fcas(self, request, pk=None):
         """Todos os FCAs do projeto, de todas as atividades."""

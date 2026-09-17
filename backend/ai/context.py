@@ -83,11 +83,11 @@ def _indicadores(tenant, user, meses=6):
     return out, {i.id for i in inds}
 
 
-def _mapa(tenant):
+def _mapa(tenant, mapa=None):
     from strategy.current import mapa_padrao
     from strategy.models import Goal
 
-    mapa = mapa_padrao(tenant)
+    mapa = mapa or mapa_padrao(tenant)
     if not mapa:
         return None, {}
     perspectivas = []
@@ -247,11 +247,11 @@ def _erp(tenant):
     }
 
 
-def tenant_results_context(tenant, year=None, user=None):
+def tenant_results_context(tenant, year=None, user=None, mapa=None):
     """Contexto completo da empresa para o chat e as análises da IA."""
     year = year or date.today().year
     indicadores, ids = _indicadores(tenant, user)
-    mapa, extra = _mapa(tenant)
+    mapa, extra = _mapa(tenant, mapa)   # o planejamento que o usuário está vendo, quando a tela informa
     ctx = {
         "empresa": tenant.name,
         "hoje": date.today().isoformat(),

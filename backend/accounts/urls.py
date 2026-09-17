@@ -13,5 +13,6 @@ urlpatterns = [
     path("auth/me/", MeView.as_view()),
     path("empresa/", EmpresaView.as_view()),
     path("empresas/", EmpresasView.as_view()),
+    path("empresas/<int:pk>/", EmpresasView.as_view()),
     path("", include(router.urls)),
 ]

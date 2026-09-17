@@ -72,6 +72,7 @@ const TENANT_SECTIONS: { label: string; items: MenuItem[] }[] = [
   {
     label: "Suporte",
     items: [
+      { to: "/faturas", icon: "bi-receipt", label: "Faturas", title: "Faturas", sub: "Faturas lançadas pela TechSys para a sua empresa", roles: ["root", "admin"] },
       { to: "/chamados", icon: "bi-life-preserver", label: "Chamados", title: "Chamados", sub: "Suporte técnico e consultoria de gestão", roles: ["root", "admin", "gestor", "colaborador"] },
       { to: "/ajuda", icon: "bi-question-circle", label: "Ajuda", title: "Central de ajuda", sub: "Como usar cada parte do sistema", roles: ["root", "admin", "gestor", "colaborador"] },
     ],
@@ -86,6 +87,7 @@ const ROOT_SECTION: { label: string; items: MenuItem[] } = {
     { to: "/root/instalador", icon: "bi-robot", label: "Instalador do agente", title: "Instalador do agente", sub: "Escolha o cliente, pegue a chave e o script pronto", roles: ["root"] },
     { to: "/root/integracoes", icon: "bi-plug", label: "Integrações", title: "Integrações", sub: "Provedor de IA e fontes de dados", roles: ["root"] },
     { to: "/root/catalogo", icon: "bi-braces-asterisk", label: "Catálogo técnico", title: "Catálogo técnico de KPIs", sub: "Regra, SQL executado no ERP e fórmula de cada indicador", roles: ["root"] },
+    { to: "/root/faturas", icon: "bi-receipt", label: "Faturas (clientes)", title: "Faturas dos clientes", sub: "Lançamento e acompanhamento das faturas de cada empresa", roles: ["root"] },
     { to: "/root/chamados", icon: "bi-headset", label: "Chamados (suporte)", title: "Fila de suporte e consultoria", sub: "Chamados de todos os clientes", roles: ["root"] },
     { to: "/root/servidor", icon: "bi-hdd-network", label: "Servidor", title: "Servidor da plataforma", sub: "Monitoramento, performance e armazenamento", roles: ["root"] },
   ],

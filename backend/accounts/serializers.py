@@ -151,9 +151,14 @@ class EmpresaSerializer(serializers.ModelSerializer):
         model = Tenant
         fields = [
             "id", "name", "legal_name", "cnpj", "address", "address_number", "address_complement", "district",
-            "city", "state", "zip_code", "contact_name", "email", "phone", "is_active",
+            "city", "state", "zip_code", "contact_name", "email", "phone", "is_active", "is_main",
         ]
         read_only_fields = ["is_active"]
+
+    is_main = serializers.SerializerMethodField()
+
+    def get_is_main(self, obj):
+        return obj.parent_id is None
 
 
 class OrgUnitSerializer(serializers.ModelSerializer):

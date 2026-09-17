@@ -15,7 +15,7 @@ const TOPICOS: Topico[] = [
   ] },
   { key: "empresas-planejamentos", icon: "bi-buildings", title: "Várias empresas e vários planejamentos", to: "/planejamentos", resumo: "Um mesmo login pode atuar em várias empresas, e cada empresa pode ter vários planejamentos estratégicos.", passos: [
     "Quem tem mais de uma empresa troca de empresa no seletor 'Empresa ativa', no alto do menu. Tudo (indicadores, projetos, usuários) é separado por empresa.",
-    "O administrador abre uma nova empresa em Stakeholders → Empresas → Nova empresa; ela nasce pronta e ele já entra nela.",
+    "A aba Stakeholders → Empresas lista a empresa principal da conta e as adicionadas. O administrador inclui outra em 'Nova empresa' (cadastro completo); ela nasce pronta e os administradores da principal passam a administrá-la.",
     "Para dar acesso a alguém que já tem cadastro em outra empresa, use Usuários → Vincular usuário de outra empresa (pelo e-mail).",
     "Em Planejamentos, crie quantos planejamentos precisar (nome, escopo, período, parceiros e departamentos) e escolha qual ver nos botões 'Planejamento' no topo das telas (ou em 'Usar', na lista).",
     "Mapa estratégico, SWOT, Canvas, Cultura e o Dashboard mostram sempre o planejamento em uso.",
@@ -43,7 +43,7 @@ const TOPICOS: Topico[] = [
   { key: "metas", icon: "bi-bullseye", title: "Desdobramento de metas", to: "/metas", resumo: "Da meta da empresa para área, time e pessoa, cada uma ligada a um indicador.", passos: ["Crie a meta da empresa e desdobre em metas filhas.", "Vincule cada meta a um indicador para herdar o farol."] },
   { key: "kanban", icon: "bi-kanban", title: "Kanban", to: "/kanban", resumo: "Boards de tarefas (por sprint, cliente ou frente), com análise e uma caixa de comunicação dentro das tarefas.", passos: [
     "Crie um board (pode ser ligado a um planejamento) e adicione tarefas com o + de cada coluna; arraste entre A fazer, Em progresso, Bloqueado e Concluído.",
-    "Na tarefa: prioridade, responsável, prazo, pessoas vinculadas, descrição e checklist. O histórico registra cada mudança.",
+    "Na tarefa: prioridade, responsável, prazo, pessoas vinculadas, descrição, checklist e anexos. O histórico registra cada mudança.",
     "Comunicação: envie um pedido para alguém de dentro da tarefa. Fica Pendente até a pessoa responder, depois Aguardando confirmação até você concluir.",
     "A aba Comunicação junta todos os pedidos; o selo vermelho mostra quantos estão esperando você.",
     "A aba Análise mostra totais, atrasadas, tarefas por board e desempenho por responsável.",
@@ -58,7 +58,9 @@ const TOPICOS: Topico[] = [
     "Monte a estrutura: atividades, subatividades e quantos níveis precisar. A numeração (1, 1.1, 1.1.1) é automática.",
     "Atualize o % de andamento nas atividades da ponta; o avanço das atividades-mãe e do projeto é a média das filhas.",
     "Quando uma atividade travar, registre um FCA: o fato, a causa raiz e a ação corretiva, com prazo e responsável.",
-    "Use a aba Gantt para ver o cronograma e o Painel de projetos para a visão consolidada.",
+    "Importar: na barra das atividades, envie um CSV com as colunas EAP; Atividade; Responsável; Fase; Início; Fim; Situação; Avanço % (o botão Exportar gera o modelo).",
+    "Na atividade, os Registros aceitam formatação (títulos, negrito, listas) e você pode anexar arquivos de até 20 MB.",
+    "Use a aba Gantt (escalas Dia, Semana, Mês e Trimestre) para ver o cronograma e o Painel de projetos para a visão consolidada.",
   ], dicas: ["Atrasada = prazo vencido e abaixo de 100 %. Atividade cancelada não entra na média.", "Plano de ação (5W2H) trata um desvio de indicador; projeto entrega uma iniciativa do planejamento."] },
   { key: "desvios", icon: "bi-exclamation-triangle", title: "Desvios", to: "/desvios", resumo: "Todo farol vermelho vira um desvio. Registre a causa raiz e crie o plano de ação já preenchido.", passos: ["Abra o desvio, escreva a causa raiz e clique em 'Criar plano'.", "Concluir o plano fecha o desvio."] },
   { key: "erp", icon: "bi-bar-chart-line", title: "Painel do ERP e conector", to: "/erp/painel", resumo: "Mini BI com o que já veio do ERP: faturamento por dia, por filial e rankings.", passos: [
@@ -82,6 +84,10 @@ const TOPICOS: Topico[] = [
     "Canvas: um post-it por item em cada um dos nove blocos.",
     "Stakeholders: influência e interesse definem a estratégia de relacionamento.",
     "Relatório: tudo isso num documento para imprimir ou salvar em PDF.",
+  ] },
+  { key: "faturas", icon: "bi-receipt", title: "Faturas", to: "/faturas", resumo: "As faturas que a TechSys lança para a sua empresa: total, pagas, abertas e atrasadas, com download e link de pagamento.", passos: [
+    "Só o administrador da empresa vê as faturas.",
+    "Use 'Pagar' quando houver link de pagamento e o botão de download para baixar o PDF ou boleto.",
   ] },
   { key: "acesso", icon: "bi-shield-lock", title: "Usuários e perfis de acesso", to: "/admin/usuarios", resumo: "Papéis (admin, gestor, colaborador) e perfis por setor que limitam os indicadores e módulos que cada um vê.", passos: [
     "Crie o usuário com papel e unidade.",

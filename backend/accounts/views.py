@@ -244,13 +244,29 @@ class EmpresaView(APIView):
 
 
 class EmpresasView(APIView):
-    """As empresas do próprio cliente: lista as dele e deixa o admin abrir outra (grupo econômico)."""
+    """As empresas da CONTA: a principal e as que o cliente adicionou a ela.
 
-    def get(self, request):
+    GET  /api/empresas/        lista a conta da empresa em uso (só as que o usuário acessa; root vê todas)
+    POST /api/empresas/        adiciona uma empresa à conta (admin da empresa em uso, ou root)
+    PATCH /api/empresas/<id>/  altera o cadastro de uma empresa da conta em que o usuário é admin
+    """
+
+    def _conta(self, request):
+        tenant = get_request_tenant(request)
+        if tenant is None:
+            raise PermissionDenied("Nenhuma empresa selecionada.")
+        return tenant.conta
+
+    def _da_conta(self, request):
+        conta = self._conta(request)
+        empresas = [conta] + list(conta.children.order_by("name"))
         user = request.user
         if user.role == User.Role.ROOT:
-            return Response(EmpresaSerializer(Tenant.objects.all(), many=True).data)
-        return Response(EmpresaSerializer(user.empresas(), many=True).data)
+            return empresas
+        return [t for t in empresas if user.belongs_to(t)]
+
+    def get(self, request):
+        return Response(EmpresaSerializer(self._da_conta(request), many=True).data)
 
     def post(self, request):
         from django.utils.text import slugify
@@ -258,18 +274,33 @@ class EmpresasView(APIView):
         from strategy.provisioning import bootstrap_tenant
 
         user = request.user
-        # Vale o papel do CADASTRO: quem é admin só por vínculo numa empresa alheia não abre empresas.
-        if user.role not in (User.Role.ADMIN, User.Role.ROOT):
-            raise PermissionDenied("Só o administrador abre uma nova empresa.")
+        if papel_efetivo(request) not in (User.Role.ADMIN, User.Role.ROOT):
+            raise PermissionDenied("Só o administrador adiciona uma empresa à conta.")
+        conta = self._conta(request)
         ser = EmpresaSerializer(data=request.data)
         ser.is_valid(raise_exception=True)
         base = slugify(ser.validated_data["name"])[:40] or "empresa"
         slug, n = base, 2
         while Tenant.objects.filter(slug=slug).exists():
             slug, n = f"{base}-{n}", n + 1
-        tenant = ser.save(slug=slug)
+        tenant = ser.save(slug=slug, parent=conta)
         bootstrap_tenant(tenant)
         seed_access_profiles(tenant)
+        # Quem administra a empresa principal administra a nova; quem criou também.
+        admins = set(User.objects.filter(tenant=conta, role=User.Role.ADMIN, is_active=True))
         if user.role != User.Role.ROOT:
-            Membership.objects.create(user=user, tenant=tenant, role=Membership.Role.ADMIN)
+            admins.add(user)
+        for admin in admins:
+            Membership.objects.get_or_create(user=admin, tenant=tenant, defaults={"role": Membership.Role.ADMIN})
         return Response(EmpresaSerializer(tenant).data, status=201)
+
+    def patch(self, request, pk=None):
+        alvo = next((t for t in self._da_conta(request) if t.id == pk), None)
+        if alvo is None:
+            raise PermissionDenied("Empresa fora desta conta.")
+        if request.user.role != User.Role.ROOT and request.user.role_in(alvo) != User.Role.ADMIN:
+            raise PermissionDenied("Só o administrador da empresa altera o cadastro dela.")
+        ser = EmpresaSerializer(alvo, data=request.data, partial=True)
+        ser.is_valid(raise_exception=True)
+        ser.save()
+        return Response(ser.data)

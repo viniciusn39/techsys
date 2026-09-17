@@ -12,7 +12,7 @@ interface Unidade { id: number; name: string }
 interface Departamento { id: number; parent: number | null; parent_name: string; name: string; kind: string; kind_label: string; manager: number | null; manager_name: string | null; is_active: boolean; users_count: number }
 interface Empresa {
   id: number; name: string; legal_name: string; cnpj: string; address: string; address_number: string; address_complement: string;
-  district: string; city: string; state: string; zip_code: string; contact_name: string; email: string; phone: string; is_active: boolean;
+  district: string; city: string; state: string; zip_code: string; contact_name: string; email: string; phone: string; is_active: boolean; is_main?: boolean;
 }
 interface Usuario { id: number; first_name: string; last_name?: string; email: string }
 
@@ -254,118 +254,99 @@ function AbaDepartamentos({ podeEditar, novo }: { podeEditar: boolean; novo: num
   );
 }
 
-/** Aba Empresas: as empresas do cliente (ele pode ter várias) e os dados cadastrais da que está em uso. */
+/** Aba Empresas: a empresa principal da conta e as que o cliente adicionou, com o cadastro completo de cada uma. */
 function AbaEmpresa({ podeEditar, novo }: { podeEditar: boolean; novo: number }) {
   const { me, actAsTenant } = useAuth();
-  const [empresas, setEmpresas] = useState<Empresa[]>([]);
-  const [nova, setNova] = useState<Partial<Empresa> | null>(null);
-  const [erroNova, setErroNova] = useState("");
-  const [empresa, setEmpresa] = useState<Empresa | null>(null);
-  const isRoot = me?.role === "root";
-
-  const loadEmpresas = useCallback(() => { api.get<Empresa[]>("/api/empresas/").then(setEmpresas).catch(() => setEmpresas([])); }, []);
-  useEffect(() => { loadEmpresas(); }, [loadEmpresas]);
-  useEffect(() => { if (novo > 0) { setErroNova(""); setNova({}); } }, [novo]);
-
-  const criar = async () => {
-    if (!nova?.name?.trim()) { setErroNova("Informe o nome fantasia."); return; }
-    try {
-      const criada = await api.post<Empresa>("/api/empresas/", nova);
-      setNova(null);
-      await actAsTenant(criada.id); // já entra na empresa nova: a tela remonta nela
-    } catch (e) { setErroNova(erroDaApi(e)); }
-  };
-
-  const [msg, setMsg] = useState<{ tipo: "success" | "danger"; texto: string } | null>(null);
+  const [empresas, setEmpresas] = useState<Empresa[] | null>(null);
+  const [editing, setEditing] = useState<Partial<Empresa> | null>(null);
+  const [busca, setBusca] = useState("");
+  const [erro, setErro] = useState("");
   const [salvando, setSalvando] = useState(false);
+  const emUso = me?.acting_tenant?.id;
 
-  useEffect(() => { api.get<Empresa>("/api/empresa/").then(setEmpresa).catch((e) => setMsg({ tipo: "danger", texto: e.message })); }, []);
+  const load = useCallback(() => { api.get<Empresa[]>("/api/empresas/").then(setEmpresas).catch(() => setEmpresas([])); }, []);
+  useEffect(() => { load(); }, [load]);
+  useEffect(() => { if (novo > 0) { setErro(""); setEditing({}); } }, [novo]);
 
   const save = async () => {
-    if (!empresa) return;
+    if (!editing?.name?.trim()) { setErro("Informe o nome fantasia."); return; }
     setSalvando(true);
     try {
-      setEmpresa(await api.patch<Empresa>("/api/empresa/", empresa));
-      setMsg({ tipo: "success", texto: "Dados da empresa salvos." });
-    } catch (e) { setMsg({ tipo: "danger", texto: erroDaApi(e) }); }
+      if (editing.id) await api.patch(`/api/empresas/${editing.id}/`, editing);
+      else await api.post<Empresa>("/api/empresas/", editing);
+      setEditing(null);
+      load();
+    } catch (e) { setErro(erroDaApi(e)); }
     setSalvando(false);
   };
 
-  if (!empresa) return <Panel>{msg ? <Alert variant="danger" className="mb-0">{msg.texto}</Alert> : <Skeleton height={260} />}</Panel>;
+  if (empresas === null) return <Panel><Skeleton height={260} /></Panel>;
 
+  const q = busca.trim().toLowerCase();
+  const visiveis = empresas.filter((e) => !q || `${e.name} ${e.legal_name} ${e.cnpj}`.toLowerCase().includes(q));
   const campo = (rotulo: string, chave: keyof Empresa, col: string, extra: Record<string, unknown> = {}) => (
     <div className={col}><Form.Label>{rotulo}</Form.Label>
-      <Form.Control disabled={!podeEditar} value={String(empresa[chave] ?? "")} onChange={(e) => setEmpresa({ ...empresa, [chave]: e.target.value })} {...extra} /></div>
+      <Form.Control disabled={!podeEditar} value={String(editing?.[chave] ?? "")} onChange={(e) => setEditing({ ...editing, [chave]: e.target.value })} {...extra} /></div>
   );
 
   return (
     <>
-    {!isRoot && (
-      <Panel title="Lista de empresas" subtitle="As empresas a que você tem acesso. Cada uma tem os seus planejamentos, indicadores, projetos e usuários.">
+      <Panel title="Lista de empresas" subtitle="A empresa principal da conta e as que foram adicionadas a ela. Cada empresa tem os seus planejamentos, indicadores, projetos e usuários."
+        actions={<Form.Control size="sm" placeholder="Buscar empresas…" value={busca} onChange={(e) => setBusca(e.target.value)} style={{ width: 220 }} />}>
         <div className="table-responsive">
           <table className="table table-sm table-hover align-middle mb-0">
             <thead><tr><th>Razão social</th><th>Nome fantasia</th><th>CNPJ</th><th>E-mail</th><th>Situação</th><th /></tr></thead>
             <tbody>
-              {empresas.map((e) => (
-                <tr key={e.id}>
-                  <td className="fw-semibold">{e.legal_name || e.name}</td>
+              {visiveis.map((e) => (
+                <tr key={e.id} role="button" onClick={() => { setErro(""); setEditing(e); }}>
+                  <td className="fw-semibold">{e.legal_name || e.name}{e.is_main && <span className="badge text-bg-light border fw-normal ms-2">principal</span>}</td>
                   <td className="small">{e.name}</td>
                   <td className="small">{e.cnpj || "—"}</td>
                   <td className="small">{e.email || "—"}</td>
                   <td><Situacao ativo={e.is_active} /></td>
-                  <td className="text-end">
-                    {e.id === empresa.id
+                  <td className="text-end text-nowrap" onClick={(ev) => ev.stopPropagation()}>
+                    {e.id === emUso
                       ? <span className="status-pill st-verde"><i className="bi bi-check2" />em uso</span>
                       : <Button size="sm" variant="outline-secondary" onClick={() => actAsTenant(e.id)}>Abrir</Button>}
                   </td>
                 </tr>
               ))}
+              {visiveis.length === 0 && <tr><td colSpan={6} className="text-center text-muted-2 py-4">Nenhuma empresa encontrada.</td></tr>}
             </tbody>
           </table>
-          <div className="small text-muted-2 mt-2">Mostrando {empresas.length} empresa(s)</div>
+          <div className="small text-muted-2 mt-2">Mostrando {visiveis.length} empresa(s)</div>
         </div>
       </Panel>
-    )}
-    <Panel title={`Dados da empresa em uso · ${empresa.name}`} subtitle="Cadastro usado nos relatórios e na comunicação com o suporte."
-      actions={<Situacao ativo={empresa.is_active} />}>
-      <div className="row g-3">
-        {msg && <div className="col-12"><Alert variant={msg.tipo} className="mb-0 py-2 small" dismissible onClose={() => setMsg(null)}>{msg.texto}</Alert></div>}
-        {campo("Razão social", "legal_name", "col-md-5")}
-        {campo("Nome fantasia *", "name", "col-md-4")}
-        {campo("CNPJ", "cnpj", "col-md-3", { placeholder: "00.000.000/0000-00", maxLength: 18 })}
-        {campo("Endereço", "address", "col-md-6")}
-        {campo("Número", "address_number", "col-md-2")}
-        {campo("Complemento", "address_complement", "col-md-4")}
-        {campo("Bairro", "district", "col-md-4")}
-        {campo("Município", "city", "col-md-4")}
-        <div className="col-md-2"><Form.Label>UF</Form.Label>
-          <Form.Select disabled={!podeEditar} value={empresa.state} onChange={(e) => setEmpresa({ ...empresa, state: e.target.value })}><option value="">—</option>{UFS.map((uf) => <option key={uf}>{uf}</option>)}</Form.Select></div>
-        {campo("CEP", "zip_code", "col-md-2", { placeholder: "00000-000", maxLength: 9 })}
-        {campo("Responsável", "contact_name", "col-md-4")}
-        {campo("E-mail", "email", "col-md-4", { type: "email" })}
-        {campo("Telefone", "phone", "col-md-4", { placeholder: "(00) 00000-0000" })}
-        {podeEditar && <div className="col-12 text-end"><Button onClick={save} disabled={salvando || !empresa.name.trim()}>{salvando ? "Salvando…" : "Salvar"}</Button></div>}
-      </div>
-    </Panel>
 
-    <Modal show={!!nova} onHide={() => setNova(null)}>
-      <Modal.Header closeButton><Modal.Title>Nova empresa</Modal.Title></Modal.Header>
-      <Modal.Body>
-        {nova && (
-          <div className="row g-3">
-            {erroNova && <div className="col-12"><Alert variant="danger" className="mb-0 py-2 small">{erroNova}</Alert></div>}
-            <div className="col-12 small text-muted-2">A empresa nasce pronta para uso (departamento raiz, planejamento do ano e perfis de acesso) e você já entra nela. Os demais dados cadastrais você completa em seguida.</div>
-            <div className="col-12"><Form.Label>Razão social</Form.Label><Form.Control autoFocus value={nova.legal_name ?? ""} onChange={(e) => setNova({ ...nova, legal_name: e.target.value })} /></div>
-            <div className="col-md-7"><Form.Label>Nome fantasia *</Form.Label><Form.Control value={nova.name ?? ""} onChange={(e) => setNova({ ...nova, name: e.target.value })} /></div>
-            <div className="col-md-5"><Form.Label>CNPJ</Form.Label><Form.Control value={nova.cnpj ?? ""} maxLength={18} placeholder="00.000.000/0000-00" onChange={(e) => setNova({ ...nova, cnpj: e.target.value })} /></div>
-          </div>
-        )}
-      </Modal.Body>
-      <Modal.Footer>
-        <Button variant="outline-secondary" onClick={() => setNova(null)}>Cancelar</Button>
-        <Button onClick={criar}>Criar empresa</Button>
-      </Modal.Footer>
-    </Modal>
+      <Modal show={!!editing} onHide={() => setEditing(null)} size="lg" scrollable>
+        <Modal.Header closeButton><Modal.Title>{editing?.id ? `Cadastro da empresa${editing.is_main ? " principal" : ""}` : "Novo registro de empresa"}</Modal.Title></Modal.Header>
+        <Modal.Body>
+          {editing && (
+            <div className="row g-3">
+              {erro && <div className="col-12"><Alert variant="danger" className="mb-0 py-2 small">{erro}</Alert></div>}
+              {!editing.id && <div className="col-12 small text-muted-2">A empresa entra nesta conta já pronta para uso (departamento raiz, planejamento do ano e perfis de acesso). Os administradores da empresa principal passam a administrá-la também.</div>}
+              {campo("Razão social", "legal_name", "col-md-5", { autoFocus: true })}
+              {campo("Nome fantasia *", "name", "col-md-4")}
+              {campo("CNPJ", "cnpj", "col-md-3", { placeholder: "00.000.000/0000-00", maxLength: 18 })}
+              {campo("Endereço", "address", "col-md-6")}
+              {campo("Número", "address_number", "col-md-2")}
+              {campo("CEP", "zip_code", "col-md-4", { placeholder: "00000-000", maxLength: 9 })}
+              {campo("Bairro", "district", "col-md-4")}
+              {campo("Complemento", "address_complement", "col-md-4")}
+              {campo("Município", "city", "col-md-4")}
+              <div className="col-md-3"><Form.Label>Estado (UF)</Form.Label>
+                <Form.Select disabled={!podeEditar} value={editing.state ?? ""} onChange={(e) => setEditing({ ...editing, state: e.target.value })}><option value="">Selecione</option>{UFS.map((uf) => <option key={uf}>{uf}</option>)}</Form.Select></div>
+              {campo("Responsável", "contact_name", "col-md-4")}
+              {campo("E-mail", "email", "col-md-5", { type: "email", placeholder: "email@dominio.com.br" })}
+              {campo("Telefone", "phone", "col-md-4", { placeholder: "(00) 00000-0000" })}
+            </div>
+          )}
+        </Modal.Body>
+        <Modal.Footer>
+          <Button variant="outline-secondary" onClick={() => setEditing(null)}>{podeEditar ? "Cancelar" : "Fechar"}</Button>
+          {podeEditar && <Button onClick={save} disabled={salvando}>{salvando ? "Salvando…" : editing?.id ? "Salvar" : "Incluir"}</Button>}
+        </Modal.Footer>
+      </Modal>
     </>
   );
 }
@@ -391,7 +372,7 @@ export function Stakeholders() {
         </Nav>
         <Button size="sm" variant="outline-secondary" onClick={() => window.print()}><i className="bi bi-printer me-1" />Imprimir</Button>
         {aba === "stakeholders" && gestor && <Button size="sm" onClick={() => setNovo((n) => n + 1)}><i className="bi bi-plus-lg me-1" />Novo stakeholder</Button>}
-        {aba === "empresa" && me?.role === "admin" && <Button size="sm" onClick={() => setNovo((n) => n + 1)}><i className="bi bi-plus-lg me-1" />Nova empresa</Button>}
+        {aba === "empresa" && admin && <Button size="sm" onClick={() => setNovo((n) => n + 1)}><i className="bi bi-plus-lg me-1" />Nova empresa</Button>}
         {aba === "departamentos" && admin && <Button size="sm" onClick={() => setNovo((n) => n + 1)}><i className="bi bi-plus-lg me-1" />Novo departamento</Button>}
       </div>
       {aba === "stakeholders" && <AbaStakeholders podeEditar={gestor} novo={novo} />}

@@ -91,7 +91,42 @@ async function request<T>(method: string, url: string, body?: any, retry = true)
   return data as T;
 }
 
+function authHeaders(): Record<string, string> {
+  const headers: Record<string, string> = {};
+  const { access } = getTokens();
+  if (access) headers["Authorization"] = `Bearer ${access}`;
+  const tenant = getActingTenant();
+  if (tenant) headers["X-Tenant-Id"] = tenant;
+  const map = getActingMap();
+  if (map) headers["X-Map-Id"] = map;
+  return headers;
+}
+
+/** Envio de arquivo (multipart). Não define Content-Type: o navegador põe o boundary. */
+async function upload<T>(url: string, form: FormData, method = "POST", retry = true): Promise<T> {
+  const resp = await fetch(url, { method, headers: authHeaders(), body: form });
+  if (resp.status === 401 && retry && (await refreshAccess())) return upload<T>(url, form, method, false);
+  const data = await resp.json().catch(() => null);
+  if (!resp.ok) throw new ApiError(resp.status, data);
+  return data as T;
+}
+
+/** Baixa um arquivo protegido (o link direto não levaria o token) e entrega ao navegador para salvar. */
+async function download(url: string, filename: string, retry = true): Promise<void> {
+  const resp = await fetch(url, { headers: authHeaders() });
+  if (resp.status === 401 && retry && (await refreshAccess())) return download(url, filename, false);
+  if (!resp.ok) throw new ApiError(resp.status, await resp.json().catch(() => null));
+  const href = URL.createObjectURL(await resp.blob());
+  const link = document.createElement("a");
+  link.href = href;
+  link.download = filename;
+  link.click();
+  URL.revokeObjectURL(href);
+}
+
 export const api = {
+  upload,
+  download,
   get: <T = any>(url: string) => request<T>("GET", url),
   post: <T = any>(url: string, body?: any) => request<T>("POST", url, body),
   put: <T = any>(url: string, body?: any) => request<T>("PUT", url, body),
