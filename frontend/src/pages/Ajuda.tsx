@@ -41,6 +41,13 @@ const TOPICOS: Topico[] = [
     "Metas: cadastre por mês ou deixe que venham do ERP quando o KPI tiver meta no WinThor.",
   ], dicas: ["Farol: verde ≥ 100 % da meta, amarelo ≥ 90 %, vermelho abaixo. 'Menor é melhor' inverte a conta.", "Indicadores do ERP não aceitam lançamento manual: o valor vem do espelho do ERP."] },
   { key: "metas", icon: "bi-bullseye", title: "Desdobramento de metas", to: "/metas", resumo: "Da meta da empresa para área, time e pessoa, cada uma ligada a um indicador.", passos: ["Crie a meta da empresa e desdobre em metas filhas.", "Vincule cada meta a um indicador para herdar o farol."] },
+  { key: "kanban", icon: "bi-kanban", title: "Kanban", to: "/kanban", resumo: "Boards de tarefas (por sprint, cliente ou frente), com análise e uma caixa de comunicação dentro das tarefas.", passos: [
+    "Crie um board (pode ser ligado a um planejamento) e adicione tarefas com o + de cada coluna; arraste entre A fazer, Em progresso, Bloqueado e Concluído.",
+    "Na tarefa: prioridade, responsável, prazo, pessoas vinculadas, descrição e checklist. O histórico registra cada mudança.",
+    "Comunicação: envie um pedido para alguém de dentro da tarefa. Fica Pendente até a pessoa responder, depois Aguardando confirmação até você concluir.",
+    "A aba Comunicação junta todos os pedidos; o selo vermelho mostra quantos estão esperando você.",
+    "A aba Análise mostra totais, atrasadas, tarefas por board e desempenho por responsável.",
+  ], dicas: ["O Kanban dos Planos de Ação (5W2H) continua lá; este é para tarefas do dia a dia, sem precisar de um plano."] },
   { key: "planos", icon: "bi-kanban", title: "Planos de ação e Kanban", to: "/planos-acao", resumo: "Plano 5W2H com etapas PDCA e atividades no Kanban (a fazer, fazendo, bloqueado, feito).", passos: [
     "Crie o plano (o quê, por quê, onde, quem, quando, como, quanto) ou gere um a partir de um desvio.",
     "Adicione atividades com responsável, prazo e prioridade; arraste entre as colunas.",

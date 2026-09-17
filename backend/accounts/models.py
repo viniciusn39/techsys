@@ -137,7 +137,7 @@ class OrgUnit(TenantOwnedModel):
 MODULOS = [
     ("dashboard", "Dashboard"), ("mapa", "Mapa estratégico"), ("metas", "Metas"), ("indicadores", "Indicadores"),
     ("painel_erp", "Painel do ERP"), ("cultura", "Cultura e identidade"), ("swot", "Análise SWOT"), ("canvas", "Canvas"),
-    ("stakeholders", "Stakeholders"), ("relatorio", "Relatório"), ("planos", "Planos de ação"), ("projetos", "Projetos"), ("agenda", "Agenda de gestão"),
+    ("stakeholders", "Stakeholders"), ("relatorio", "Relatório"), ("planos", "Planos de ação"), ("projetos", "Projetos"), ("kanban", "Kanban"), ("agenda", "Agenda de gestão"),
     ("desvios", "Desvios"), ("ia", "Assistente IA"), ("usuarios", "Usuários"), ("organograma", "Organograma"), ("conector", "Conector ERP"),
 ]
 
@@ -175,15 +175,15 @@ class AccessProfile(TenantOwnedModel):
 PERFIS_PADRAO = [
     ("diretoria", "Diretoria", "Vê tudo: todos os setores e módulos.", [], []),
     ("comercial", "Comercial", "Vendas, clientes e força de vendas.", ["vendas", "clientes", "forca_vendas"],
-     ["dashboard", "mapa", "metas", "indicadores", "cultura", "swot", "relatorio", "planos", "projetos", "agenda", "desvios", "ia"]),
+     ["dashboard", "mapa", "metas", "indicadores", "cultura", "swot", "relatorio", "planos", "projetos", "kanban", "agenda", "desvios", "ia"]),
     ("financeiro", "Financeiro", "Financeiro e fiscal.", ["financeiro", "fiscal", "clientes"],
-     ["dashboard", "mapa", "metas", "indicadores", "painel_erp", "relatorio", "planos", "projetos", "agenda", "desvios", "ia"]),
+     ["dashboard", "mapa", "metas", "indicadores", "painel_erp", "relatorio", "planos", "projetos", "kanban", "agenda", "desvios", "ia"]),
     ("logistica", "Logística", "Logística, armazém e entrega.", ["logistica", "wms", "roteirizacao"],
-     ["dashboard", "mapa", "metas", "indicadores", "planos", "projetos", "agenda", "desvios", "ia"]),
+     ["dashboard", "mapa", "metas", "indicadores", "planos", "projetos", "kanban", "agenda", "desvios", "ia"]),
     ("suprimentos", "Suprimentos", "Compras e estoque.", ["compras", "estoque"],
-     ["dashboard", "mapa", "metas", "indicadores", "painel_erp", "planos", "projetos", "agenda", "desvios", "ia"]),
+     ["dashboard", "mapa", "metas", "indicadores", "painel_erp", "planos", "projetos", "kanban", "agenda", "desvios", "ia"]),
     ("pessoas", "Pessoas", "RH e cultura.", ["rh"],
-     ["dashboard", "mapa", "metas", "indicadores", "cultura", "stakeholders", "planos", "projetos", "agenda", "desvios", "ia"]),
+     ["dashboard", "mapa", "metas", "indicadores", "cultura", "stakeholders", "planos", "projetos", "kanban", "agenda", "desvios", "ia"]),
 ]
 
 

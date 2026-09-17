@@ -25,6 +25,7 @@ INSTALLED_APPS = [
     "indicators",
     "plans",
     "projects",
+    "kanban",
     "ai",
     "support",
     "erp",

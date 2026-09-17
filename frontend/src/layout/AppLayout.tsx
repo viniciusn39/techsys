@@ -52,9 +52,10 @@ const TENANT_SECTIONS: { label: string; items: MenuItem[] }[] = [
     items: [
       { to: "/painel-projetos", module: "projetos", icon: "bi-pie-chart", label: "Painel de projetos", title: "Painel de projetos", sub: "Avanço, prazos e responsáveis dos projetos", roles: ["root", "admin", "gestor", "colaborador"] },
       { to: "/projetos", module: "projetos", icon: "bi-folder2-open", label: "Projetos", title: "Projetos", sub: "Projetos do planejamento, atividades, Gantt e FCA", roles: ["root", "admin", "gestor", "colaborador"] },
-      { to: "/planos-acao", module: "planos", icon: "bi-kanban", label: "Planos de Ação", title: "Planos de Ação", sub: "5W2H, PDCA e Kanban", roles: ["root", "admin", "gestor", "colaborador"] },
       { to: "/painel-agenda", module: "agenda", icon: "bi-calendar2-week", label: "Painel da agenda", title: "Painel da agenda", sub: "Reuniões por pessoa e período, horas e conflitos", roles: ["root", "admin", "gestor", "colaborador"] },
       { to: "/agenda", module: "agenda", icon: "bi-calendar3", label: "Agendas", title: "Agendas", sub: "Agendas de trabalho e folgas, e reuniões de gestão com pauta, ata e decisões", roles: ["root", "admin", "gestor", "colaborador"] },
+      { to: "/kanban", module: "kanban", icon: "bi-kanban", label: "Kanban", title: "Kanban", sub: "Boards de tarefas, análise e comunicação", roles: ["root", "admin", "gestor", "colaborador"] },
+      { to: "/planos-acao", module: "planos", icon: "bi-clipboard-check", label: "Planos de Ação", title: "Planos de Ação", sub: "5W2H, PDCA e Kanban", roles: ["root", "admin", "gestor", "colaborador"] },
       { to: "/desvios", module: "desvios", icon: "bi-exclamation-triangle", label: "Desvios", title: "Tratamento de Desvios", sub: "Faróis vermelhos e causa raiz", roles: ["root", "admin", "gestor", "colaborador"] },
       { to: "/ia/chat", module: "ia", icon: "bi-stars", label: "Assistente IA", title: "Assistente de Resultados", sub: "Pergunte sobre resultados, planos e como usar o sistema", roles: ["root", "admin", "gestor", "colaborador"] },
     ],

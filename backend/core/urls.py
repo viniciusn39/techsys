@@ -20,6 +20,7 @@ urlpatterns = [
     path("api/", include("indicators.urls")),
     path("api/", include("plans.urls")),
     path("api/", include("projects.urls")),
+    path("api/", include("kanban.urls")),
     path("api/", include("support.urls")),
     path("api/ai/", include("ai.urls")),
     path("api/erp/", include("erp.urls")),

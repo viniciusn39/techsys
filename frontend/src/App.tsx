@@ -12,6 +12,7 @@ import { IndicadorDetalhe } from "./pages/IndicadorDetalhe";
 import { Indicadores } from "./pages/Indicadores";
 import { Instalador } from "./pages/Instalador";
 import { Integracoes } from "./pages/Integracoes";
+import { Kanban } from "./pages/Kanban";
 import { Login } from "./pages/Login";
 import { MapaEstrategico } from "./pages/MapaEstrategico";
 import { Metas } from "./pages/Metas";
@@ -103,6 +104,7 @@ export default function App() {
         <Route path="/painel-projetos" element={<TenantRoute><ProjetosPainel /></TenantRoute>} />
         <Route path="/projetos" element={<TenantRoute><Projetos /></TenantRoute>} />
         <Route path="/projetos/:id" element={<TenantRoute><ProjetoDetalhe /></TenantRoute>} />
+        <Route path="/kanban" element={<TenantRoute><Kanban /></TenantRoute>} />
         <Route path="/planos-acao" element={<TenantRoute><PlanosAcao /></TenantRoute>} />
         <Route path="/painel-agenda" element={<TenantRoute><AgendaPainel /></TenantRoute>} />
         <Route path="/agenda" element={<TenantRoute><Agenda /></TenantRoute>} />
